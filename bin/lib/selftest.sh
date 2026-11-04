@@ -95,6 +95,16 @@ cmd_selftest() {
     n=$(cd "$sn/proj" && CLAUDE_PLUGIN_DATA="$sn/data" CLAUDE_PLUGIN_ROOT="$(dirname "$self")/.." bash "$(dirname "$self")/../scripts/session-start.sh" | grep -c 'setup not recorded')
     [ "$n" = $([ "$i" -le 3 ] && echo 1 || echo 0) ] || { echo "FAIL setup nag run $i printed $n"; fail=1; }
   done
+  # on-demand packs: skills move out and back, and the plugin switch flips, all inside the given folders
+  pk="$tmp/pk"; mkdir -p "$pk/skills/wp-a" "$pk/skills/bricks-x" "$pk/skills/bricksextras-y" "$pk/skills/other"
+  echo '{"enabledPlugins":{"ui-ux-pro-max@ui-ux-pro-max-skill":true}}' > "$pk/settings.json"
+  pe() { LEAN_SKILLS="$pk/skills" LEAN_SKILLS_OFF="$pk/off" LEAN_SETTINGS="$pk/settings.json" bash "$self" pack "$@"; }
+  pe off wp >/dev/null; pe off bricks >/dev/null
+  [ -d "$pk/off/wp/wp-a" ] && [ -d "$pk/off/bricks/bricks-x" ] && [ -d "$pk/off/bricks/bricksextras-y" ] && [ -d "$pk/skills/other" ] \
+    || { echo "FAIL pack off moved the wrong folders"; fail=1; }
+  pe on bricks >/dev/null; [ -d "$pk/skills/bricksextras-y" ] || { echo "FAIL pack on bricks"; fail=1; }
+  pe off ui-ux >/dev/null; grep -q '"ui-ux-pro-max@ui-ux-pro-max-skill": false' "$pk/settings.json" || { echo "FAIL pack off ui-ux"; fail=1; }
+  pe status | grep -q '^wp: active 0, parked 1' || { echo "FAIL pack status"; fail=1; }
   # export: a generated note with frontmatter; a second export refuses to replace it
   ex="$tmp/vault/lessons.md"; mkdir -p "$tmp/vault"
   LESSONS_FILE="$tmp/lessons/LESSONS.md" bash "$(cd "$(dirname "$0")" && pwd)/lean-project" lessons export "$ex" > /dev/null

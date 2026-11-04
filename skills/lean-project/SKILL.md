@@ -30,6 +30,7 @@ A full review runs on every major release and every 5 to 10 minor ones; `review-
 | Build or review WordPress, WooCommerce, Bricks or block-editor code (plugin, theme, companion script) | `WORDPRESS.md`: how to read the docs, check changelogs, best practices, the security checklist and fixes. Read it before changing that code, every time. |
 | Audit a WordPress or WooCommerce site or codebase for performance, HPOS or layout, onboard an inherited store, or triage a slow store | The `wp-woo-performance-audit` skill (its own public repo, installed in `~/.claude/skills`). Scope: at release, the files `review-scope` lists; the whole folder only for an audit the user asked for. Its scan is `lean-project audit perf`. |
 | Build or change a Bricks or BricksExtras site, page, template, element, query or condition | `builder/INDEX.md`, then only the one `builder/<skill>/SKILL.md` the task needs |
+| Need a skill or plugin that is off (the wp-* skills, Bricks skills, the ui-ux plugin) | `lean-project pack status`; if it is off, `lean-project pack on <name>`, then a new session. Those packs are on demand, so nothing else loads them. |
 | Reverse-engineer a shipped app, package, firmware or browser target | `reverse/SKILL.md`, then only the reference file it names |
 | Check a WordPress plugin for WordPress.org submission, set up PHPStan, review WooCommerce code, check docs against code, or review tests | `reference/README.md`, then only the one file it points to |
 

@@ -1,5 +1,7 @@
 # WordPress, WooCommerce, Bricks and block editor work
 
+The wp-* skills are on demand. Before plugin work, run `lean-project pack status`; if they are off, `lean-project pack on wp` and start a new session to load them.
+
 Read this before changing code in a WordPress plugin, theme, WooCommerce extension, Bricks element or block. It applies to companion plugins and scripts too. Routing: the session hook points here for any WordPress project; the audit at release is `lean-project audit security` on the `lean-project review-scope` list.
 
 Contents table below: open only the section you need.

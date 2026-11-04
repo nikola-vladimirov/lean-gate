@@ -20,6 +20,7 @@
 #   lean-project handoff [docs/PLAN.md]  draft of the state file: branch, next tasks, cards in flight (prints only)
 #   lean-project delegate config | set <key> <value> | check | run <brief> <output>   route bulk work to the project's runner (none, llama, opencode)
 #   lean-project audit perf [dir or files...]  performance and HPOS scan of WordPress and WooCommerce code (wp-woo-performance-audit skill); files = the release list from review-scope
+#   lean-project pack status|on|off <bricks|wp|ui-ux>   skill packs and plugins that stay off until needed; takes effect in the next session
 #   lean-project selftest                check the tool on this machine
 set -u
 # Command groups live in bin/lib; sourcing them defines their functions before the dispatch below runs.
@@ -804,5 +805,6 @@ case "$cmd" in
       *) cmd_lessons ;;
     esac ;;
   delegate) cmd_delegate "$@" ;;
+  pack) cmd_pack "$@" ;;
   *) sed -n '5,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
