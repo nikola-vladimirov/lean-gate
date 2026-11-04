@@ -1,8 +1,8 @@
 {
   "name": "lean-project",
   "displayName": "lean-project",
-  "version": "0.20.0",
-  "description": "Spend fewer tokens per session: new-project plans with phase gates (loose ideas grilled into decisions first), plans reconstructed for projects already under way, grilling with a glossary for fuzzy changes, lean docs and state files, file maps for reading only the needed lines, model routing for builds, a shared board so parallel agents exchange facts while they run, reviews (code, performance, testing, security) limited to the files each task edits with a full review only on request, and a reminder to start a fresh session when the context grows.",
+  "version": "0.21.0",
+  "description": "Spend fewer tokens per session: new-project plans with phase gates (loose ideas grilled into decisions first), plans reconstructed for projects already under way, grilling with a glossary for fuzzy changes, lean docs and state files, file maps for reading only the needed lines, model routing for builds, a shared board so parallel agents exchange facts while they run, reviews (code, performance, testing, security) limited to the files each task edits with a full review only on request, a session-end handoff draft written for review (no model call), a lessons review that lists stale unpromoted lessons and drops superseded ones, and a reminder to start a fresh session when the context grows.",
   "author": {
     "name": "nikola-vladimirov",
     "url": "https://github.com/nikola-vladimirov"
@@ -31,6 +31,12 @@
       "title": "Always back up docs before editing",
       "description": "On: copy every doc to a dated backup folder before lean-project edits it. Off: back up only when the project is not under version control.",
       "default": false
+    },
+    "session_drafts_dir": {
+      "type": "string",
+      "title": "Session draft folder",
+      "description": "Where the end-of-session handoff drafts go, for example a folder in your Obsidian vault. Empty: the plugin data folder.",
+      "default": ""
     },
     "backup_dir": {
       "type": "string",

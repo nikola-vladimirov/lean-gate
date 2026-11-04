@@ -80,6 +80,8 @@ Read the lessons file if it exists. Its "Local rules" section outranks the defau
 - `lean-project audit security [dir or files...]`: pass the edited files (the review scope rule); a folder scans all of it. Read-only scan of PHP and JS for WordPress anti-patterns (unescaped output, SQL without `prepare`, handlers with no nonce or capability check, `eval`, request data stored without sanitizing, open REST routes, unchecked uploads). A heuristic: each line is a place to read. Fixes are in `WORDPRESS.md`.
 - `lean-project handoff [docs/PLAN.md]`: prints a draft of the state file (branch, next open tasks, cards in flight) for review. It writes nothing; paste the reviewed draft into the state file before a reset.
 - `lean-project lesson "<text>" [--mode M] [--project P]` and `lean-project lessons`: record a lesson; the second sighting of the same text becomes a line under "Local rules" and its entries move to `LESSONS-ARCHIVE.md`.
+- `lean-project lessons review [days]`: unpromoted lessons older than `days` (default 14). Rewrite each into a rule (record it again) or drop it.
+- `lean-project lessons drop "<text>"`: move the entries with that text to `LESSONS-ARCHIVE.md`, marked superseded. Nothing is deleted.
 - `lean-project selftest`.
 
 ## Reading rules (every mode, every project)
@@ -93,6 +95,7 @@ Read the lessons file if it exists. Its "Local rules" section outranks the defau
 ## Session hygiene
 
 - A hook nudges once the conversation passes the context limit (default 300k tokens, then every 50k; the user can change both in `/config`). When it fires: finish the current step, update the state file, then open the new-session dialog: `mcp__ccd_session__start_session` with `initiation` `own_initiative`, `context` `fresh`, and a brief of at most 120 words that names only the index, the state file and the next step. The fresh session reads those two files first and nothing else until they point to it, so it never rereads the whole project. Do not start large work.
+- At session end a hook writes the handoff draft of each real session (two or more user messages) to a dated file, with no model call. It goes to the `session_drafts_dir` setting (for example a folder in the Obsidian vault) or the plugin data folder, is never overwritten, and is only a draft: review it before pasting into the state file.
 - End a session at every phase or milestone boundary anyway, after updating the state file.
 
 ## After any mode: improve

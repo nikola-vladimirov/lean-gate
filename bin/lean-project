@@ -14,6 +14,8 @@
 #   lean-project frontier [docs/PLAN.md]      decisions to ask now (open, prerequisites decided) and what waits on them
 #   lean-project lesson "<text>" [--project P] [--mode M]   record a lesson; a second sighting becomes a local rule
 #   lean-project lessons                      the local rules and the lessons file
+#   lean-project lessons review [days]        unpromoted lessons older than days (default 14): rewrite each into a rule or drop it
+#   lean-project lessons drop "<text>"        move every entry with this text to LESSONS-ARCHIVE.md, marked superseded (never deleted)
 #   lean-project audit security [dir or files...]  WordPress anti-patterns in PHP and JS (unescaped output, unprepared SQL, missing nonce or capability checks); files = edited files only
 #   lean-project handoff [docs/PLAN.md]  draft of the state file: branch, next tasks, cards in flight (prints only)
 #   lean-project delegate config | set <key> <value> | check | run <brief> <output>   route bulk work to the project's runner (none, llama, opencode)
@@ -338,7 +340,27 @@ cmd_selftest() {
   grep -q '^- Haiku passes fixture work at low effort$' "$LESSONS_FILE" || { echo "FAIL repeated lesson not promoted"; fail=1; }
   grep -q '^- [0-9].*Haiku passes' "$LESSONS_FILE" && { echo "FAIL promoted entries not moved out"; fail=1; }
   grep -q 'Haiku passes' "$tmp/lessons/LESSONS-ARCHIVE.md" || { echo "FAIL promoted entries not archived"; fail=1; }
+  # review lists an old unpromoted lesson, not a fresh one; drop moves it to the archive, marked superseded
+  printf -- '- 2026-01-01 | - | build | Old unpromoted lesson\n' >> "$LESSONS_FILE"
+  printf -- '- %s | - | build | Fresh unpromoted lesson\n' "$(date +%F)" >> "$LESSONS_FILE"
+  rv=$(bash "$0" lessons review 14)
+  bash "$0" lessons drop "Fresh unpromoted lesson" > /dev/null
+  grep -q 'Fresh unpromoted lesson (superseded)' "$tmp/lessons/LESSONS-ARCHIVE.md" || { echo "FAIL lessons drop from the command line"; fail=1; }
+  printf -- '- %s | - | build | Fresh unpromoted lesson\n' "$(date +%F)" >> "$LESSONS_FILE"
+  echo "$rv" | grep -q 'Old unpromoted lesson' || { echo "FAIL lessons review missed an old lesson"; fail=1; }
+  echo "$rv" | grep -q 'Fresh unpromoted lesson' && { echo "FAIL lessons review listed a fresh lesson"; fail=1; }
+  cmd_lesson_drop "Old unpromoted lesson" > /dev/null
+  grep -q 'Old unpromoted lesson' "$LESSONS_FILE" && { echo "FAIL lessons drop left the entry"; fail=1; }
+  grep -q 'Old unpromoted lesson (superseded)' "$tmp/lessons/LESSONS-ARCHIVE.md" || { echo "FAIL lessons drop did not archive it"; fail=1; }
   unset LESSONS_FILE
+  # session-end draft: nothing under two user messages; one dated draft otherwise, never overwritten
+  hk="$(dirname "$0")/../scripts/session-end.sh"; mkdir -p "$tmp/hook"
+  printf '%s\n' '{"type":"user","message":"hi"}' > "$tmp/hook/one.jsonl"
+  printf '%s\n' '{"type":"user","message":"hi"}' '{"type":"user","message":"again"}' > "$tmp/hook/two.jsonl"
+  echo "{\"session_id\":\"abc12345x\",\"transcript_path\":\"$tmp/hook/one.jsonl\",\"cwd\":\"$tmp\"}" | CLAUDE_PLUGIN_DATA="$tmp/hook/out1" bash "$hk"
+  ls "$tmp/hook/out1/sessions" 2>/dev/null | grep -q . && { echo "FAIL session draft written under two user messages"; fail=1; }
+  echo "{\"session_id\":\"abc12345x\",\"transcript_path\":\"$tmp/hook/two.jsonl\",\"cwd\":\"$tmp\"}" | CLAUDE_PLUGIN_DATA="$tmp/hook/out2" bash "$hk"
+  ls "$tmp/hook/out2/sessions" 2>/dev/null | grep -q . || { echo "FAIL no session draft for two user messages"; fail=1; }
   # audit waste: dry run changes nothing; --apply archives the comment block and leaves a pointer
   git init -q "$tmp/w"
   { echo '<?php'; i=1; while [ $i -le 9 ]; do echo "// note $i"; i=$((i + 1)); done
@@ -627,6 +649,49 @@ cmd_lessons() {
   echo "entries: $(awk '/^## / { s = $0 } s == "## Entries" && /^- [0-9]/' "$f" | wc -l | tr -d ' '), file: $(wc -l < "$f" | tr -d ' ') lines"
 }
 
+# Lessons review: unpromoted entries older than <days> (default 14), so each can be rewritten into a rule or dropped.
+cmd_lessons_review() {
+  local days="${1:-14}" f cutoff
+  f=$(lessons_file)
+  [ -f "$f" ] || { echo '(none yet: lean-project lesson "<text>" records one)'; return 0; }
+  cutoff=$(date -d "-$days days" +%F 2>/dev/null) || die "lessons review: days must be a number, e.g. lessons review 30"
+  awk -v cutoff="$cutoff" '
+    function norm(s) { s = tolower(s); gsub(/[^a-z0-9]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s); return s }
+    function body(s) { sub(/^- [^|]*\| [^|]*\| [^|]*\| /, "", s); return s }
+    { sub(/\r$/, "") }
+    /^## / { sec = $0 }
+    sec == "## Local rules" && /^- / { rule[norm($0)] = 1 }
+    sec == "## Entries" && /^- [0-9]/ && substr($0, 3, 10) < cutoff && !(norm(body($0)) in rule) { print "L" NR ": " $0; n++ }
+    END { print (n + 0) " unpromoted lesson(s) older than " cutoff }' "$f"
+}
+
+# Drop: move every entry with this text to LESSONS-ARCHIVE.md, marked superseded. Nothing is deleted.
+cmd_lesson_drop() {
+  local text f key arch n
+  text=$(printf '%s' "$*" | tr '\r\n' '  ' | sed 's/ *$//')
+  [ -n "$text" ] || die 'lessons drop: give the text, e.g. lean-project lessons drop "Old rule"'
+  f=$(lessons_file)
+  [ -f "$f" ] || die "lessons drop: no lessons file yet"
+  key=$(lesson_key "$text")
+  arch="$(dirname "$f")/LESSONS-ARCHIVE.md"
+  n=$(awk -v key="$key" '
+    function norm(s) { s = tolower(s); gsub(/[^a-z0-9]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s); return s }
+    function body(s) { sub(/^- [^|]*\| [^|]*\| [^|]*\| /, "", s); return s }
+    { sub(/\r$/, "") }
+    /^## / { sec = $0 }
+    sec == "## Entries" && /^- [0-9]/ && norm(body($0)) == key { c++ }
+    END { print c + 0 }' "$f")
+  [ "$n" -gt 0 ] || { echo "no entry with that text in $f"; return 0; }
+  awk -v key="$key" -v arch="$arch" '
+    function norm(s) { s = tolower(s); gsub(/[^a-z0-9]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s); return s }
+    function body(s) { sub(/^- [^|]*\| [^|]*\| [^|]*\| /, "", s); return s }
+    { sub(/\r$/, "") }
+    /^## / { sec = $0 }
+    sec == "## Entries" && /^- [0-9]/ && norm(body($0)) == key { print $0 " (superseded)" >> arch; next }
+    { print }' "$f" > "$f.lean-tmp" && mv "$f.lean-tmp" "$f"
+  echo "dropped $n entr$([ "$n" -eq 1 ] && echo y || echo ies) as superseded (kept in $arch)"
+}
+
 # Frontier: decisions in a plan's table (| D# | decision | default | status |). "needs D2" in the text makes one wait.
 cmd_frontier() {
   local f="${1:-docs/PLAN.md}"
@@ -901,7 +966,12 @@ case "$cmd" in
     esac ;;
   frontier) cmd_frontier "$@" ;;
   lesson) cmd_lesson "$@" ;;
-  lessons) cmd_lessons ;;
+  lessons)
+    case "${1:-}" in
+      review) shift; cmd_lessons_review "$@" ;;
+      drop) shift; cmd_lesson_drop "$@" ;;
+      *) cmd_lessons ;;
+    esac ;;
   delegate) cmd_delegate "$@" ;;
   *) sed -n '5,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
