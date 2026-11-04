@@ -1,0 +1,19 @@
+name: selftest
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Syntax
+        run: |
+          bash -n bin/lean-project
+          for f in scripts/*.sh; do bash -n "$f"; done
+      - name: Selftest
+        run: bash bin/lean-project selftest

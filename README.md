@@ -25,7 +25,7 @@ A Claude Code plugin that makes every session cheaper. Claude re-sends the whole
 
 - **Build mode** works through the plan phase by phase and routes tasks by model and effort: Haiku for bulk reading and fixtures, Sonnet for well-specified code, tests and lint fixes, Opus for review and acceptance, the main session for design. Each task gets a short self-contained brief, the main session verifies every result, and a failing task climbs effort before it climbs models.
 - **A shared board** lets parallel subagents and sessions talk while they work: cards move through todo, doing, blocked and done, and agents post one-line facts their siblings need (a contract, a format, a gotcha). It is one append-only file, so parallel writers never overwrite each other, and the lead reads a compact view instead of waiting on replies. At each phase gate, lasting notes move into the plan and the board is archived.
-- **Phase gates**: acceptance checks ticked by a fresh reviewer, plus security review, code review and tests before a build is final. Reviews are a release gate: `lean-project review-scope` lists the code changed since the last tag and says when a full review is due (every major release, and every 5 to 10 minor ones).
+- **Phase gates**: acceptance checks ticked by a fresh reviewer, plus security review, code review and tests before a build is final. Reviews are a release gate; the rule is in `skills/lean-project/SKILL.md`, and `lean-project review-scope` lists the code changed since the last tag and says when a full review is due.
 - **A gate on done.** Moving a card to `done` runs `lean-project check gate`: PHP syntax and, when installed, WordPress coding standards on the card's files. A failure sends the card back to `todo` with the output on the card.
 - **Always on, WordPress aware.** A session-start hook applies the rules to every project. In a WordPress project it points to `skills/lean-project/WORDPRESS.md`: how to read the docs and check changelogs, best practices for plugins, WooCommerce, Bricks and the block editor, and a security checklist with fixes. `lean-project audit security` scans the code for the common anti-patterns.
 - **Handoff draft.** `lean-project handoff` drafts the state file from the branch, the next open tasks and the cards in flight, for review before a reset.
@@ -125,7 +125,12 @@ The `lean-project` command is on Claude's PATH while the plugin is enabled (you 
 | `lean-project frontier [docs/PLAN.md]` | The decisions to ask now, and what waits on them |
 | `lean-project lesson "<text>" [--mode M] [--project P]` | Record a lesson; a second sighting becomes a local rule |
 | `lean-project lessons` | Show the local rules and where the lessons file is |
-| `lean-project audit security [dir]` | Read-only scan of PHP and JS for WordPress anti-patterns (unescaped output, unprepared SQL, missing nonce or capability checks, dangerous functions) |
+| `lean-project lessons review [days]` | Unpromoted lessons older than `days` (default 14): rewrite each into a rule or drop it |
+| `lean-project lessons drop "<text>"` | Move the entries with that text to `LESSONS-ARCHIVE.md`, marked superseded; nothing is deleted |
+| `lean-project audit security [dir or files...]` | Read-only scan of PHP and JS for WordPress anti-patterns (unescaped output, unprepared SQL, missing nonce or capability checks, dangerous functions). Pass the files `review-scope` lists at release |
+| `lean-project audit perf [dir or files...]` | Read-only performance and HPOS scan of WordPress and WooCommerce code, from the `wp-woo-performance-audit` skill |
+| `lean-project review-scope [--full-done]` | The code changed since the last release tag, and whether a full review is due (a new major version, or 5 or more minor releases since the last full one). `--full-done` records one |
+| `lean-project sessions [n] [--here]` | The newest session drafts: date, project, path. `--here` keeps this project's only |
 | `lean-project handoff [docs/PLAN.md]` | Draft of the state file: branch, next tasks, cards in flight (prints only) |
 | `lean-project delegate config` | Show the project's delegation choice, or that none is set yet |
 | `lean-project delegate set <key> <value>` | Save a key in `.lean-project`: `runner` (`none`, `llama`, `ollama`, `unsloth`, `opencode`, `aider`, `goose`), `fallback`, `llama_url`, `llama_model`, `ollama_url`, `ollama_model`, `unsloth_url`, `unsloth_model`, `aider_model`, `opencode_cli`, `opencode_model` |
