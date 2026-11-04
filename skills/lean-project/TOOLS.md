@@ -21,5 +21,7 @@ Read only the command you need. The same commands are listed in the README.
 - `lean-project lesson "<text>" [--mode M] [--project P]` and `lean-project lessons`: record a lesson; the second sighting of the same text becomes a line under "Local rules" and its entries move to `LESSONS-ARCHIVE.md`.
 - `lean-project lessons review [days]`: unpromoted lessons older than `days` (default 14). Rewrite each into a rule (record it again) or drop it.
 - `lean-project lessons drop "<text>"`: move the entries with that text to `LESSONS-ARCHIVE.md`, marked superseded. Nothing is deleted.
+- `lean-project lessons export <file> [--force]`: write the lessons as a markdown note with frontmatter (for example into a vault). An existing note is not replaced without `--force`.
 - `lean-project sessions [n] [--here]`: the newest session drafts (date, project, path). `--here` keeps only the current project's.
+- `lean-project board` posts are idempotent: a retried post (same writer, verb, card and text within the last 20 lines) is skipped.
 - `lean-project selftest`.

@@ -22,6 +22,9 @@
 #   lean-project audit perf [dir or files...]  performance and HPOS scan of WordPress and WooCommerce code (wp-woo-performance-audit skill); files = the release list from review-scope
 #   lean-project selftest                check the tool on this machine
 set -u
+# Command groups live in bin/lib; sourcing them defines their functions before the dispatch below runs.
+LIB="$(cd "$(dirname "$0")/.." && pwd)/bin/lib"
+for part in "$LIB"/*.sh; do . "$part"; done
 
 TOC_MIN=80        # below this a table costs more than it saves
 HANDOFF_MAX=60
@@ -188,6 +191,12 @@ EOF
   # Measured from this folder's recent transcripts: context of each session's first reply.
   local slug tdir
   slug=$(cd "$dir" && { pwd -W 2>/dev/null || pwd; } | sed 's/[^A-Za-z0-9]/-/g'); tdir="$HOME/.claude/projects/$slug"
+  # The session-start hook is paid on every session: warn when its output passes the 400-token budget (bytes / 4).
+  local root hook_bytes
+  root=$(cd "$(dirname "$0")/.." && pwd)
+  hook_bytes=$(cd "$dir" && CLAUDE_PLUGIN_ROOT="$root" bash "$root/scripts/session-start.sh" 2>/dev/null | wc -c | tr -d ' ')
+  echo "SESSION-START HOOK: about $((hook_bytes / 4)) tokens ($hook_bytes bytes; budget 400 tokens)"
+  [ $((hook_bytes / 4)) -le 400 ] || echo "  over budget: shorten the hook text, or move detail into a file the hook names"
   echo "STARTUP BASELINE (context of the first reply, last 5 sessions here; the CLAUDE.md chain is a small part):"
   ls -t "$tdir"/*.jsonl 2>/dev/null | head -n 5 | while IFS= read -r f; do
     grep -m 1 '"usage"' "$f" | grep -o '"\(input_tokens\|cache_creation_input_tokens\|cache_read_input_tokens\)":[0-9]*' | awk -F: -v d="$(date -r "$f" +%F 2>/dev/null)" '!seen[$1]++ { s += $2 } END { if (s) printf "  %6d  %s\n", s, d }'
@@ -285,153 +294,6 @@ cmd_board() {
   esac
 }
 
-cmd_selftest() {
-  local tmp f fail=0
-  tmp=$(mktemp -d) || die "selftest: no temp dir"
-  f="$tmp/doc.md"
-  { echo "# T"; echo "intro"; i=0; while [ $i -lt 90 ]; do echo x; i=$((i + 1)); done
-    printf '%s\n' '## A' a '### A1' a1 '```' '## not a heading' '```' '## B' b; } > "$f"
-  cmd_toc "$f" > /dev/null
-  [ "$(grep -c '^ *- [0-9]*-[0-9]*: ' "$f")" = 3 ] || { echo "FAIL toc entry count"; fail=1; }
-  grep '^ *- [0-9]*-[0-9]*: ' "$f" | while IFS= read -r e; do
-    s=$(echo "$e" | sed 's/^ *- \([0-9]*\)-.*/\1/'); t=$(echo "$e" | sed 's/^ *- [0-9]*-[0-9]*: //')
-    sed -n "${s}p" "$f" | grep -qx "##* $t" || echo "FAIL toc entry points off its heading: $e"
-  done | grep FAIL && fail=1
-  cp "$f" "$tmp/again.md"; cmd_toc "$tmp/again.md" > /dev/null
-  cmp -s "$f" "$tmp/again.md" || { echo "FAIL toc second run changed the file"; fail=1; }
-  printf '%s\n' '<?php' 'class Foo {' '    public function bar() {' '    }' '    private static function baz() {' '    }' '}' 'function top() {' '}' > "$tmp/a.php"
-  out=$(map_file "$tmp/a.php")
-  echo "$out" | grep -q '^ *2-7 *class Foo' || { echo "FAIL map class range"; fail=1; }
-  echo "$out" | grep -q '^ *3-4 *  public function bar()' || { echo "FAIL map method range"; fail=1; }
-  echo "$out" | grep -q '^ *8-9 *function top()' || { echo "FAIL map top-level function"; fail=1; }
-  export LEAN_BOARD="$tmp/b/BOARD.md"
-  cmd_board add T1 Parser; cmd_board add T2 'API | client'
-  LEAN_AS=s1 cmd_board move T1 doing; LEAN_AS=h2 cmd_board move T2 blocked needs date format
-  LEAN_AS=s1 cmd_board note T1 dates are ISO 8601
-  out=$(cmd_board)
-  echo "$out" | grep -q '^DOING' && echo "$out" | grep -q 'T1 *Parser (s1)$' || { echo "FAIL board doing column"; fail=1; }
-  echo "$out" | grep -q 'T2 *API | client (h2): needs date format$' || { echo "FAIL board blocked card"; fail=1; }
-  cmd_board T1 | grep -q 'note  dates are ISO 8601$' || { echo "FAIL board card history"; fail=1; }
-  # check gate: a broken PHP file sends its card back to todo; a clean one lets it reach done
-  if command -v php >/dev/null 2>&1; then
-    printf '<?php\necho "ok";\n' > "$tmp/good.php"
-    printf '<?php\necho "ok"\n' > "$tmp/bad.php"
-    cmd_board add T9 Gated > /dev/null
-    cmd_board files T9 "$tmp/bad.php" > /dev/null
-    cmd_board move T9 done > /dev/null 2>&1 && { echo "FAIL gate let a broken file through"; fail=1; }
-    cmd_board T9 | head -n 1 | grep -q '\[todo\]' || { echo "FAIL gate did not roll the card back to todo"; fail=1; }
-    cmd_board T9 | grep -q 'move  *todo gate failed' || { echo "FAIL gate reason not on the card"; fail=1; }
-    cmd_board files T9 "$tmp/good.php" > /dev/null
-    cmd_board move T9 done > /dev/null 2>&1 || { echo "FAIL gate blocked a clean file"; fail=1; }
-    cmd_board T9 | head -n 1 | grep -q '\[done\]' || { echo "FAIL clean card not done"; fail=1; }
-  fi
-  # frontier: open decisions whose prerequisites are settled come first; the others wait
-  printf '%s\n' '## 3. Decisions' '' '| # | Decision | Default | Status |' '|---|---|---|---|' \
-    '| D1 | Storage | sqlite | decided |' '| D2 | Auth provider | none | open |' \
-    '| D3 | Sync model, needs D2 | pull | open |' '| D4 | Theme | light | open |' > "$tmp/PLAN.md"
-  fr=$(cmd_frontier "$tmp/PLAN.md")
-  echo "$fr" | grep -q '^  D2  Auth provider$' || { echo "FAIL frontier missed D2"; fail=1; }
-  echo "$fr" | grep -q '^  D3  waits for D2$' || { echo "FAIL frontier did not hold D3"; fail=1; }
-  # lessons: the second sighting becomes a local rule; the entries move to the archive
-  export LESSONS_FILE="$tmp/lessons/LESSONS.md"
-  cmd_lesson "Haiku passes fixture work at low effort" --mode build > /dev/null
-  grep -q 'Haiku passes' "$LESSONS_FILE" || { echo "FAIL lesson not recorded"; fail=1; }
-  cmd_lesson "Haiku passes fixture work at low effort" --mode build > /dev/null
-  grep -q '^- Haiku passes fixture work at low effort$' "$LESSONS_FILE" || { echo "FAIL repeated lesson not promoted"; fail=1; }
-  grep -q '^- [0-9].*Haiku passes' "$LESSONS_FILE" && { echo "FAIL promoted entries not moved out"; fail=1; }
-  grep -q 'Haiku passes' "$tmp/lessons/LESSONS-ARCHIVE.md" || { echo "FAIL promoted entries not archived"; fail=1; }
-  # review lists an old unpromoted lesson, not a fresh one; drop moves it to the archive, marked superseded
-  printf -- '- 2026-01-01 | - | build | Old unpromoted lesson\n' >> "$LESSONS_FILE"
-  printf -- '- %s | - | build | Fresh unpromoted lesson\n' "$(date +%F)" >> "$LESSONS_FILE"
-  rv=$(bash "$0" lessons review 14)
-  bash "$0" lessons drop "Fresh unpromoted lesson" > /dev/null
-  grep -q 'Fresh unpromoted lesson (superseded)' "$tmp/lessons/LESSONS-ARCHIVE.md" || { echo "FAIL lessons drop from the command line"; fail=1; }
-  printf -- '- %s | - | build | Fresh unpromoted lesson\n' "$(date +%F)" >> "$LESSONS_FILE"
-  echo "$rv" | grep -q 'Old unpromoted lesson' || { echo "FAIL lessons review missed an old lesson"; fail=1; }
-  echo "$rv" | grep -q 'Fresh unpromoted lesson' && { echo "FAIL lessons review listed a fresh lesson"; fail=1; }
-  cmd_lesson_drop "Old unpromoted lesson" > /dev/null
-  grep -q 'Old unpromoted lesson' "$LESSONS_FILE" && { echo "FAIL lessons drop left the entry"; fail=1; }
-  grep -q 'Old unpromoted lesson (superseded)' "$tmp/lessons/LESSONS-ARCHIVE.md" || { echo "FAIL lessons drop did not archive it"; fail=1; }
-  unset LESSONS_FILE
-  # review scope: a repo with one tag and one new file lists that file; a full review is due with no record
-  rs="$tmp/rs"; mkdir -p "$rs"; self="$(cd "$(dirname "$0")" && pwd)/lean-project"
-  (cd "$rs" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base && git tag v1.0.0 && echo x > new.php)
-  rsout=$(cd "$rs" && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope)
-  echo "$rsout" | grep -q 'new.php' || { echo "FAIL review-scope missed a changed file"; fail=1; }
-  echo "$rsout" | grep -q 'Full review due: yes: no full review recorded' || { echo "FAIL review-scope did not ask for a first full review"; fail=1; }
-  (cd "$rs" && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope --full-done > /dev/null)
-  (cd "$rs" && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope) | grep -q 'Full review due: no: 0 release' || { echo "FAIL review-scope after a full review"; fail=1; }
-  # sessions: --here lists only this project's drafts, and the list says where each one is
-  ss="$tmp/ss"; mkdir -p "$ss/alpha" "$ss/data/sessions"
-  printf 'Project: alpha\n' > "$ss/data/sessions/2026-11-01-aaaa.md"
-  printf 'Project: beta\n' > "$ss/data/sessions/2026-11-02-bbbb.md"
-  self="$(cd "$(dirname "$0")" && pwd)/lean-project"
-  here=$(cd "$ss/alpha" && CLAUDE_PLUGIN_DATA="$ss/data" bash "$self" sessions 5 --here)
-  echo "$here" | grep -q 'aaaa' || { echo "FAIL sessions --here missed this project's draft"; fail=1; }
-  echo "$here" | grep -q 'bbbb' && { echo "FAIL sessions --here listed another project"; fail=1; }
-  all=$(cd "$ss/alpha" && CLAUDE_PLUGIN_DATA="$ss/data" bash "$self" sessions 5)
-  echo "$all" | grep -q 'bbbb' || { echo "FAIL sessions missed a draft"; fail=1; }
-  # session-end draft: nothing under two user messages; one dated draft otherwise, never overwritten
-  hk="$(dirname "$0")/../scripts/session-end.sh"; mkdir -p "$tmp/hook"
-  printf '%s\n' '{"type":"user","message":"hi"}' > "$tmp/hook/one.jsonl"
-  printf '%s\n' '{"type":"user","message":"hi"}' '{"type":"user","message":"again"}' > "$tmp/hook/two.jsonl"
-  echo "{\"session_id\":\"abc12345x\",\"transcript_path\":\"$tmp/hook/one.jsonl\",\"cwd\":\"$tmp\"}" | CLAUDE_PLUGIN_DATA="$tmp/hook/out1" bash "$hk"
-  ls "$tmp/hook/out1/sessions" 2>/dev/null | grep -q . && { echo "FAIL session draft written under two user messages"; fail=1; }
-  echo "{\"session_id\":\"abc12345x\",\"transcript_path\":\"$tmp/hook/two.jsonl\",\"cwd\":\"$tmp\"}" | CLAUDE_PLUGIN_DATA="$tmp/hook/out2" bash "$hk"
-  ls "$tmp/hook/out2/sessions" 2>/dev/null | grep -q . || { echo "FAIL no session draft for two user messages"; fail=1; }
-  # audit waste: dry run changes nothing; --apply archives the comment block and leaves a pointer
-  git init -q "$tmp/w"
-  { echo '<?php'; i=1; while [ $i -le 9 ]; do echo "// note $i"; i=$((i + 1)); done
-    echo 'echo 1;'; echo 'error_log("x");'; echo 'add_action("init", "f");'; echo 'add_action("init", "f");'; } > "$tmp/w/a.php"
-  rep=$(cmd_waste "$tmp/w")
-  echo "$rep" | grep -q 'a.php:2-10' || { echo "FAIL waste missed the comment block"; fail=1; }
-  echo "$rep" | grep -q 'error_log' || { echo "FAIL waste missed the debug log"; fail=1; }
-  echo "$rep" | grep -q 'repeated hook 2x' || { echo "FAIL waste missed the repeated hook"; fail=1; }
-  [ "$(grep -c '// note' "$tmp/w/a.php")" = 9 ] || { echo "FAIL waste dry run changed the file"; fail=1; }
-  cmd_waste "$tmp/w" --apply > /dev/null
-  grep -q 'note 9' "$tmp/w/docs/ARCHIVE.md" || { echo "FAIL waste did not archive the block"; fail=1; }
-  grep -q 'archived to docs/ARCHIVE.md' "$tmp/w/a.php" || { echo "FAIL waste left no pointer"; fail=1; }
-  grep -q 'error_log' "$tmp/w/a.php" || { echo "FAIL waste removed a debug log"; fail=1; }
-  # predict: a file's partners are the files committed with it
-  if command -v git >/dev/null 2>&1; then
-    git init -q "$tmp/p"
-    (cd "$tmp/p" && echo a > a.php && echo b > b.php && git add -A && git -c user.email=t@t -c user.name=t commit -qm one \
-      && echo a2 >> a.php && git add -A && git -c user.email=t@t -c user.name=t commit -qm two \
-      && echo c > c.php && git add -A && git -c user.email=t@t -c user.name=t commit -qm three)
-    pr=$(cmd_predict "$tmp/p/a.php")
-    echo "$pr" | grep -q 'b.php' || { echo "FAIL predict missed a co-changed file"; fail=1; }
-    echo "$pr" | grep -q '  c.php' && { echo "FAIL predict included an unrelated file"; fail=1; }
-  fi
-  # docs shipping: an npm package ships docs/ unless the build excludes it
-  mkdir -p "$tmp/s/docs"; echo '{"name":"x"}' > "$tmp/s/package.json"
-  [ -n "$(docs_may_ship "$tmp/s")" ] || { echo "FAIL docs ship check missed an npm package"; fail=1; }
-  printf 'docs export-ignore\n' > "$tmp/s/.gitattributes"
-  [ -z "$(docs_may_ship "$tmp/s")" ] || { echo "FAIL docs ship check ignored export-ignore"; fail=1; }
-  # handoff: open tasks from the plan, and the cards in flight (the latest move wins; a done card is left out)
-  printf '%s\n' '- [ ] write the parser' '- [x] old task' '- [ ] add tests' > "$tmp/HP.md"
-  printf '%s\n' '- 2026-10-16 10:00 | lead | add | H1 | Parser | fast' '- 2026-10-16 10:01 | lead | move | H1 | doing parsing' \
-    '- 2026-10-16 10:02 | lead | add | H2 | API | client' '- 2026-10-16 10:03 | lead | move | H2 | done' > "$tmp/HB.md"
-  hd=$(LEAN_BOARD="$tmp/HB.md" cmd_handoff "$tmp/HP.md")
-  echo "$hd" | grep -q '  - write the parser' || { echo "FAIL handoff missed an open task"; fail=1; }
-  echo "$hd" | grep -q 'old task' && { echo "FAIL handoff listed a done task"; fail=1; }
-  echo "$hd" | grep -q '  H1 \[doing\] Parser | fast' || { echo "FAIL handoff missed a card in flight"; fail=1; }
-  echo "$hd" | grep -q 'H2' && { echo "FAIL handoff listed a done card"; fail=1; }
-  # audit security: each anti-pattern is flagged on its line; escaped output is not
-  mkdir -p "$tmp/sec"
-  printf '%s\n' '<?php' 'echo $_GET["x"];' 'echo esc_html($_GET["x"]);' '$wpdb->query("DELETE FROM t WHERE id = $id");' \
-    'eval($code);' 'add_action("wp_ajax_save", "save");' > "$tmp/sec/a.php"
-  sec=$(cmd_audit_security "$tmp/sec")
-  echo "$sec" | grep -q 'a.php:2: request data echoed without escaping' || { echo "FAIL security missed unescaped output"; fail=1; }
-  echo "$sec" | grep -q 'a.php:3: ' && { echo "FAIL security flagged escaped output"; fail=1; }
-  echo "$sec" | grep -q 'a.php:4: SQL built from a variable' || { echo "FAIL security missed unprepared SQL"; fail=1; }
-  echo "$sec" | grep -q 'a.php:5: eval' || { echo "FAIL security missed eval"; fail=1; }
-  echo "$sec" | grep -q 'a.php: AJAX, admin-post or REST handler' || { echo "FAIL security missed a handler with no check"; fail=1; }
-  unset LEAN_BOARD
-
-  rm -rf "$tmp"
-  [ $fail = 0 ] && echo "selftest ok" || { echo "selftest FAILED"; return 1; }
-}
-
 # ---- Board writes, the gate, predict, waste, lessons, frontier, shipping check ----
 
 # Append one board line: board_append <verb> <id> <text>. Creates the board on first use.
@@ -444,6 +306,8 @@ board_append() {
       '> Shared by the lead and its subagents. Append-only: write with `lean-project board add|move|note|files`, read with `lean-project board [id]`.' '' > "$f" \
       || die "board: cannot create $f"
   fi
+  # A retried post (the same writer, verb, card and text among the last 20 lines) is skipped, so a repeated call cannot duplicate it
+  if tail -n 20 "$f" | grep -qF -- " | $who | $1 | $2 | $text"; then return 0; fi
   printf -- '- %s | %s | %s | %s | %s\n' "$(date '+%Y-%m-%d %H:%M')" "$who" "$1" "$2" "$text" >> "$f"
 }
 
@@ -731,6 +595,18 @@ cmd_lessons_review() {
     END { print (n + 0) " unpromoted lesson(s) older than " cutoff }' "$f"
 }
 
+# Export: write the lessons as a markdown note (for example into an Obsidian vault) with a frontmatter block.
+# The note is generated, so an existing file is not replaced unless --force is given.
+cmd_lessons_export() {
+  local out="${1:-}" f
+  [ -n "$out" ] || die 'lessons export: give a file, e.g. lean-project lessons export "<vault>/lean-project lessons.md"'
+  [ "${2:-}" = --force ] || [ ! -e "$out" ] || die "lessons export: $out exists; pass --force to replace this generated note"
+  f=$(lessons_file)
+  [ -f "$f" ] || die "lessons export: no lessons file yet"
+  { printf -- '---\ntitle: lean-project lessons\ntype: generated\nupdated: %s\n---\n\n' "$(date +%F)"; cat "$f"; } > "$out"
+  echo "exported to $out"
+}
+
 # Drop: move every entry with this text to LESSONS-ARCHIVE.md, marked superseded. Nothing is deleted.
 cmd_lesson_drop() {
   local text f key arch n
@@ -897,122 +773,6 @@ cmd_audit_perf() {
   bash "$home/scripts/scan.sh" "$@"
 }
 
-# Delegation: send a brief to the runner this project chose and write the answer to a file. The choice lives in
-# <project>/.lean-project as key=value lines, set by the user's answer on first run. Runners: none, llama, opencode.
-DELEGATE_CFG=".lean-project"
-DEFAULT_LLAMA_URL="http://127.0.0.1:9931"
-DEFAULT_LLAMA_MODEL="yuxinlu1/gemma-4-12B-coder-fable5-composer2.5-v1-GGUF:Q4_K_M"
-DEFAULT_OLLAMA_URL="http://127.0.0.1:11434"    # Ollama's default port; the model is set with ollama_model
-DEFAULT_UNSLOTH_URL="http://127.0.0.1:8888"    # Unsloth Studio's default port (`unsloth studio -p`); the key comes from UNSLOTH_API_KEY
-# The desktop app updates its CLI folder (cli/<version>), so take the newest installed copy.
-DEFAULT_OPENCODE_CLI=$(ls -1 "$HOME"/AppData/Roaming/ai.opencode.desktop/cli/*/opencode-cli.exe 2>/dev/null | sort -V | tail -n 1)
-DEFAULT_OPENCODE_MODEL="opencode/deepseek-v4.1-flash-free"
-cfg_get() { [ -f "$DELEGATE_CFG" ] && sed -n "s/^$1=//p" "$DELEGATE_CFG" | tail -n 1; }
-# Is a runner up right now? Each HTTP runner answers its health check; CLI runners need their program installed.
-runner_up() {
-  local u c
-  case "$1" in
-    llama) u=$(cfg_get llama_url); curl -s -m 3 "${u:-$DEFAULT_LLAMA_URL}/health" >/dev/null ;;
-    ollama) u=$(cfg_get ollama_url); curl -s -m 3 "${u:-$DEFAULT_OLLAMA_URL}/api/tags" >/dev/null ;;
-    unsloth) u=$(cfg_get unsloth_url); curl -s -m 3 -H "Authorization: Bearer ${UNSLOTH_API_KEY:-}" "${u:-$DEFAULT_UNSLOTH_URL}/v1/models" >/dev/null ;;
-    opencode) c=$(cfg_get opencode_cli); [ -f "${c:-$DEFAULT_OPENCODE_CLI}" ] ;;
-    aider) command -v aider >/dev/null 2>&1 ;;
-    goose) command -v goose >/dev/null 2>&1 ;;
-    *) return 1 ;;
-  esac
-}
-# Runners to try in order: the chosen one, then the fallbacks (default llama, then opencode), no repeats.
-# Empty when the project chose none, so the work stays with Claude.
-delegate_chain() {
-  local first fb r out=""
-  first=$(cfg_get runner); fb=$(cfg_get fallback); fb=${fb:-llama opencode}
-  [ -n "$first" ] && [ "$first" != none ] || return 0
-  for r in $first $(echo "$fb" | tr ',' ' '); do
-    case " $out " in *" $r "*) ;; *) out="$out $r" ;; esac
-  done
-  echo $out
-}
-# One OpenAI-compatible chat request (llama.cpp, Ollama, Unsloth Studio). $5 is an optional bearer key.
-openai_chat() {
-  local url="$1" model="$2" brief="$3" out="$4" key="${5:-}"
-  [ -n "$model" ] || return 1
-  node -e 'process.stdout.write(JSON.stringify({model:process.argv[2],messages:[{role:"user",content:require("fs").readFileSync(process.argv[1],"utf8")}],temperature:0.2,stream:false}))' "$brief" "$model" \
-    | curl -s -m 900 -H 'Content-Type: application/json' ${key:+-H "Authorization: Bearer $key"} -d @- "$url/v1/chat/completions" \
-    | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).choices[0].message.content+"\n")}catch(e){process.exit(1)}})' > "$out" 2>/dev/null || return 1
-}
-# Send the brief to one runner. Returns non-zero when it fails, so the caller can try the next runner.
-# aider and goose are agents that can edit files: use them only where edits are wanted, and check git diff.
-run_on() {
-  local runner="$1" brief="$2" out="$3" url model cli
-  case "$runner" in
-    llama)
-      url=$(cfg_get llama_url); model=$(cfg_get llama_model)
-      openai_chat "${url:-$DEFAULT_LLAMA_URL}" "${model:-$DEFAULT_LLAMA_MODEL}" "$brief" "$out" || return 1 ;;
-    ollama)
-      url=$(cfg_get ollama_url); model=$(cfg_get ollama_model)
-      openai_chat "${url:-$DEFAULT_OLLAMA_URL}" "$model" "$brief" "$out" || return 1 ;;
-    unsloth)
-      url=$(cfg_get unsloth_url); model=$(cfg_get unsloth_model)
-      openai_chat "${url:-$DEFAULT_UNSLOTH_URL}" "$model" "$brief" "$out" "${UNSLOTH_API_KEY:-}" || return 1 ;;
-    opencode)
-      cli=$(cfg_get opencode_cli); cli=${cli:-$DEFAULT_OPENCODE_CLI}; model=$(cfg_get opencode_model); model=${model:-$DEFAULT_OPENCODE_MODEL}
-      "$cli" run --model "$model" --auto --format json --file "$brief" "Do the task in the attached brief. Reply with the result only." 2>/dev/null \
-        | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let o="";for(const l of s.split("\n")){try{const e=JSON.parse(l);if(e.type==="text")o+=e.part.text}catch(_){}}process.stdout.write(o+"\n")})' > "$out" || return 1 ;;
-    aider)
-      model=$(cfg_get aider_model); [ -n "$model" ] || return 1
-      aider --model "$model" --message-file "$brief" --yes-always --no-auto-commits > "$out" 2>/dev/null || return 1 ;;
-    goose)
-      goose run -i "$brief" > "$out" 2>/dev/null || return 1 ;;
-    *) return 1 ;;
-  esac
-  [ -s "$out" ]
-}
-
-cmd_delegate() {
-  local sub="${1:-}" runner url cli model r
-  [ $# -gt 0 ] && shift
-  case "$sub" in
-    config)
-      if [ -f "$DELEGATE_CFG" ]; then cat "$DELEGATE_CFG"
-      else echo "no delegation choice for this project: ask the user (none, llama, ollama, unsloth, opencode, aider, goose), then 'lean-project delegate set runner <value>'"; fi ;;
-    set)
-      [ $# -eq 2 ] || die "delegate set: give <key> <value>"
-      case "$1" in
-        runner) case "$2" in none|llama|ollama|unsloth|opencode|aider|goose) ;; *) die "delegate set: runner is none, llama, ollama, unsloth, opencode, aider or goose" ;; esac ;;
-        llama_url|llama_model|ollama_url|ollama_model|unsloth_url|unsloth_model|aider_model|opencode_cli) ;;
-        fallback) case "$2" in *[!a-z,\ ]*|'') die "delegate set: fallback is a list of llama and opencode, e.g. 'llama opencode'" ;; esac ;;
-        opencode_model) case "$2" in opencode/*-free) ;; *) die "delegate set: opencode_model must be an opencode/*-free model" ;; esac ;;
-        *) die "delegate set: unknown key $1 (runner, fallback, llama_url, llama_model, ollama_url, ollama_model, unsloth_url, unsloth_model, aider_model, opencode_cli, opencode_model)" ;;
-      esac
-      touch "$DELEGATE_CFG"; sed -i "/^$1=/d" "$DELEGATE_CFG"; echo "$1=$2" >> "$DELEGATE_CFG"
-      echo "saved $1=$2 in $DELEGATE_CFG" ;;
-    check)
-      runner=$(cfg_get runner); runner=${runner:-none}
-      if [ "$runner" = none ]; then echo "delegation off: do the work here"
-      elif runner_up "$runner"; then echo "$runner is up"
-      else echo "$runner is down: delegation falls back in order ($(delegate_chain))"; fi ;;
-    pick)
-      for r in $(delegate_chain); do
-        runner_up "$r" && { echo "$r"; return 0; }
-      done
-      echo none ;;
-    run)
-      [ $# -eq 2 ] || die "delegate run: give <brief file> <output file>"
-      [ -f "$1" ] || die "delegate run: no brief at $1"
-      for r in $(delegate_chain); do
-        runner_up "$r" || { echo "lean-project: $r is down, trying the next runner" >&2; continue; }
-        if run_on "$r" "$1" "$2"; then
-          echo "delegated to $r: $(tok "$2") tokens in $2. Verify it before using it."; return 0
-        fi
-        echo "lean-project: $r gave no answer, trying the next runner" >&2
-      done
-      [ -n "$(delegate_chain)" ] && echo "lean-project: no delegation runner is up: do the work here" >&2 \
-        || echo "lean-project: delegation is off for this project: do the work here" >&2
-      return 3 ;;
-    *) die "delegate: 'config', 'set <key> <value>', 'check', 'pick' or 'run <brief> <output>'" ;;
-  esac
-}
-
 cmd="${1:-}"; [ $# -gt 0 ] && shift
 case "$cmd" in
   map)
@@ -1038,6 +798,7 @@ case "$cmd" in
     case "${1:-}" in
       review) shift; cmd_lessons_review "$@" ;;
       drop) shift; cmd_lesson_drop "$@" ;;
+      export) shift; cmd_lessons_export "$@" ;;
       *) cmd_lessons ;;
     esac ;;
   delegate) cmd_delegate "$@" ;;

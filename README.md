@@ -127,6 +127,7 @@ The `lean-project` command is on Claude's PATH while the plugin is enabled (you 
 | `lean-project lessons` | Show the local rules and where the lessons file is |
 | `lean-project lessons review [days]` | Unpromoted lessons older than `days` (default 14): rewrite each into a rule or drop it |
 | `lean-project lessons drop "<text>"` | Move the entries with that text to `LESSONS-ARCHIVE.md`, marked superseded; nothing is deleted |
+| `lean-project lessons export <file> [--force]` | Write the lessons as a markdown note with frontmatter, for example into an Obsidian vault. An existing note is not replaced unless `--force` is given |
 | `lean-project audit security [dir or files...]` | Read-only scan of PHP and JS for WordPress anti-patterns (unescaped output, unprepared SQL, missing nonce or capability checks, dangerous functions). Pass the files `review-scope` lists at release |
 | `lean-project audit perf [dir or files...]` | Read-only performance and HPOS scan of WordPress and WooCommerce code, from the `wp-woo-performance-audit` skill |
 | `lean-project review-scope [--full-done]` | The code changed since the last release tag, and whether a full review is due (a new major version, or 5 or more minor releases since the last full one). `--full-done` records one |
@@ -140,6 +141,10 @@ The `lean-project` command is on Claude's PATH while the plugin is enabled (you 
 | `lean-project selftest` | Check the tool on this machine |
 
 Board environment variables: `LEAN_BOARD` is the board file (default `docs/BOARD.md`; agents always pass an absolute path, since a worktree has its own copy of the docs folder) and `LEAN_AS` is the writer's name (default `lead`).
+
+## Minimal install (low context)
+
+The skill and the `lean-project` command work without any hooks. The hooks are the entries in `hooks/hooks.json` (SessionStart, PostToolUse, UserPromptSubmit, SessionEnd). Without them you lose the standing rules at session start, the newest-draft line, the em-dash and guard hints, the context nudge and the session-end draft. Use `lean-project cost` to see what the session-start hook costs (its budget is 400 tokens). To run without hooks, keep a local copy of the plugin and empty the `hooks` object there.
 
 ## Settings
 
