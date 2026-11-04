@@ -97,6 +97,14 @@ cmd_selftest() {
   # guard hint: an em dash in a written file is flagged; the doc guard is named once per session
   gh="$tmp/gh"; mkdir -p "$gh"; printf 'a \xe2\x80\x94 b\n' > "$gh/x.md"
   echo "{\"session_id\":\"s1\",\"file_path\":\"$gh/x.md\"}" | CLAUDE_PLUGIN_DATA="$gh/d" bash "$(dirname "$0")/../scripts/guard-hint.sh" | grep -q 'em dash' || { echo "FAIL guard hint missed an em dash"; fail=1; }
+  # delegation: the chain puts the chosen runner first and never repeats one; an unknown runner or a missing model fails
+  dl="$tmp/dl"; mkdir -p "$dl"; printf 'runner=llama\nfallback=opencode,llama\n' > "$dl/.lean-project"
+  chain=$(cd "$dl" && delegate_chain)
+  [ "$chain" = " llama opencode" ] || [ "$chain" = "llama opencode" ] || { echo "FAIL delegation chain was: $chain"; fail=1; }
+  (cd "$dl" && run_on aider "$dl/brief" "$dl/out" 2>/dev/null) && { echo "FAIL aider ran without a model"; fail=1; }
+  (cd "$dl" && run_on nosuchrunner "$dl/brief" "$dl/out" 2>/dev/null) && { echo "FAIL unknown runner reported success"; fail=1; }
+  # opencode runs with --auto only when opencode_auto=1
+  grep -q 'opencode_auto' "$(dirname "$0")/lib/delegate.sh" || { echo "FAIL opencode_auto key missing"; fail=1; }
   # session-end draft: nothing under two user messages; one dated draft otherwise, never overwritten
   hk="$(dirname "$0")/../scripts/session-end.sh"; mkdir -p "$tmp/hook"
   printf '%s\n' '{"type":"user","message":"hi"}' > "$tmp/hook/one.jsonl"

@@ -60,7 +60,8 @@ run_on() {
       openai_chat "${url:-$DEFAULT_UNSLOTH_URL}" "$model" "$brief" "$out" "${UNSLOTH_API_KEY:-}" || return 1 ;;
     opencode)
       cli=$(cfg_get opencode_cli); cli=${cli:-$DEFAULT_OPENCODE_CLI}; model=$(cfg_get opencode_model); model=${model:-$DEFAULT_OPENCODE_MODEL}
-      "$cli" run --model "$model" --auto --format json --file "$brief" "Do the task in the attached brief. Reply with the result only." 2>/dev/null \
+      auto=""; [ "$(cfg_get opencode_auto)" = 1 ] && auto="--auto"   # off unless opencode_auto=1: without it the agent asks first
+      "$cli" run --model "$model" $auto --format json --file "$brief" "Do the task in the attached brief. Reply with the result only." 2>/dev/null \
         | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let o="";for(const l of s.split("\n")){try{const e=JSON.parse(l);if(e.type==="text")o+=e.part.text}catch(_){}}process.stdout.write(o+"\n")})' > "$out" || return 1 ;;
     aider)
       model=$(cfg_get aider_model); [ -n "$model" ] || return 1
@@ -86,7 +87,8 @@ cmd_delegate() {
         llama_url|llama_model|ollama_url|ollama_model|unsloth_url|unsloth_model|aider_model|opencode_cli) ;;
         fallback) case "$2" in *[!a-z,\ ]*|'') die "delegate set: fallback is a list of llama and opencode, e.g. 'llama opencode'" ;; esac ;;
         opencode_model) case "$2" in opencode/*-free) ;; *) die "delegate set: opencode_model must be an opencode/*-free model" ;; esac ;;
-        *) die "delegate set: unknown key $1 (runner, fallback, llama_url, llama_model, ollama_url, ollama_model, unsloth_url, unsloth_model, aider_model, opencode_cli, opencode_model)" ;;
+        opencode_auto) case "$2" in 0|1) ;; *) die "delegate set: opencode_auto is 0 or 1" ;; esac ;;
+        *) die "delegate set: unknown key $1 (runner, fallback, llama_url, llama_model, ollama_url, ollama_model, unsloth_url, unsloth_model, aider_model, opencode_cli, opencode_model, opencode_auto)" ;;
       esac
       touch "$DELEGATE_CFG"; sed -i "/^$1=/d" "$DELEGATE_CFG"; echo "$1=$2" >> "$DELEGATE_CFG"
       echo "saved $1=$2 in $DELEGATE_CFG" ;;

@@ -134,7 +134,7 @@ The `lean-project` command is on Claude's PATH while the plugin is enabled (you 
 | `lean-project sessions [n] [--here]` | The newest session drafts: date, project, path. `--here` keeps this project's only |
 | `lean-project handoff [docs/PLAN.md]` | Draft of the state file: branch, next tasks, cards in flight (prints only) |
 | `lean-project delegate config` | Show the project's delegation choice, or that none is set yet |
-| `lean-project delegate set <key> <value>` | Save a key in `.lean-project`: `runner` (`none`, `llama`, `ollama`, `unsloth`, `opencode`, `aider`, `goose`), `fallback`, `llama_url`, `llama_model`, `ollama_url`, `ollama_model`, `unsloth_url`, `unsloth_model`, `aider_model`, `opencode_cli`, `opencode_model` |
+| `lean-project delegate set <key> <value>` | Save a key in `.lean-project`: `runner` (`none`, `llama`, `ollama`, `unsloth`, `opencode`, `aider`, `goose`), `opencode_auto` (`1` lets OpenCode act without asking; off by default), `fallback`, `llama_url`, `llama_model`, `ollama_url`, `ollama_model`, `unsloth_url`, `unsloth_model`, `aider_model`, `opencode_cli`, `opencode_model` |
 | `lean-project delegate check` | Check whether the chosen runner is up, and which runners would be tried |
 | `lean-project delegate pick` | Print the runner in use right now (the first one up in the fallback order, or `none`) |
 | `lean-project delegate run <brief> <output>` | Send a brief to the runner and write the answer to a file |
