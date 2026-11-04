@@ -5,17 +5,17 @@ A Claude Code plugin that makes every session cheaper. Claude re-sends the whole
 Contents table below: open only the section you need.
 
 <!-- toc -->
-- 21-60: Features
-- 61-71: Install
-- 72-108: Delegating work
-- 109-121: Use
-- 122-160: Commands
-- 161-164: Minimal install (low context)
-- 165-175: Settings
-- 176-192: What a project gets
-- 193-196: Where your data lives
-- 197-200: Credits
-- 201-203: License
+- 21-61: Features
+- 62-72: Install
+- 73-109: Delegating work
+- 110-122: Use
+- 123-164: Commands
+- 165-168: Minimal install (low context)
+- 169-179: Settings
+- 180-196: What a project gets
+- 197-200: Where your data lives
+- 201-204: Credits
+- 205-207: License
 <!-- /toc -->
 
 ## Features
@@ -46,12 +46,13 @@ Contents table below: open only the section you need.
 - **Always on, WordPress aware.** A session-start hook applies the rules to every project. In a WordPress project it points to `skills/lean-project/WORDPRESS.md`: how to read the docs and check changelogs, best practices for plugins, WooCommerce, Bricks and the block editor, and a security checklist with fixes. `lean-project audit security` scans the code for the common anti-patterns.
 - **Handoff draft.** `lean-project handoff` drafts the state file from the branch, the next open tasks and the cards in flight, for review before a reset.
 - **Builder skills on demand.** The 108 Bricks and BricksExtras skills live inside this one skill, in `builder/`. `builder/INDEX.md` routes a task to the one skill it needs, so nothing loads unless a plan step names a Bricks element, template or query. Their generated JSON schema data stays out of the plugin.
+- **Skills and plugins on demand.** The Bricks skills, the WordPress `wp-*` skills and the ui-ux plugin are off until a task needs them. `lean-project pack status` shows which are on; `lean-project pack on <bricks|wp|ui-ux>` turns one on, and `off` turns it back off. Changes take effect in the next session.
 - **Reverse engineering on demand.** The REA guide lives in `reverse/` and loads only for reverse-engineering tasks. REA's MCP server stays off by default (startup cost) and is switched on per folder.
 
 **Delegation**
 
 - **Send bulk work elsewhere.** Each project chooses where delegated work goes: `none` (everything stays with Claude), `llama` (a local llama.cpp server), `ollama`, `unsloth` (Unsloth Studio), `opencode` (free OpenCode models only), `aider` or `goose` (agent CLIs). Bulk reading, code sweeps, fixtures and lint loops go there. Security, architecture and review stay with Claude.
-- **Asked once per project.** The first session in a project, new-project setup and adoption each ask the choice, and it is saved in `.lean-project` at the project root.
+- **Asked on the first sessions only.** A project with no recorded setup or delegation choice gets a one-line reminder in up to three sessions, then it stops. The choice is saved in `.lean-project` at the project root, and the setup in `.lean-project-setup`.
 
 **Session hygiene**
 
@@ -154,6 +155,9 @@ The `lean-project` command is on Claude's PATH while the plugin is enabled (you 
 | `lean-project delegate check` | Check whether the chosen runner is up, and which runners would be tried |
 | `lean-project delegate pick` | Print the runner in use right now (the first one up in the fallback order, or `none`) |
 | `lean-project delegate run <brief> <output>` | Send a brief to the runner and write the answer to a file |
+| `lean-project pack status` | Show the on-demand skill packs (Bricks, wp) and the ui-ux plugin: active or parked |
+| `lean-project pack on <bricks|wp|ui-ux>` | Bring a pack back, or turn the plugin on. Takes effect in the next session |
+| `lean-project pack off <bricks|wp|ui-ux>` | Park a pack, or turn the plugin off. Takes effect in the next session |
 | `lean-project selftest` | Check the tool on this machine |
 
 Board environment variables: `LEAN_BOARD` is the board file (default `docs/BOARD.md`; agents always pass an absolute path, since a worktree has its own copy of the docs folder) and `LEAN_AS` is the writer's name (default `lead`).
