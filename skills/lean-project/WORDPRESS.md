@@ -1,6 +1,6 @@
 # WordPress, WooCommerce, Bricks and block editor work
 
-Read this before changing code in a WordPress plugin, theme, WooCommerce extension, Bricks element or block. It applies to companion plugins and scripts too. Routing: the session hook points here for any WordPress project; the audit is `lean-project audit security <edited files>`.
+Read this before changing code in a WordPress plugin, theme, WooCommerce extension, Bricks element or block. It applies to companion plugins and scripts too. Routing: the session hook points here for any WordPress project; the audit at release is `lean-project audit security` on the `lean-project review-scope` list.
 
 ## Contents
 
@@ -68,7 +68,7 @@ Verify before you write. Never code from memory for a version you have not check
 
 ## 4. Security checklist
 
-Run through this for every change. `lean-project audit security <edited files>` flags most of the items below as a starting point; reading the code is still required. Review only the files the task edited.
+Run through this for every change. At release, `lean-project audit security` on the `review-scope` list flags most of the items below as a starting point; reading the code is still required.
 
 - **Input:** every value from `$_GET`, `$_POST`, `$_REQUEST`, `$_COOKIE`, `$_FILES`, `$_SERVER`, REST params and AJAX data is untrusted. Sanitize on the way in (`sanitize_text_field`, `absint`, `sanitize_key`, `wp_unslash` first for superglobals).
 - **Output:** escape on the way out for the context: `esc_html`, `esc_attr`, `esc_url`, `esc_js`, `wp_kses_post` for trusted HTML, `esc_textarea`.
@@ -106,13 +106,13 @@ Each row is an unsafe pattern and the replacement. Apply the fix at the source, 
 | `echo '<script>var k = "' . $key . '";</script>';` | `wp_localize_script( 'handle', 'myData', [ 'key' => $key ] );` |
 | `$order = get_post_meta( $order_id, 'x', true );` | `$order = wc_get_order( $order_id ); $order->get_meta( 'x' );` |
 
-After each fix, re-run `lean-project audit security <edited files>` and confirm the line no longer appears, then read the surrounding code once more. The tool is a heuristic: it finds lines to check, and a clean run does not prove the code is safe.
+After each fix, re-run `lean-project audit security` on the affected files and confirm the line no longer appears, then read the surrounding code once more. The tool is a heuristic: it finds lines to check, and a clean run does not prove the code is safe.
 
 ## 6. Before calling it done
 
 - The plan or card records the versions checked and the docs used (section 1), with URLs or file references.
 - The changelog check (section 2) is written down: minimum WordPress, PHP, WooCommerce and Bricks versions.
-- `lean-project audit security <edited files>` has been run and every finding was either fixed or explained in the card.
-- For WordPress or WooCommerce performance or HPOS risk, `lean-project audit perf <edited files>` has been run; CRITICAL hits are fixed or explained before the card is `done`. Deeper audits go to the `wp-woo-performance-audit` skill.
+- At release: `lean-project audit security` has been run on the `review-scope` list, and every finding was either fixed or explained.
+- For WordPress or WooCommerce performance or HPOS risk, `lean-project audit perf` has been run on the same list; CRITICAL hits are fixed or explained before the card is `done`. Deeper audits go to the `wp-woo-performance-audit` skill.
 - `php -l` and `lean-project check gate <card>` pass for the changed PHP files.
 - For Bricks, WooCommerce checkout or block changes, the change has been tested in the real builder or site, not only in a mock (see the project's own testing rules).

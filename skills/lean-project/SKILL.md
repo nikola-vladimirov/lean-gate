@@ -7,13 +7,13 @@ description: Run a project with the fewest tokens per session. Start a new proje
 
 One goal: the fewest tokens a session spends to get oriented, stay oriented and get the work done, without losing information.
 
-**Always on.** This skill applies to every project and every task, whether or not the user names it. Before any task starts, choose the model for each part and the tool or plugin for the work, as set out in `ROUTING.md`. This is mandatory. Starting or adopting any project runs the mandatory setup cards in `STARTUP.md` first, before any plan, code or site change. The session hook prints the standing rules at start. For WordPress, WooCommerce, Bricks and block-editor work it also points to `WORDPRESS.md`, and a change to that code is not done until `lean-project audit security <edited files>` has been run and its findings fixed or explained.
+**Always on.** This skill applies to every project and every task, whether or not the user names it. Before any task starts, choose the model for each part and the tool or plugin for the work, as set out in `ROUTING.md`. This is mandatory. Starting or adopting any project runs the mandatory setup cards in `STARTUP.md` first, before any plan, code or site change. The session hook prints the standing rules at start. For WordPress, WooCommerce, Bricks and block-editor work it also points to `WORDPRESS.md`, and the checklist in `WORDPRESS.md` applies to every change. The security audit runs at release (see "Review scope").
 
-## Review scope (every mode, every project; mandatory)
+## Review scope (release gate; mandatory)
 
-Code, performance, testing, security and similar reviews cover only the files this task edited. Take the list from the diff or from this task's own edits, review only those files, and report only findings in them. Run `lean-project audit security` on that list, not on the folder.
+Code, performance and security reviews are a release gate, not a per-task step. Testing still runs on every change. At release, `lean-project review-scope` lists the code changed since the last release tag and says whether a full review is due. Review those files, run `lean-project audit security` and `lean-project audit perf` on that list, and report findings in them.
 
-A full-project review runs only when the user asks for it, or when the model suggests one for a huge change (many files, or a cross-cutting refactor). Suggest it in one line and wait for a yes. Never start one on your own.
+A full review runs on every major release and every 5 to 10 minor ones; `review-scope` counts them. When it says one is due, run it and record it with `lean-project review-scope --full-done`. Never run a review on an in-progress build.
 
 ## Pick the mode, read only its guide
 
@@ -28,7 +28,7 @@ A full-project review runs only when the user asks for it, or when the model sug
 | Write or edit website text (product pages, guides, blog, FAQ) | `SITE-COPY.md` (method), plus the project's voice notes |
 | Any task at all (routing, which model and which tool or plugin) | `ROUTING.md`, before starting |
 | Build or review WordPress, WooCommerce, Bricks or block-editor code (plugin, theme, companion script) | `WORDPRESS.md`: how to read the docs, check changelogs, best practices, the security checklist and fixes. Read it before changing that code, every time. |
-| Audit a WordPress or WooCommerce site or codebase for performance, HPOS or layout, onboard an inherited store, or triage a slow store | The `wp-woo-performance-audit` skill (its own public repo, installed in `~/.claude/skills`). Scope: the edited files for a card; the whole folder only for an audit the user asked for. Its scan is `lean-project audit perf`. |
+| Audit a WordPress or WooCommerce site or codebase for performance, HPOS or layout, onboard an inherited store, or triage a slow store | The `wp-woo-performance-audit` skill (its own public repo, installed in `~/.claude/skills`). Scope: at release, the files `review-scope` lists; the whole folder only for an audit the user asked for. Its scan is `lean-project audit perf`. |
 | Build or change a Bricks or BricksExtras site, page, template, element, query or condition | `builder/INDEX.md`, then only the one `builder/<skill>/SKILL.md` the task needs |
 | Reverse-engineer a shipped app, package, firmware or browser target | `reverse/SKILL.md`, then only the reference file it names |
 | Check a WordPress plugin for WordPress.org submission, set up PHPStan, review WooCommerce code, check docs against code, or review tests | `reference/README.md`, then only the one file it points to |
@@ -76,8 +76,8 @@ Read the lessons file if it exists. Its "Local rules" section outranks the defau
 - `lean-project check gate <card> [files]`: `php -l` and, when installed, `phpcs` with the WordPress standard (or the project's own `phpcs.xml`). `board move <card> done` runs it on the card's files (`board files <card> <paths>` records them). A failure moves the card back to `todo` with the output on the card.
 - `lean-project audit waste [dir] [--apply]`: comment blocks of 8+ lines, debug `error_log()` calls and repeated hooks. Dry run by default. `--apply` (git repositories only) moves comment blocks verbatim into `docs/ARCHIVE.md`; debug logs and repeated hooks are reported only, since removing them changes behaviour.
 - `lean-project frontier [docs/PLAN.md]`: the decisions to ask next (status `open`, every `needs D#` already decided) and what waits on them.
-- `lean-project audit perf [dir or files...]`: performance and HPOS scan of WordPress and WooCommerce code, from the `wp-woo-performance-audit` skill (found in the installed plugin, or set `WP_PERF_AUDIT_HOME`). Read-only, heuristic, same scope rule: the edited files.
-- `lean-project audit security [dir or files...]`: pass the edited files (the review scope rule); a folder scans all of it. Read-only scan of PHP and JS for WordPress anti-patterns (unescaped output, SQL without `prepare`, handlers with no nonce or capability check, `eval`, request data stored without sanitizing, open REST routes, unchecked uploads). A heuristic: each line is a place to read. Fixes are in `WORDPRESS.md`.
+- `lean-project audit perf [dir or files...]`: performance and HPOS scan of WordPress and WooCommerce code, from the `wp-woo-performance-audit` skill (found in the installed plugin, or set `WP_PERF_AUDIT_HOME`). Read-only, heuristic, same scope rule: at release, the files `review-scope` lists.
+- `lean-project audit security [dir or files...]`: pass the files `review-scope` lists (the release gate); a folder scans all of it. Read-only scan of PHP and JS for WordPress anti-patterns (unescaped output, SQL without `prepare`, handlers with no nonce or capability check, `eval`, request data stored without sanitizing, open REST routes, unchecked uploads). A heuristic: each line is a place to read. Fixes are in `WORDPRESS.md`.
 - `lean-project handoff [docs/PLAN.md]`: prints a draft of the state file (branch, next open tasks, cards in flight) for review. It writes nothing; paste the reviewed draft into the state file before a reset.
 - `lean-project lesson "<text>" [--mode M] [--project P]` and `lean-project lessons`: record a lesson; the second sighting of the same text becomes a line under "Local rules" and its entries move to `LESSONS-ARCHIVE.md`.
 - `lean-project lessons review [days]`: unpromoted lessons older than `days` (default 14). Rewrite each into a rule (record it again) or drop it.

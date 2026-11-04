@@ -16,10 +16,10 @@
 #   lean-project lessons                      the local rules and the lessons file
 #   lean-project lessons review [days]        unpromoted lessons older than days (default 14): rewrite each into a rule or drop it
 #   lean-project lessons drop "<text>"        move every entry with this text to LESSONS-ARCHIVE.md, marked superseded (never deleted)
-#   lean-project audit security [dir or files...]  WordPress anti-patterns in PHP and JS (unescaped output, unprepared SQL, missing nonce or capability checks); files = edited files only
+#   lean-project audit security [dir or files...]  WordPress anti-patterns in PHP and JS (unescaped output, unprepared SQL, missing nonce or capability checks); files = the release list from review-scope
 #   lean-project handoff [docs/PLAN.md]  draft of the state file: branch, next tasks, cards in flight (prints only)
 #   lean-project delegate config | set <key> <value> | check | run <brief> <output>   route bulk work to the project's runner (none, llama, opencode)
-#   lean-project audit perf [dir or files...]  performance and HPOS scan of WordPress and WooCommerce code (wp-woo-performance-audit skill); files = edited files only
+#   lean-project audit perf [dir or files...]  performance and HPOS scan of WordPress and WooCommerce code (wp-woo-performance-audit skill); files = the release list from review-scope
 #   lean-project selftest                check the tool on this machine
 set -u
 
@@ -353,6 +353,14 @@ cmd_selftest() {
   grep -q 'Old unpromoted lesson' "$LESSONS_FILE" && { echo "FAIL lessons drop left the entry"; fail=1; }
   grep -q 'Old unpromoted lesson (superseded)' "$tmp/lessons/LESSONS-ARCHIVE.md" || { echo "FAIL lessons drop did not archive it"; fail=1; }
   unset LESSONS_FILE
+  # review scope: a repo with one tag and one new file lists that file; a full review is due with no record
+  rs="$tmp/rs"; mkdir -p "$rs"; self="$(cd "$(dirname "$0")" && pwd)/lean-project"
+  (cd "$rs" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base && git tag v1.0.0 && echo x > new.php)
+  rsout=$(cd "$rs" && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope)
+  echo "$rsout" | grep -q 'new.php' || { echo "FAIL review-scope missed a changed file"; fail=1; }
+  echo "$rsout" | grep -q 'Full review due: yes: no full review recorded' || { echo "FAIL review-scope did not ask for a first full review"; fail=1; }
+  (cd "$rs" && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope --full-done > /dev/null)
+  (cd "$rs" && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope) | grep -q 'Full review due: no: 0 release' || { echo "FAIL review-scope after a full review"; fail=1; }
   # sessions: --here lists only this project's drafts, and the list says where each one is
   ss="$tmp/ss"; mkdir -p "$ss/alpha" "$ss/data/sessions"
   printf 'Project: alpha\n' > "$ss/data/sessions/2026-11-01-aaaa.md"
@@ -665,6 +673,32 @@ sessions_dir() {
   else printf '%s\n' "${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}/lean-project}/sessions"; fi
 }
 
+# Review scope (release gate): the files changed since the last release tag, and whether a full review is due.
+# A full review is due on a new major version or 5 or more minor releases after the last full review.
+# --full-done records the current tag as the last full review.
+cmd_review_scope() {
+  local last base full_file n due
+  last=$(git describe --tags --abbrev=0 2>/dev/null) || die "review-scope: no release tag yet; give audit security a folder instead"
+  full_file="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}/lean-project}/last-full-review"
+  if [ "${1:-}" = --full-done ]; then
+    mkdir -p "$(dirname "$full_file")"; printf '%s\n' "$last" > "$full_file"
+    echo "full review recorded at $last"; return 0
+  fi
+  base=$(cat "$full_file" 2>/dev/null)
+  if [ -z "$base" ] || ! git rev-parse -q --verify "refs/tags/$base" > /dev/null; then
+    due="yes: no full review recorded yet"
+  elif [ "${base%%.*}" != "${last%%.*}" ]; then
+    due="yes: a new major version since $base"
+  else
+    n=$(git tag --list 'v*' --sort=v:refname | awk -v b="$base" 'f { n++ } $0 == b { f = 1 } END { print n + 0 }')
+    if [ "$n" -ge 5 ]; then due="yes: $n releases since the full review at $base"
+    else due="no: $n release(s) since the full review at $base"; fi
+  fi
+  echo "Full review due: $due"
+  echo "Changed since $last:"
+  { git diff --name-only "$last" --; git ls-files --others --exclude-standard; } | sort -u | sed 's/^/  /'
+}
+
 # Sessions: the newest drafts, one per line: date, project, path (tab-separated). --here keeps this project's only.
 cmd_sessions() {
   local n=10 here="" d out proj
@@ -826,7 +860,7 @@ SEC_AWK='
   }'
 
 # Audit security: read-only scan of PHP and JS for the WordPress anti-patterns in SEC_AWK, one line per finding.
-# Give a folder to scan all of it, or the edited files to scan only those (the review scope rule).
+# Give a folder to scan all of it, or the listed files to scan only those (the review scope rule).
 cmd_audit_security() {
   local dir="${1:-.}" f rel lang out files
   if [ -f "$1" ]; then
@@ -987,6 +1021,7 @@ case "$cmd" in
   cost) cmd_cost "${1:-.}" ;;
   selftest) cmd_selftest ;;
   sessions) cmd_sessions "$@" ;;
+  review-scope) cmd_review_scope "$@" ;;
   board) cmd_board "$@" || exit 1 ;;
   check) [ "${1:-}" = gate ] || die "check: only 'check gate <card id> [files]'"; shift; check_gate "$@" || exit 1 ;;
   handoff) cmd_handoff "$@" ;;

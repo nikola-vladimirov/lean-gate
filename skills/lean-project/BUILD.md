@@ -44,7 +44,7 @@ Every call is prefixed with `LEAN_BOARD=<absolute path to BOARD.md> LEAN_AS=<age
 | Bricks site architecture, global styles, or a broad site audit | lead | the session's own | here, with `builder/INDEX.md` routing to the one skill needed |
 | REA reverse-engineering analysis (evidence, decompile, version diff) | lead | the session's own | here, after `reverse/SKILL.md` and the one reference it names; REA MCP must be on |
 | Architecture, data model, migrations, sync and idempotency, money or data-loss paths | lead | the session's own | here, not delegated |
-| Security review, phase code review (edited files only), acceptance check | opus | high | Agent with fresh context (not the author's); the lead itself when the lead is Opus and has not written the code |
+| Security review and code review at release (review-scope list), acceptance check | opus | high | Agent with fresh context (not the author's); the lead itself when the lead is Opus and has not written the code |
 | A failure the first route could not fix twice | see "After each task" | | |
 
 Pass both with the Agent tool's `model` (`haiku`, `sonnet`, `opus`) and `effort` (`low`, `medium`, `high`, `xhigh`, `max`) parameters; `start_session` takes the same two. Effort is the cheaper dial: more thinking on the same model costs less than the next model up, so raise it first. Keep `xhigh` and `max` for the lead's own hardest calls, never for routine delegation.
@@ -85,7 +85,7 @@ Return in under 15 lines: files changed, check result, open questions. No code d
 ## Phase gate
 
 1. An Opus reviewer (or the lead, if it did not write the code) checks the phase's acceptance criteria and ticks them off in the plan.
-2. Before any build is final: security review, code review and tests, using the stack's review and testing skills when installed. Scope them to the files this phase edited (see SKILL.md, "Review scope"); a full-project review runs only when the user asks or the lead suggests one for a huge change.
+2. Tests run on every change, with the stack's testing skills when installed. Security and code review run at release, on the list `lean-project review-scope` gives, not at each phase (SKILL.md, "Review scope").
 3. Board: move notes that stay true (contracts, formats, gotchas) into the plan or rules doc, then append the board verbatim to the archive file under a dated heading and remove `BOARD.md`. The next phase starts with an empty board.
 4. Update the state file, refresh the code graph if the project has one, and end the session. The next phase starts fresh from the state file.
 

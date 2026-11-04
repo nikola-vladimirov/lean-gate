@@ -23,7 +23,7 @@ Pick the tool that matches the work. Load its schema only when the task needs it
 |---|---|
 | Any UI, layout, visual design, component or page design | `ui-ux-pro-max` (`--design-system` for a new page or system, then `--domain ux` for a focused concern). Read its rules before designing. |
 | Styling for a site where TokenForge is the target | TokenForge (non-WordPress.org build) once installed; check whether the site already uses it. Until it is installed and approved, use the site's existing styles. |
-| WordPress, WooCommerce, Bricks or block-editor code | `WORDPRESS.md` and the matching `wp-*` skill (security, REST, blocks, theme, WooCommerce). Run `lean-project audit security` on edited files. |
+| WordPress, WooCommerce, Bricks or block-editor code | `WORDPRESS.md` and the matching `wp-*` skill (security, REST, blocks, theme, WooCommerce). At release, run `lean-project audit security` on the `review-scope` list. |
 | Bricks or BricksExtras elements, templates, queries, conditions | The `bricks-*` and `bricksextras-*` skills for the element in question, read through `bricks/get-element-schema` where needed. |
 | Client website text | `SITE-COPY.md` and the project's voice notes. |
 | Live site reads or writes | The site's MCP abilities first; SSH only where the abilities cannot do it (`CLIENT-SITE.md`). |

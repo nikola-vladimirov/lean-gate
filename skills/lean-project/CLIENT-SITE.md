@@ -11,7 +11,7 @@ Run the grill (`GRILL.md`) with these questions, in rounds, and write each answe
 3. Test area: drafts or private pages on live, or staging.
 4. Approval: per change, or per batch. Who gives the yes.
 5. Backups: what is dumped and copied before each kind of change.
-6. Acceptance per change: visual checks (desktop and phone), error-log check, security audit of edited files.
+6. Acceptance per change: visual checks (desktop and phone), error-log check, security audit at release.
 7. Change channel order: MCP abilities first, SSH file edits only when the builder cannot express the change. No direct database edits.
 8. CDN cache: ask the purge scope after each live change; never purge on your own.
 9. Client-facing copy: language, voice, fact-check rule (below).

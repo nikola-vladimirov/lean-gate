@@ -9,7 +9,7 @@
     {
       "name": "lean-project",
       "source": "./",
-      "description": "New-project plans with phase gates, adopting projects already under way, lean docs, file maps, model routing for builds, a shared agent board, reviews limited to edited files, and a fresh-session reminder."
+      "description": "New-project plans with phase gates, adopting projects already under way, lean docs, file maps, model routing for builds, a shared agent board, release-gate reviews of changed code, and a fresh-session reminder."
     }
   ]
 }

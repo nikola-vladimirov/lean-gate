@@ -26,7 +26,7 @@ For a project that already exists, do the read-only discovery in `NEW-PROJECT.md
 7. **Test area:** drafts or private pages on live, or staging.
 8. **Approval:** a yes in chat per change, or per batch.
 9. **Backups:** database dump only for plugin changes or anything that could break the site; full file copies before code changes. Where they are kept, and that they hold client data.
-10. **Acceptance per change:** desktop and phone check, error-log check, security audit of edited files, others the owner names.
+10. **Acceptance per change:** desktop and phone check, error-log check, others the owner names. The security audit runs at release, on the review-scope list.
 11. **Change channel:** site abilities or MCP first; SSH file edits only when the builder cannot express the change; no direct database edits.
 12. **CDN cache:** which provider, and purge scope asked per change.
 13. **Languages:** source language, the translation setup, and whether translations run automatically.
@@ -37,7 +37,7 @@ For a project that already exists, do the read-only discovery in `NEW-PROJECT.md
 
 16. **Distribution:** WordPress.org, a private zip, or a paid add-on. This sets the review rules.
 17. **Compatibility:** minimum WordPress, PHP and WooCommerce versions.
-18. **Security and review:** run `WORDPRESS.md` checks; decide whether a full review is wanted at release (rules in SKILL.md "Review scope").
+18. **Security and review:** run `WORDPRESS.md` checks; run the release review that `lean-project review-scope` asks for (rules in SKILL.md "Review scope").
 19. **Release:** version scheme, changelog location, tag and release process.
 
 ## Round 4, anything else

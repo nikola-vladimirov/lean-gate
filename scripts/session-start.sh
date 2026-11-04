@@ -2,7 +2,7 @@
 # SessionStart: lean-project is always on. Prints the standing rules for every session, and the WordPress
 # pointer when the working folder is a WordPress project (plugin, theme or WordPress install).
 cat <<'EOF'
-lean-project (always on): read the project's index and state file before editing. Use `lean-project map <file>` and read only the ranges you need. Keep the state file current. Reviews (code, performance, testing, security) cover only the files you edited; a full review runs only when the user asks or you suggest it for a huge change. Before calling WordPress, WooCommerce, Bricks or block-editor code done, run `lean-project audit security <edited files>`.
+lean-project (always on): read the project's index and state file before editing. Use `lean-project map <file>` and read only the ranges you need. Keep the state file current. Reviews (code, performance, security) are a release gate: at release, run `lean-project review-scope` and review only the files it lists. Testing runs on every change. For WordPress, WooCommerce, Bricks or block-editor code, follow WORDPRESS.md on every change.
 EOF
 
 wp=""
