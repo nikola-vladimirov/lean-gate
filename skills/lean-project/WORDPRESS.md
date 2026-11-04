@@ -2,6 +2,22 @@
 
 Read this before changing code in a WordPress plugin, theme, WooCommerce extension, Bricks element or block. It applies to companion plugins and scripts too. Routing: the session hook points here for any WordPress project; the audit at release is `lean-project audit security` on the `lean-project review-scope` list.
 
+Contents table below: open only the section you need.
+
+<!-- toc -->
+- 21-29: Contents
+- 30-43: 1. Read the docs in the right order
+- 44-52: 2. Check changelogs and version compatibility
+- 53-84: 3. Best practices
+- 85-103: 4. Security checklist
+- 104-126: 5. Fixes
+- 127-135: 6. Before calling it done
+- 136-152: WordPress, Page Builder, and Ecosystem Extensions
+  - 140-144: 1. Git-Predictive Dependency Mapping (`lean-project map predict`)
+  - 145-149: 2. Phase-Gate Defensive Shield (`lean-project check gate`)
+  - 150-152: 3. Context Waste Hound (`lean-project audit waste`)
+<!-- /toc -->
+
 ## Contents
 
 - 1. Read the docs in the right order
@@ -116,3 +132,21 @@ After each fix, re-run `lean-project audit security` on the affected files and c
 - For WordPress or WooCommerce performance or HPOS risk, `lean-project audit perf` has been run on the same list; CRITICAL hits are fixed or explained before the card is `done`. Deeper audits go to the `wp-woo-performance-audit` skill.
 - `php -l` and `lean-project check gate <card>` pass for the changed PHP files.
 - For Bricks, WooCommerce checkout or block changes, the change has been tested in the real builder or site, not only in a mock (see the project's own testing rules).
+
+## WordPress, Page Builder, and Ecosystem Extensions
+
+For WordPress, WooCommerce, Bricks Builder, or Block Editor code, three operations apply. None needs setup: `map predict` and `audit waste` run on demand, and the gate runs when a card moves to `done` (`LEAN_GATE_SKIP=1` turns it off for one command):
+
+### 1. Git-Predictive Dependency Mapping (`lean-project map predict`)
+* Before prompting the user or splitting a phase into tasks, the engine executes a Git history analysis.
+* It scans the last 10 local commits to check which files historically change together (e.g., a Bricks query element causing structural adjustments inside `class-woocommerce-companion.php`).
+* It automatically reads the file maps of *both* associated files in a single pass, preventing broken hooks or silent template failures.
+
+### 2. Phase-Gate Defensive Shield (`lean-project check gate`)
+* When a subagent updates a card to `done` on the append-only `BOARD.md`, the engine intercepts the task closure before it reaches the lead context.
+* It executes localized terminal validation checks (`php -l` and `wpcs` rulesets).
+* If a syntax or escaping check fails, the tool rolls the card status back to `todo`, writes the raw validation error output directly to the card note, and forces the subagent to repair the bug locally.
+
+### 3. Context Waste Hound (`lean-project audit waste`)
+* Scans files for token-wasting code clutter (such as massive boilerplate comments, redundant hook declarations, or dangling `error_log()` entries).
+* Dry run by default. With `--apply` (git repositories only), comment blocks move verbatim into `docs/ARCHIVE.md` and leave a one-line pointer, which lowers the baseline token overhead per session. Debug logs and repeated hooks are reported, never removed.

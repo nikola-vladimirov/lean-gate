@@ -4,14 +4,14 @@ For building a project phase by phase from its plan. The main session is the lea
 
 ## Before a phase
 
-1. Read the "Local rules" and "Model fit" lines in the lessons file (path in SKILL.md). They override the routing table below.
+1. Read the "Local rules" and "Model fit" lines in the lessons file (path in TOOLS.md). They override the routing table below.
 2. No phased plan yet (a project already under way): adopt it first (`NEW-PROJECT.md`, "Adopting a project"). Then read the state file, then only the plan's section for this phase and the sections it names (contents table ranges). The binding rules doc in full only if code will be written.
 3. Split the phase into tasks. Each task gets a file set, plan references (line ranges and IDs, not pasted text), an acceptance check (a command or an observable result) and a route from the table. Tasks that touch the same files go to one writer, in order. A phase that runs as stages with output handoffs gets a stage contract per stage (`templates/STAGE-CONTRACT.md`): its Inputs table lists the exact files and sections to load.
 4. Put the task list in the app's task list (`update_plan`), not in a new doc. When two or more tasks are delegated, also add each as a card on the board (below), card ID = task ID.
 
 ## Board: how tasks talk to each other
 
-Subagents cannot see each other, and their replies reach only the lead. The board is the shared channel: one append-only file, `BOARD.md` in the docs folder (SKILL.md), read and written only through `lean-project board`, so parallel writers never overwrite each other and readers get a compact view instead of the raw log.
+Subagents cannot see each other, and their replies reach only the lead. The board is the shared channel: one append-only file, `BOARD.md` in the docs folder (`TOOLS.md`, "Docs folder"), read and written only through `lean-project board`, so parallel writers never overwrite each other and readers get a compact view instead of the raw log.
 
 ```
 lean-project board                      # columns (doing, blocked, todo, done) and the latest 10 notes

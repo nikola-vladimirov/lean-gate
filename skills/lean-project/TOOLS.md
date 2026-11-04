@@ -25,3 +25,27 @@ Read only the command you need. The same commands are listed in the README.
 - `lean-project sessions [n] [--here]`: the newest session drafts (date, project, path). `--here` keeps only the current project's.
 - `lean-project board` posts are idempotent: a retried post (same writer, verb, card and text within the last 20 lines) is skipped.
 - `lean-project selftest`.
+
+## Paths and settings (the guides refer here)
+
+- Guides and `templates/`: `${CLAUDE_PLUGIN_ROOT}/skills/lean-project/`
+- Builder (Bricks): `${CLAUDE_PLUGIN_ROOT}/skills/lean-project/builder/`. Its generated JSON schema data (about 23 MB) stays at `~/.claude/skills-off/bricks/<skill>/references/`, read by path, never copied into a plugin.
+- Reverse (REA): `${CLAUDE_PLUGIN_ROOT}/skills/lean-project/reverse/`
+- Lessons: `${CLAUDE_PLUGIN_DATA}/LESSONS.md`
+- **Docs folder:** wherever the project's index keeps its docs (`docs/` for projects this skill started). Plan, state file, glossary, board and archive all go there, under the project's own file names when it has them. Never inside a folder that ships (a plugin, package or theme folder that is zipped or published whole): check the index and the build or ignore rules first.
+- Always back up docs before editing: `${user_config.backup_docs}`. Backup folder: `${user_config.backup_dir}`.
+  - `true`: before the first edit, copy every file you will touch to `<project>/<backup folder>/docs-<YYYY-MM-DD>/`.
+  - `false`: do that only when the project is not under version control.
+  - Add the backup folder to `.gitignore` when the project uses git.
+
+If any value above shows as an unfilled `${...}`: plugin files are under `~/.claude/plugins/`, data under `~/.claude/plugins/data/` in the folder whose name starts with `lean-project`, backups `false`, folder `backups`.
+
+## Session hygiene (full text)
+
+- A hook nudges once the conversation passes the context limit (default 300k tokens, then every 50k; the user can change both in `/config`). When it fires: finish the current step, update the state file, then open the new-session dialog: `mcp__ccd_session__start_session` with `initiation` `own_initiative`, `context` `fresh`, and a brief of at most 120 words that names only the index, the state file and the next step. The fresh session reads those two files first and nothing else until they point to it, so it never rereads the whole project. Do not start large work.
+- At session end a hook writes the handoff draft of each real session (two or more user messages) to a dated file, with no model call. It goes to the `session_drafts_dir` setting (for example a folder in the Obsidian vault) or the plugin data folder, is never overwritten, and is only a draft: review it before pasting into the state file.
+- End a session at every phase or milestone boundary anyway, after updating the state file.
+
+## After any mode: improve (full text)
+
+Record it with `lean-project lesson "<text>" --mode <mode> --project <name>`: include before and after tokens where measured, what saved the most, and what in these guides was wrong or wasted effort. The command creates the file (a "Local rules" section on top, "Entries" below), and a lesson seen twice becomes a line in "Local rules" with its entries moved to `LESSONS-ARCHIVE.md`. Keep the file under 60 lines; the command warns when it passes that. If a lesson would help every user, offer to draft an issue for the plugin's repository, and post only if the user says yes.

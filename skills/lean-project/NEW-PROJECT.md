@@ -31,7 +31,7 @@ Unknowns become assumptions and decisions with defaults in the plan, so they nev
 ```
 
 - **Docs never ship.** When the deliverable is a folder that ships whole (a WordPress plugin, an npm package, a theme), put the shipped code in a subfolder (`plugin/`, `src/`, `package/`) or exclude `docs/` and `CLAUDE.md` from the build (export-ignore, `files`, `.npmignore`).
-- **Copy the templates** from the `templates/` folder (path in SKILL.md; `INDEX.md` becomes `CLAUDE.md`; `PLAN.md` and `HANDOFF.md` go to `docs/`) and fill them. Delete template lines that do not apply; never leave placeholders.
+- **Copy the templates** from the `templates/` folder (path in TOOLS.md; `INDEX.md` becomes `CLAUDE.md`; `PLAN.md` and `HANDOFF.md` go to `docs/`) and fill them. Delete template lines that do not apply; never leave placeholders.
 - **Extras only when needed:** `templates/extras/RULES.md` once there are more than about 10 binding rules or several contributors; `INTEGRATIONS.md` when the project calls external APIs; `ARCHIVE.md` the first time text is replaced; `GLOSSARY.md` when grilling settles the first term (format in `GRILL.md`).
 
 ## 3. Write the plan
@@ -60,7 +60,7 @@ For a project already under way: code, history and docs exist, but no phased pla
 
 0. **Pre-fill the startup cards.** Steps 1 and 2 give the evidence; `STARTUP.md` turns it into recommended answers ("Adopting an existing project"). Ask only the blank ones.
 1. **Read what exists, cheaply:** the index and state file (whatever names the project uses), `git tag` and `git log --oneline` (a range, not the whole history), the changelog's recent window, and the code through the graph tool or `lean-project map <dir>`. A haiku subagent does any bulk reading and returns a summary.
-2. **Keep the project's layout.** Its index, state file, doc names and docs folder stay (see "Docs folder" in SKILL.md). Only missing pieces are added: the plan from `templates/PLAN.md`, a state file if there is none. An oversized or duplicated index or state file is a job for `DOCS.md`, run after this.
+2. **Keep the project's layout.** Its index, state file, doc names and docs folder stay (see "Docs folder" in TOOLS.md). Only missing pieces are added: the plan from `templates/PLAN.md`, a state file if there is none. An oversized or duplicated index or state file is a job for `DOCS.md`, run after this.
 3. **Write the plan from the evidence:**
    - Goal, architecture and sources: from the index, readme and code, one line each.
    - Released versions and finished work: one phase each, every check ticked, with the tag or commit as the evidence. Do not re-verify shipped work unless the user asks.

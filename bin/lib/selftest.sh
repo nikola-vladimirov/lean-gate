@@ -89,6 +89,12 @@ cmd_selftest() {
   echo "$here" | grep -q 'bbbb' && { echo "FAIL sessions --here listed another project"; fail=1; }
   all=$(cd "$ss/alpha" && CLAUDE_PLUGIN_DATA="$ss/data" bash "$self" sessions 5)
   echo "$all" | grep -q 'bbbb' || { echo "FAIL sessions missed a draft"; fail=1; }
+  # setup nag: printed in three sessions per project, then stops
+  sn="$tmp/nag"; mkdir -p "$sn/proj/docs"
+  for i in 1 2 3 4; do
+    n=$(cd "$sn/proj" && CLAUDE_PLUGIN_DATA="$sn/data" CLAUDE_PLUGIN_ROOT="$(dirname "$self")/.." bash "$(dirname "$self")/../scripts/session-start.sh" | grep -c 'setup not recorded')
+    [ "$n" = $([ "$i" -le 3 ] && echo 1 || echo 0) ] || { echo "FAIL setup nag run $i printed $n"; fail=1; }
+  done
   # export: a generated note with frontmatter; a second export refuses to replace it
   ex="$tmp/vault/lessons.md"; mkdir -p "$tmp/vault"
   LESSONS_FILE="$tmp/lessons/LESSONS.md" bash "$(cd "$(dirname "$0")" && pwd)/lean-project" lessons export "$ex" > /dev/null

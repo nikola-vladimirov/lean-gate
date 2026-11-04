@@ -1,13 +1,13 @@
 ---
 name: lean-project
-description: Run a project with the fewest tokens per session. Start a new project (plan with phase gates, folders, state file), grill a loose idea or fuzzy change into decisions, adopt a project already under way, audit or trim CLAUDE.md, handoffs and docs, add contents tables, map large files to read only the needed lines, and build from a plan with tasks routed to Haiku, Sonnet or Opus and coordinated on a shared board. Also holds, read only when a task needs them, the Bricks and BricksExtras builder skills and the REA reverse-engineering guide. Learns from each run. Always on: applies to every project, and covers WordPress, WooCommerce, Bricks and block-editor companion plugins and scripts (how to read the docs and changelogs, best practices, security audit and fixes).
+description: Run a project with the fewest tokens per session. Plans new projects, grills fuzzy changes, trims docs and CLAUDE.md, maps large files, routes builds to Haiku, Sonnet or Opus on a shared board, and holds the WordPress, Bricks and REA guides (read on demand). Always on, for every project.
 ---
 
 # lean-project
 
 One goal: the fewest tokens a session spends to get oriented, stay oriented and get the work done, without losing information.
 
-**Always on.** This skill applies to every project and every task, whether or not the user names it. Before any task starts, choose the model for each part and the tool or plugin for the work, as set out in `ROUTING.md`. This is mandatory. Starting or adopting any project runs the mandatory setup cards in `STARTUP.md` first, before any plan, code or site change. The session hook prints the standing rules at start. For WordPress, WooCommerce, Bricks and block-editor work it also points to `WORDPRESS.md`, and the checklist in `WORDPRESS.md` applies to every change. The security audit runs at release (see "Review scope").
+**Always on.** This applies to every project and task. Before any task, choose the model and tool for each part as set out in `ROUTING.md` (mandatory). Starting or adopting a project runs the setup cards in `STARTUP.md` first. WordPress, WooCommerce, Bricks and block-editor work follows `WORDPRESS.md` on every change.
 
 ## Review scope (release gate; mandatory)
 
@@ -37,35 +37,13 @@ The builder and reverse folders are on-demand reference. Their old standalone sk
 
 REA needs its MCP server, which is parked for startup cost. If the REA tools are not loaded, tell the user to run `bash ~/.claude/skills-off/parked.sh rea on <folder>` and start a new session. Do not work without it.
 
-## Paths and settings (the guides refer here)
-
-- Guides and `templates/`: `${CLAUDE_PLUGIN_ROOT}/skills/lean-project/`
-- Builder (Bricks): `${CLAUDE_PLUGIN_ROOT}/skills/lean-project/builder/`. Its generated JSON schema data (about 23 MB) stays at `~/.claude/skills-off/bricks/<skill>/references/`, read by path, never copied into a plugin.
-- Reverse (REA): `${CLAUDE_PLUGIN_ROOT}/skills/lean-project/reverse/`
-- Lessons: `${CLAUDE_PLUGIN_DATA}/LESSONS.md`
-- **Docs folder:** wherever the project's index keeps its docs (`docs/` for projects this skill started). Plan, state file, glossary, board and archive all go there, under the project's own file names when it has them. Never inside a folder that ships (a plugin, package or theme folder that is zipped or published whole): check the index and the build or ignore rules first.
-- Always back up docs before editing: `${user_config.backup_docs}`. Backup folder: `${user_config.backup_dir}`.
-  - `true`: before the first edit, copy every file you will touch to `<project>/<backup folder>/docs-<YYYY-MM-DD>/`.
-  - `false`: do that only when the project is not under version control.
-  - Add the backup folder to `.gitignore` when the project uses git.
-
-If any value above shows as an unfilled `${...}`: plugin files are under `~/.claude/plugins/`, data under `~/.claude/plugins/data/` in the folder whose name starts with `lean-project`, backups `false`, folder `backups`.
-
 ## Before any mode: lessons
 
-Read the lessons file if it exists. Its "Local rules" section outranks the defaults in these guides.
-
-## Cost model
-
-- **Auto-loaded** on every turn of every session: the CLAUDE.md chain (the working folder and every parent, plus `~/.claude/CLAUDE.md`), the project's MEMORY.md, every installed skill's description. The most expensive bytes there are.
-- **Startup baseline:** the first reply already carries the system prompt, tool schemas, the skill listing, MCP tool names and hook output, often 50k+ before any file is read. `lean-project cost` measures it. User-scope skills and MCP servers that only one project needs are the cut that pays most.
-- **Read files** are paid once and then carried for every later turn. A 5k-token file read at turn 3 of a 40-turn session is processed about 37 times. Read ranges, not files.
-- **Subagent reads** vanish when the subagent ends. Bulk reading belongs there, on a cheap model, returning only the answer.
-- **Session length** dominates everything else. Every turn re-sends the whole conversation, so a fresh session that starts from a 30-line state file beats a long one.
+Read the lessons file if it exists (path in `TOOLS.md`). Its "Local rules" section outranks the defaults in these guides.
 
 ## The tool
 
-The commands, and which one to use when, are in `TOOLS.md`. Read only the command you need.
+The commands, paths and settings (the docs folder, backups, the lessons file), session hygiene and lesson recording are in `TOOLS.md`. Read only the part you need. The cost model is in `DOCS.md`.
 
 ## Memory layers (which file answers which question)
 
@@ -89,32 +67,16 @@ Read only the layer the question needs.
 
 ## Session hygiene
 
-- A hook nudges once the conversation passes the context limit (default 300k tokens, then every 50k; the user can change both in `/config`). When it fires: finish the current step, update the state file, then open the new-session dialog: `mcp__ccd_session__start_session` with `initiation` `own_initiative`, `context` `fresh`, and a brief of at most 120 words that names only the index, the state file and the next step. The fresh session reads those two files first and nothing else until they point to it, so it never rereads the whole project. Do not start large work.
-- At session end a hook writes the handoff draft of each real session (two or more user messages) to a dated file, with no model call. It goes to the `session_drafts_dir` setting (for example a folder in the Obsidian vault) or the plugin data folder, is never overwritten, and is only a draft: review it before pasting into the state file.
-- End a session at every phase or milestone boundary anyway, after updating the state file.
+The context-limit reminder, the new-session steps and the session-end draft are in `TOOLS.md`. End a session at every phase or milestone boundary, after updating the state file.
 
 ## After any mode: improve
 
-Record it with `lean-project lesson "<text>" --mode <mode> --project <name>`: include before and after tokens where measured, what saved the most, and what in these guides was wrong or wasted effort. The command creates the file (a "Local rules" section on top, "Entries" below), and a lesson seen twice becomes a line in "Local rules" with its entries moved to `LESSONS-ARCHIVE.md`. Keep the file under 60 lines; the command warns when it passes that. If a lesson would help every user, offer to draft an issue for the plugin's repository, and post only if the user says yes.
+Record a lesson with `lean-project lesson` (usage in `TOOLS.md`). Offer a plugin issue only if it helps every user, and post only on the user's yes.
 
 ## Precedence
 
 The user's own rules (CLAUDE.md, memory) outrank this skill. Never delete content: replaced text moves verbatim to an archive file. Confirm before anything outward-facing (pushing, creating remotes, posting).
 
-## WordPress, Page Builder, and Ecosystem Extensions
+## WordPress, WooCommerce, Bricks and block editor
 
-For WordPress, WooCommerce, Bricks Builder, or Block Editor code, three operations apply. None needs setup: `map predict` and `audit waste` run on demand, and the gate runs when a card moves to `done` (`LEAN_GATE_SKIP=1` turns it off for one command):
-
-### 1. Git-Predictive Dependency Mapping (`lean-project map predict`)
-* Before prompting the user or splitting a phase into tasks, the engine executes a Git history analysis.
-* It scans the last 10 local commits to check which files historically change together (e.g., a Bricks query element causing structural adjustments inside `class-woocommerce-companion.php`).
-* It automatically reads the file maps of *both* associated files in a single pass, preventing broken hooks or silent template failures.
-
-### 2. Phase-Gate Defensive Shield (`lean-project check gate`)
-* When a subagent updates a card to `done` on the append-only `BOARD.md`, the engine intercepts the task closure before it reaches the lead context.
-* It executes localized terminal validation checks (`php -l` and `wpcs` rulesets).
-* If a syntax or escaping check fails, the tool rolls the card status back to `todo`, writes the raw validation error output directly to the card note, and forces the subagent to repair the bug locally.
-
-### 3. Context Waste Hound (`lean-project audit waste`)
-* Scans files for token-wasting code clutter (such as massive boilerplate comments, redundant hook declarations, or dangling `error_log()` entries).
-* Dry run by default. With `--apply` (git repositories only), comment blocks move verbatim into `docs/ARCHIVE.md` and leave a one-line pointer, which lowers the baseline token overhead per session. Debug logs and repeated hooks are reported, never removed.
+The three WordPress operations (`map predict`, the card gate, `audit waste`) and their details are in `WORDPRESS.md`.

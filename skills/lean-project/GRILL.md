@@ -49,7 +49,7 @@ Applies when there is code or existing docs to align against, and to any project
 - **Check claims against the code.** When the user says how something works, look. On a contradiction, ask: "The code cancels whole orders, but you said partial cancellation is possible. Which is right?"
 - **Challenge terms.** A word that clashes with the glossary gets called out at once: "The glossary defines cancellation as X, you seem to mean Y." A vague or overloaded word ("account": customer or user?) gets a precise term proposed.
 - **Probe with scenarios.** Invent concrete edge cases that force the boundary between two concepts to be stated.
-- **Glossary, the moment a term settles.** Write it to `GLOSSARY.md` in the docs folder (SKILL.md; create it with the first term; use an existing `GLOSSARY.md` or `GLOSSARY-MAP.md` if the repo has one). Project-specific terms only, no general programming concepts, no implementation detail, never a spec or scratch pad:
+- **Glossary, the moment a term settles.** Write it to `GLOSSARY.md` in the docs folder (`TOOLS.md`, "Docs folder"; create it with the first term; use an existing `GLOSSARY.md` or `GLOSSARY-MAP.md` if the repo has one). Project-specific terms only, no general programming concepts, no implementation detail, never a spec or scratch pad:
 
   ```
   **Order**: a customer's request for one or more products, placed at checkout.

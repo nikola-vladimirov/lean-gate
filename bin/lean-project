@@ -194,7 +194,9 @@ EOF
   # The session-start hook is paid on every session: warn when its output passes the 400-token budget (bytes / 4).
   local root hook_bytes
   root=$(cd "$(dirname "$0")/.." && pwd)
-  hook_bytes=$(cd "$dir" && CLAUDE_PLUGIN_ROOT="$root" bash "$root/scripts/session-start.sh" 2>/dev/null | wc -c | tr -d ' ')
+  local tdata; tdata=$(mktemp -d)
+  hook_bytes=$(cd "$dir" && CLAUDE_PLUGIN_DATA="$tdata" CLAUDE_PLUGIN_ROOT="$root" bash "$root/scripts/session-start.sh" 2>/dev/null | wc -c | tr -d ' ')
+  rm -rf "$tdata"
   echo "SESSION-START HOOK: about $((hook_bytes / 4)) tokens ($hook_bytes bytes; budget 400 tokens)"
   [ $((hook_bytes / 4)) -le 400 ] || echo "  over budget: shorten the hook text, or move detail into a file the hook names"
   echo "STARTUP BASELINE (context of the first reply, last 5 sessions here; the CLAUDE.md chain is a small part):"
