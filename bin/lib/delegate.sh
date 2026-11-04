@@ -1,7 +1,8 @@
 # Delegation to local and free runners. Sourced by bin/lean-project, not run directly.
 
 # Delegation: send a brief to the runner this project chose and write the answer to a file. The choice lives in
-# <project>/.lean-project as key=value lines, set by the user's answer on first run. Runners: none, llama, opencode.
+# <project>/.lean-project as key=value lines, set by the user's answer on first run. Runners: none, llama, ollama,
+# unsloth, opencode, aider, goose.
 DELEGATE_CFG=".lean-project"
 DEFAULT_LLAMA_URL="http://127.0.0.1:9931"
 DEFAULT_LLAMA_MODEL="yuxinlu1/gemma-4-12B-coder-fable5-composer2.5-v1-GGUF:Q4_K_M"
@@ -10,7 +11,7 @@ DEFAULT_UNSLOTH_URL="http://127.0.0.1:8888"    # Unsloth Studio's default port (
 # The desktop app updates its CLI folder (cli/<version>), so take the newest installed copy.
 DEFAULT_OPENCODE_CLI=$(ls -1 "$HOME"/AppData/Roaming/ai.opencode.desktop/cli/*/opencode-cli.exe 2>/dev/null | sort -V | tail -n 1)
 DEFAULT_OPENCODE_MODEL="opencode/deepseek-v4.1-flash-free"
-cfg_get() { [ -f "$DELEGATE_CFG" ] && sed -n "s/^$1=//p" "$DELEGATE_CFG" | tail -n 1; }
+cfg_get() { [ -f "$DELEGATE_CFG" ] && sed -n "s/^$1=//p" "$DELEGATE_CFG" | tail -n 1 | tr -d '\r'; }
 # Is a runner up right now? Each HTTP runner answers its health check; CLI runners need their program installed.
 runner_up() {
   local u c

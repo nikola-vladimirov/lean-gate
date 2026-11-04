@@ -42,5 +42,6 @@ if [ -n "$kind" ]; then
 fi
 
 [ -n "$msg" ] || exit 0
+msg=$(printf '%s' "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')
 printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"%s"}}\n' "$msg"
 exit 0
