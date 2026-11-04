@@ -46,17 +46,9 @@ Read the lessons file if it exists (path in `TOOLS.md`). Its "Local rules" secti
 
 The commands, paths and settings (the docs folder, backups, the lessons file), session hygiene and lesson recording are in `TOOLS.md`. Read only the part you need. The cost model is in `DOCS.md`.
 
-## Memory layers (which file answers which question)
+## Memory layers
 
-| Question | Layer | Where to look |
-|---|---|---|
-| What was decided, and why | Decisions | `LESSONS.md`, "Local rules" first |
-| How is the code structured | Code map | `lean-project map`, `map predict` |
-| What happened in earlier chats | Conversation history | `lean-project sessions [n] [--here]`, then the draft it names |
-| Where did we leave off | Continuity | the project's state file; the newest draft line at session start |
-| What do parallel agents know now | Live coordination | the board (`lean-project board`) |
-
-Read only the layer the question needs.
+Which file answers which question: `TOOLS.md`, "Memory layers". Read only the layer the question needs.
 
 ## Reading rules (every mode, every project)
 

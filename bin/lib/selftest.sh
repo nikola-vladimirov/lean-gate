@@ -176,6 +176,12 @@ cmd_selftest() {
   echo "$sec" | grep -q 'a.php:4: SQL built from a variable' || { echo "FAIL security missed unprepared SQL"; fail=1; }
   echo "$sec" | grep -q 'a.php:5: eval' || { echo "FAIL security missed eval"; fail=1; }
   echo "$sec" | grep -q 'a.php: AJAX, admin-post or REST handler' || { echo "FAIL security missed a handler with no check"; fail=1; }
+  # gain: each run adds one line to gain.tsv and the second run shows a change figure
+  gd="$tmp/gain"; mkdir -p "$gd/proj"
+  (cd "$gd/proj" && CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain > /dev/null)
+  (cd "$gd/proj" && CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain > /dev/null)
+  [ "$(wc -l < "$gd/data/gain.tsv")" = 2 ] || { echo "FAIL gain did not log two runs"; fail=1; }
+  (cd "$gd/proj" && CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain) | tail -n 1 | grep -q '	+0$' || { echo "FAIL gain change figure"; fail=1; }
   unset LEAN_BOARD
 
   rm -rf "$tmp"

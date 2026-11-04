@@ -1,6 +1,6 @@
 # Routing: model and tool choice (mandatory)
 
-Before any task starts, decide two things and write them in one line in the reply: **who does each part** (model) and **which tool or plugin** (skill, plugin or MCP). This applies to every task, including reviews and short edits. Skipping it is a defect.
+Before any task starts, decide two things and write them in one line in the reply: **who does each part** (model) and **which tool or plugin** (skill, plugin or MCP). This applies to every task, including reviews and short edits. Skipping it is a defect. A trivial task (one file, no decision, a few minutes) takes the default line `main session, no tool` and nothing more.
 
 ## 1. Model routing
 
@@ -10,7 +10,7 @@ Before any task starts, decide two things and write them in one line in the repl
 | Planning, decisions, approvals, final edits to client-facing work | The main session |
 | Review of every Sonnet or OpenCode output before it is used | Opus at high effort |
 
-- Effort is set per task by how important it is. Paid models: at least medium. Free models: at least extra high.
+- Effort is set per task by how important it is. Paid models: at least medium. Free models: the effort that passed their trial, logged in the handoff.
 - Free models: probe a few on small trial tasks, keep the one that passes, and prefer it. Only `-free` models.
 - A worker's output is not used until the reviewer signs it off and the task's acceptance checks pass.
 - Log the routing line (job, model, effort) in the handoff for the session.

@@ -776,6 +776,23 @@ cmd_audit_perf() {
   bash "$home/scripts/scan.sh" "$@"
 }
 
+# Gain: one line per run (date, project, auto-loaded tokens, hook tokens) in gain.tsv, with the change since the project's last run.
+cmd_gain() {
+  local dir="${1:-.}" data="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}/lean-project}" log auto_t=0 f hook_b tdata root
+  [ -d "$dir" ] || die "gain: $dir is not a folder"
+  mkdir -p "$data"; log="$data/gain.tsv"
+  while IFS= read -r f; do [ -n "$f" ] || continue; auto_t=$((auto_t + $(tok "$f"))); done <<EOF
+$(auto_loaded "$dir")
+EOF
+  root=$(cd "$(dirname "$0")/.." && pwd); tdata=$(mktemp -d)
+  hook_b=$(cd "$dir" && CLAUDE_PLUGIN_DATA="$tdata" CLAUDE_PLUGIN_ROOT="$root" bash "$root/scripts/session-start.sh" 2>/dev/null | wc -c | tr -d ' ')
+  rm -rf "$tdata"
+  printf '%s\t%s\t%s\t%s\n' "$(date +%F)" "$(cd "$dir" && basename "$(pwd)")" "$auto_t" "$((hook_b / 4))" >> "$log"
+  echo "GAIN (tokens; change is against the project's previous run; file: $log)"
+  echo "date	project	auto_loaded	hook	change"
+  awk -F'\t' '{ d = ($2 in prev) ? $3 - prev[$2] : 0; prev[$2] = $3; printf "%s\t%s\t%s\t%s\t%+d\n", $1, $2, $3, $4, d }' "$log" | tail -n 10
+}
+
 cmd="${1:-}"; [ $# -gt 0 ] && shift
 case "$cmd" in
   map)
@@ -806,5 +823,6 @@ case "$cmd" in
     esac ;;
   delegate) cmd_delegate "$@" ;;
   pack) cmd_pack "$@" ;;
+  gain) cmd_gain "$@" ;;
   *) sed -n '5,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

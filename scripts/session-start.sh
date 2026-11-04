@@ -3,7 +3,7 @@
 # pointer when the working folder is a WordPress project, and a setup line once per project (marked in the data folder).
 root=${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
 cat <<'EOF'
-lean-project (always on): read the index and state file before editing; use `lean-project map`; keep the state file current; reviews are a release gate (`lean-project review-scope`); follow WORDPRESS.md for WordPress, WooCommerce, Bricks and block-editor code.
+lean-project (always on): read the index and state file first; `lean-project map` before big files; keep the state file current; reviews are a release gate (`lean-project review-scope`); WordPress, WooCommerce, Bricks and block-editor code follows WORDPRESS.md.
 EOF
 
 wp=""
