@@ -25,6 +25,10 @@ if [ -f .lean-project ]; then
   now=$("${CLAUDE_PLUGIN_ROOT:-.}/bin/lean-project" delegate pick 2>/dev/null)
   echo "lean-project: delegated work goes to ${now:-none} right now (none means Claude does it here)."
 fi
+# Continuity: one line naming this project's newest session draft (the path only, not its text).
+root=${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
+latest=$(bash "$root/bin/lean-project" sessions 1 --here 2>/dev/null | cut -f3)
+[ -n "$latest" ] && echo "lean-project: this project's newest session draft is $latest. Read it only if the task continues that work."
 # First run in a project (or one started before this option): ask once where delegated work goes.
 if [ ! -f .lean-project ] && { [ -f CLAUDE.md ] || [ -d docs ] || [ -f README.md ]; }; then
   echo "lean-project: no delegation choice for this project yet. Ask the user once with AskUserQuestion: none (do all work here), llama (llama.cpp server), ollama, unsloth (Unsloth Studio), opencode (free OpenCode models), aider or goose (agent CLIs). Then run: lean-project delegate set runner <value>, and check it with lean-project delegate check. A runner that is down falls back in order, and then Claude does the work."

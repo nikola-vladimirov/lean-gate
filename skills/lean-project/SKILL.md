@@ -82,7 +82,20 @@ Read the lessons file if it exists. Its "Local rules" section outranks the defau
 - `lean-project lesson "<text>" [--mode M] [--project P]` and `lean-project lessons`: record a lesson; the second sighting of the same text becomes a line under "Local rules" and its entries move to `LESSONS-ARCHIVE.md`.
 - `lean-project lessons review [days]`: unpromoted lessons older than `days` (default 14). Rewrite each into a rule (record it again) or drop it.
 - `lean-project lessons drop "<text>"`: move the entries with that text to `LESSONS-ARCHIVE.md`, marked superseded. Nothing is deleted.
+- `lean-project sessions [n] [--here]`: the newest session drafts (date, project, path). `--here` keeps only the current project's.
 - `lean-project selftest`.
+
+## Memory layers (which file answers which question)
+
+| Question | Layer | Where to look |
+|---|---|---|
+| What was decided, and why | Decisions | `LESSONS.md`, "Local rules" first |
+| How is the code structured | Code map | `lean-project map`, `map predict` |
+| What happened in earlier chats | Conversation history | `lean-project sessions [n] [--here]`, then the draft it names |
+| Where did we leave off | Continuity | the project's state file; the newest draft line at session start |
+| What do parallel agents know now | Live coordination | the board (`lean-project board`) |
+
+Read only the layer the question needs.
 
 ## Reading rules (every mode, every project)
 

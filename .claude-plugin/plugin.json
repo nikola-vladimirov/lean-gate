@@ -1,8 +1,8 @@
 {
   "name": "lean-project",
   "displayName": "lean-project",
-  "version": "0.21.0",
-  "description": "Spend fewer tokens per session: new-project plans with phase gates (loose ideas grilled into decisions first), plans reconstructed for projects already under way, grilling with a glossary for fuzzy changes, lean docs and state files, file maps for reading only the needed lines, model routing for builds, a shared board so parallel agents exchange facts while they run, reviews (code, performance, testing, security) limited to the files each task edits with a full review only on request, a session-end handoff draft written for review (no model call), a lessons review that lists stale unpromoted lessons and drops superseded ones, and a reminder to start a fresh session when the context grows.",
+  "version": "0.22.0",
+  "description": "Spend fewer tokens per session: new-project plans with phase gates (loose ideas grilled into decisions first), plans reconstructed for projects already under way, grilling with a glossary for fuzzy changes, lean docs and state files, file maps for reading only the needed lines, model routing for builds, a shared board so parallel agents exchange facts while they run, reviews (code, performance, testing, security) limited to the files each task edits with a full review only on request, a session-end handoff draft written for review (no model call), a lessons review that lists stale unpromoted lessons and drops superseded ones, a layer table saying which file answers which question, a sessions command and a session-start line naming the project's newest draft, and a reminder to start a fresh session when the context grows.",
   "author": {
     "name": "nikola-vladimirov",
     "url": "https://github.com/nikola-vladimirov"

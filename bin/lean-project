@@ -353,6 +353,16 @@ cmd_selftest() {
   grep -q 'Old unpromoted lesson' "$LESSONS_FILE" && { echo "FAIL lessons drop left the entry"; fail=1; }
   grep -q 'Old unpromoted lesson (superseded)' "$tmp/lessons/LESSONS-ARCHIVE.md" || { echo "FAIL lessons drop did not archive it"; fail=1; }
   unset LESSONS_FILE
+  # sessions: --here lists only this project's drafts, and the list says where each one is
+  ss="$tmp/ss"; mkdir -p "$ss/alpha" "$ss/data/sessions"
+  printf 'Project: alpha\n' > "$ss/data/sessions/2026-11-01-aaaa.md"
+  printf 'Project: beta\n' > "$ss/data/sessions/2026-11-02-bbbb.md"
+  self="$(cd "$(dirname "$0")" && pwd)/lean-project"
+  here=$(cd "$ss/alpha" && CLAUDE_PLUGIN_DATA="$ss/data" bash "$self" sessions 5 --here)
+  echo "$here" | grep -q 'aaaa' || { echo "FAIL sessions --here missed this project's draft"; fail=1; }
+  echo "$here" | grep -q 'bbbb' && { echo "FAIL sessions --here listed another project"; fail=1; }
+  all=$(cd "$ss/alpha" && CLAUDE_PLUGIN_DATA="$ss/data" bash "$self" sessions 5)
+  echo "$all" | grep -q 'bbbb' || { echo "FAIL sessions missed a draft"; fail=1; }
   # session-end draft: nothing under two user messages; one dated draft otherwise, never overwritten
   hk="$(dirname "$0")/../scripts/session-end.sh"; mkdir -p "$tmp/hook"
   printf '%s\n' '{"type":"user","message":"hi"}' > "$tmp/hook/one.jsonl"
@@ -647,6 +657,28 @@ cmd_lessons() {
   if [ ! -f "$f" ]; then echo '(none yet: lean-project lesson "<text>" records one)'; return 0; fi
   awk '/^## / { p = ($0 == "## Local rules") } p' "$f"
   echo "entries: $(awk '/^## / { s = $0 } s == "## Entries" && /^- [0-9]/' "$f" | wc -l | tr -d ' '), file: $(wc -l < "$f" | tr -d ' ') lines"
+}
+
+# Session drafts folder: the session_drafts_dir setting, or the plugin data folder (same rule as scripts/session-end.sh).
+sessions_dir() {
+  if [ -n "${CLAUDE_PLUGIN_OPTION_SESSION_DRAFTS_DIR:-}" ]; then printf '%s\n' "$CLAUDE_PLUGIN_OPTION_SESSION_DRAFTS_DIR"
+  else printf '%s\n' "${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}/lean-project}/sessions"; fi
+}
+
+# Sessions: the newest drafts, one per line: date, project, path (tab-separated). --here keeps this project's only.
+cmd_sessions() {
+  local n=10 here="" d out proj
+  while [ $# -gt 0 ]; do
+    case "$1" in --here) here=1 ;; *) n="$1" ;; esac
+    shift
+  done
+  d=$(sessions_dir); proj=$(basename "$PWD")
+  out=$(ls -1t "$d"/*.md 2>/dev/null | while IFS= read -r f; do
+    p=$(sed -n 's/^Project: //p' "$f" | head -n 1)
+    [ -z "$here" ] || [ "$p" = "$proj" ] || continue
+    printf '%s\t%s\t%s\n' "$(basename "$f" .md | cut -c1-10)" "$p" "$f"
+  done | head -n "$n")
+  if [ -n "$out" ]; then printf '%s\n' "$out"; else [ -n "$here" ] || echo "(no session drafts yet in $d)"; fi
 }
 
 # Lessons review: unpromoted entries older than <days> (default 14), so each can be rewritten into a rule or dropped.
@@ -954,6 +986,7 @@ case "$cmd" in
   toc) [ $# -gt 0 ] || die "toc: give one or more .md files"; cmd_toc "$@" ;;
   cost) cmd_cost "${1:-.}" ;;
   selftest) cmd_selftest ;;
+  sessions) cmd_sessions "$@" ;;
   board) cmd_board "$@" || exit 1 ;;
   check) [ "${1:-}" = gate ] || die "check: only 'check gate <card id> [files]'"; shift; check_gate "$@" || exit 1 ;;
   handoff) cmd_handoff "$@" ;;
