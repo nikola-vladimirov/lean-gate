@@ -664,13 +664,15 @@ export const register: Register = on => {
     const tokens = (await $.session.usage().catch(() => undefined))?.context.tokens
     const { Box, Text, Button } = $.ui.resolve(e)
     // A labelled rule above our band, with a blank line before it, keeps it visibly apart from ponytail's.
-    const rule = '── lean-gate ' + '─'.repeat(Math.max(4, (e.props.bodyColumns ?? 60) - 13))
+    // 4 columns short of bodyColumns: the prompt box pads its content, and a full-width rule wrapped onto a second line.
+    const cols = (e.props.bodyColumns ?? 60) - 4
+    const rule = '── lean-gate ' + '─'.repeat(Math.max(4, cols - 13))
     const stack = (mine: NonNullable<typeof below>) => (
       <Box flexDirection="column">
         <Text> </Text>
         <Text dimColor>{rule}</Text>
         {mine}
-        <Text dimColor>{'─'.repeat(e.props.bodyColumns ?? 60)}</Text>
+        <Text dimColor>{'─'.repeat(cols)}</Text>
         {below}
       </Box>
     )
@@ -716,7 +718,8 @@ export const register: Register = on => {
     const gb = (key: string, label: string, onPress: () => unknown) => <Button key={key} plain label={label} onPress={() => void onPress()} />
     const dot = <Text dimColor>·</Text>
     // flexShrink 0: a cell wraps as a whole to the next line, never mid-label.
-    const join = (parts: RenderChildren[]) => parts.flatMap((p, i) => [<Box flexShrink={0}>{i === 0 ? p : <Box gap={1}>{dot}{p}</Box>}</Box>])
+    // The dot trails its cell, so a wrapped line never starts with one.
+    const join = (parts: RenderChildren[]) => parts.map((p, i) => <Box key={`cell-${i}`} flexShrink={0} gap={1}>{p}{i < parts.length - 1 ? dot : null}</Box>)
 
     // A Button here takes a label only: Text beside a string inside one is refused by this build.
     const parts: RenderChildren[] = [
@@ -767,9 +770,11 @@ export const register: Register = on => {
     const ruleRows = []
     for (let i = 0; i < allRules.length; i += 2) {
       ruleRows.push(
-        <Box flexDirection="row" gap={2}>
+        <Box flexDirection="row">
           {allRules.slice(i, i + 2).map(rule => (
-            <Button key={`rule-${rule}`} plain label={`${level(rule).padEnd(5)} ${cut(rule, 24)}`} onPress={() => void editGlobal($, mem, j => (j.rules = { ...(j.rules as object), [rule]: nextLevel(level(rule)) }))} />
+            <Box key={`rule-${rule}`} width={34}>
+              <Button plain label={`${level(rule).padEnd(5)} ${cut(rule, 24)}`} onPress={() => void editGlobal($, mem, j => (j.rules = { ...(j.rules as object), [rule]: nextLevel(level(rule)) }))} />
+            </Box>
           ))}
         </Box>
       )
@@ -823,6 +828,8 @@ export const register: Register = on => {
     }
 
     // Each block gets a dim title line and an indented body, so the sections read one by one.
+    // A plain Button pads its label by one column, so text lines get the same pad to line up with the buttons.
+    const note = (child: RenderChildren) => <Box paddingLeft={1}>{child}</Box>
     const section = (title: string, ...body: RenderChildren[]) => (
       <Box flexDirection="column" marginTop={1}>
         <Text dimColor>▸ {title}</Text>
@@ -841,7 +848,7 @@ export const register: Register = on => {
             {gb('rb-level', `level: ${mem.draft.level}`, () => { mem.draft.level = nextLevel(mem.draft.level); redraw() })}
             {gb('rb-add', 'Add rule', addRule)}
           </Box>,
-          <Text dimColor wrap="truncate-end">{preset.match}</Text>,
+          note(<Text dimColor wrap="truncate-end">{preset.match}</Text>),
           cfg.custom.length > 0 && (
             <Box flexDirection="row" gap={1} flexWrap="wrap">
               {cfg.custom.map(r => gb(`rb-del-${r.id}`, `Remove ${r.id}`, () => removeRule(r.id)))}
@@ -854,7 +861,7 @@ export const register: Register = on => {
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {ROUTING_KEYS.map(k => gb(`rt-${k}`, `${k}: ${cfg.routing[k]}`, () => setRouting(k, cycle(MODEL_CHOICES, cfg.routing[k]))))}
           </Box>,
-          <Text dimColor>Haiku never writes code; a project's own .lean-project.json overrides these</Text>
+          note(<Text dimColor>Haiku never writes code; a project's own .lean-project.json overrides these</Text>)
         )}
         {section(
           'workflow',
@@ -862,11 +869,11 @@ export const register: Register = on => {
             {gb('wf-agents', `max agents per turn: ${cfg.max_agents === 0 ? 'no limit' : cfg.max_agents}`, () => setMaxAgents(cycle(AGENT_LIMITS, cfg.max_agents)))}
             {gb('wf-edit', 'Edit workflow text', editWorkflow)}
           </Box>,
-          <Text dimColor wrap="truncate-end">{cfg.workflow === '' ? 'no workflow text set' : cfg.workflow}</Text>
+          note(<Text dimColor wrap="truncate-end">{cfg.workflow === '' ? 'no workflow text set' : cfg.workflow}</Text>)
         )}
         {section(
           'project memory',
-          <Text dimColor wrap="truncate-end">{b.memory || 'no memory for this project yet'}</Text>,
+          note(<Text dimColor wrap="truncate-end">{b.memory || 'no memory for this project yet'}</Text>),
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {gb('mem-remember', 'Remember', remember)}
             {gb('mem-recall', 'Recall', recall)}
@@ -891,7 +898,7 @@ export const register: Register = on => {
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {PACKS.flatMap(p => [gb(`${p}-on`, `${p} on`, () => setPack(p, 'on')), gb(`${p}-off`, `${p} off`, () => setPack(p, 'off'))])}
           </Box>,
-          b.packs !== '' && <Text dimColor wrap="truncate-end">{b.packs}</Text>
+          b.packs !== '' && note(<Text dimColor wrap="truncate-end">{b.packs}</Text>)
         )}
         {section(
           'ponytail',
@@ -904,7 +911,7 @@ export const register: Register = on => {
         )}
         {section(
           'recent violations',
-          recent.length === 0 ? <Text dimColor>none</Text> : recent.map(v => <Text wrap="truncate-end" color={v.action === 'block' ? 'error' : 'warning'}>{v.action} {v.rule} {cut(v.detail, 60)}</Text>),
+          recent.length === 0 ? note(<Text dimColor>none</Text>) : recent.map(v => note(<Text wrap="truncate-end" color={v.action === 'block' ? 'error' : 'warning'}>{v.action} {v.rule} {cut(v.detail, 60)}</Text>)),
           onceRule !== undefined && (
             <Box flexDirection="row" gap={1} flexWrap="wrap">
               {gb('once-allow', `Allow once: ${onceRule}`, () => setOnce('allow'))}
