@@ -40,6 +40,29 @@ cmd_selftest() {
     cmd_board move T9 done > /dev/null 2>&1 || { echo "FAIL gate blocked a clean file"; fail=1; }
     cmd_board T9 | head -n 1 | grep -q '\[done\]' || { echo "FAIL clean card not done"; fail=1; }
   fi
+  # memory: notes, a numbered list, forget (archived), links both ways, a one-line index, nothing printed when empty
+  export LEAN_MEMORY="$tmp/mem"
+  [ -z "$(cmd_memory index --project alpha)" ] || { echo "FAIL memory index not empty for a new project"; fail=1; }
+  cmd_memory add "chose Laravel" --tag decision --project alpha > /dev/null
+  cmd_memory add "login works" --project alpha > /dev/null
+  cmd_memory add "uses alpha api" --project beta > /dev/null
+  cmd_memory link beta --project alpha > /dev/null
+  cmd_memory list --project alpha | grep -q '^1  .*decision. chose Laravel$' || { echo "FAIL memory list"; fail=1; }
+  cmd_memory index --project alpha | grep -q '^memory alpha: 2 notes, last .*newest: .note. login works; linked: beta$' || { echo "FAIL memory index line"; fail=1; }
+  cmd_memory index --project beta | grep -q 'linked: alpha$' || { echo "FAIL memory link not both ways"; fail=1; }
+  cmd_memory recall --project alpha | grep -q '^# linked: beta$' || { echo "FAIL memory recall misses a linked project"; fail=1; }
+  cmd_memory forget 1 --project alpha > /dev/null
+  [ "$(cmd_memory list --project alpha | wc -l)" = 1 ] && grep -q 'chose Laravel' "$tmp/mem/alpha/notes-archive.md" || { echo "FAIL memory forget did not archive"; fail=1; }
+  cmd_memory unlink beta --project alpha > /dev/null
+  cmd_memory index --project alpha | grep -q 'linked' && { echo "FAIL memory unlink"; fail=1; }
+  # memory (review fixes): unquoted words are one note; forgetting the last note leaves a clean count; a mistyped link target is refused
+  cmd_memory add fixed the login bug --project gamma > /dev/null
+  cmd_memory list --project gamma | grep -q 'fixed the login bug$' || { echo "FAIL memory unquoted note"; fail=1; }
+  cmd_memory forget 1 --project gamma > /dev/null
+  [ "$(cmd_memory projects | grep -c 'gamma')" = 1 ] && [ -z "$(cmd_memory projects | grep -v '^[0-9]*  ')" ] || { echo "FAIL memory projects output after forgetting the last note"; fail=1; }
+  (cmd_memory link nosuchproject --project gamma) > /dev/null 2>&1 && { echo "FAIL memory linked a project that does not exist"; fail=1; }
+  [ ! -d "$tmp/mem/nosuchproject" ] || { echo "FAIL memory link created a folder"; fail=1; }
+  unset LEAN_MEMORY
   # frontier: open decisions whose prerequisites are settled come first; the others wait
   printf '%s\n' '## 3. Decisions' '' '| # | Decision | Default | Status |' '|---|---|---|---|' \
     '| D1 | Storage | sqlite | decided |' '| D2 | Auth provider | none | open |' \

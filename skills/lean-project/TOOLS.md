@@ -24,6 +24,7 @@ Read only the command you need. The same commands are listed in the README.
 - `lean-project lessons export <file> [--force]`: write the lessons as a markdown note with frontmatter (for example into a vault). An existing note is not replaced without `--force`.
 - `lean-project sessions [n] [--here]`: the newest session drafts (date, project, path). `--here` keeps only the current project's.
 - `lean-project board` posts are idempotent: a retried post (same writer, verb, card and text within the last 20 lines) is skipped.
+- `lean-project memory add|list|recall|forget|link|unlink|index|projects`: per-project notes linked across projects. Session start prints one index line; run `memory recall` when the task touches past work, `memory add "<note>" --tag decision` when something is decided.
 - `lean-project pack status|on|off <bricks|wp|ui-ux>`: the skills and plugins that stay off until a task needs them. `on` brings them back, `off` parks them; both take effect in the next session. Bricks and BricksExtras skills, the WordPress wp-* skills, and the ui-ux plugin.
 - `lean-project gain`: appends one line per run to `gain.tsv` in the plugin data folder (date, project, auto-loaded tokens, session-start hook tokens, change since the last run for that project). Run it before and after a change to these guides.
 - `lean-project selftest`.

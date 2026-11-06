@@ -29,6 +29,9 @@ fi
 # Continuity: one line naming this project's newest session draft (the path only, not its text).
 latest=$(bash "$root/bin/lean-project" sessions 1 --here 2>/dev/null | cut -f3)
 [ -n "$latest" ] && echo "lean-project: this project's newest session draft is $latest. Read it only if the task continues that work."
+# Memory: one line (counts, newest note, linked projects); the notes themselves load only on `lean-project memory recall`.
+mem=$(bash "$root/bin/lean-project" memory index 2>/dev/null)
+[ -n "$mem" ] && echo "lean-project: $mem. Run lean-project memory recall when the task touches past work."
 # Setup: a project with docs or git but no recorded setup, or no delegation choice, gets one line. It is printed in
 # up to three sessions per project (a count in the mark file in the plugin data folder), then stops.
 needs_setup=""
