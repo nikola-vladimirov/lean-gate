@@ -772,8 +772,8 @@ export const register: Register = on => {
       ruleRows.push(
         <Box flexDirection="row">
           {allRules.slice(i, i + 2).map(rule => (
-            <Box key={`rule-${rule}`} width={34}>
-              <Button plain label={`${level(rule).padEnd(5)} ${cut(rule, 24)}`} onPress={() => void editGlobal($, mem, j => (j.rules = { ...(j.rules as object), [rule]: nextLevel(level(rule)) }))} />
+            <Box key={`cell-${rule}`} width={34}>
+              <Button key={`rule-${rule}`} plain label={`${level(rule).padEnd(5)} ${cut(rule, 24)}`} onPress={() => void editGlobal($, mem, j => (j.rules = { ...(j.rules as object), [rule]: nextLevel(level(rule)) }))} />
             </Box>
           ))}
         </Box>
