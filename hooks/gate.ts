@@ -102,7 +102,15 @@ const isLevel = (v: unknown): v is Level => v === 'off' || v === 'warn' || v ===
 const obj = (v: unknown): Record<string, unknown> => (typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {})
 
 // Defaults, then global, then project; `rules` and `routing` merge per key. Wrong-typed values are ignored.
-const regexOk = (s: string) => {
+// A pattern the gate will run: it compiles, is short, has no backreference and no quantified group that already holds a quantifier
+// (the shape of (a+)+ and (a|aa)*, which can hang a regex engine for minutes). The match text is also capped at MATCH_CHARS.
+// shortcut: a heuristic, not a proof; other exponential shapes are possible, so the global config stays the only place patterns come from.
+export const MATCH_CHARS = 4000
+const NESTED_QUANTIFIER = /\((?:[^()\\]|\\.)*(?:[+*]|\{\d+,\d*\})(?:[^()\\]|\\.)*\)(?:[+*]|\{\d+,\d*\})/
+const QUANTIFIED_ALT = /\((?:[^()\\]|\\.)*\|(?:[^()\\]|\\.)*\)(?:[+*]|\{\d+,\d*\})/
+const BACKREF = /\\[1-9]|\\k</
+export const regexOk = (s: string) => {
+  if (s.length > 300 || NESTED_QUANTIFIER.test(s) || QUANTIFIED_ALT.test(s) || BACKREF.test(s)) return false
   try {
     new RegExp(s, 'i')
     return true
@@ -176,7 +184,7 @@ export const toolMatches = (spec: string, tool: string) => spec === '*' || spec.
 export function customHit(r: CustomRule, tool: string, input: Record<string, unknown>): boolean {
   if (!toolMatches(r.tool, tool)) return false
   try {
-    return new RegExp(r.match, 'i').test(callText(tool, input))
+    return new RegExp(r.match, 'i').test(callText(tool, input).slice(0, MATCH_CHARS))
   } catch {
     return false
   }

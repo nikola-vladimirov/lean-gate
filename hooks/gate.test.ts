@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULTS, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, releaseAction, segments } from './gate'
+import { DEFAULTS, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
 
 test('config: project beats global, rules merge per key, bad JSON falls back to defaults', () => {
   const global = parseJson('{"mode":"block","rules":{"routing-line":"block"},"context_limit":200000}')
@@ -165,4 +165,9 @@ test('rule 7 test commands: runners and interpreted test scripts count; lint, ty
   for (const c of yes) expect(isTestCommand(c)).toBe(true)
   const no = ['npx tsc --noEmit', 'node node_modules/typescript/lib/tsc.js -p x', 'php -l a.php', 'cat tests/foo.php', 'grep -r tsconfig .', 'cat tsconfig.json', 'ls tests/a.js', 'echo tsc', 'git commit -m "npm test"', 'php artisan migrate', 'npm run build', 'composer install']
   for (const c of no) expect(isTestCommand(c)).toBe(false)
+})
+
+test('regexOk: ordinary patterns pass, hang-prone shapes are refused', () => {
+  for (const ok of [String.raw`\bsudo\b`, String.raw`git\s+push\b[^|;&]*(--force\b|\s-f\b)`, '(demos?|examples?)/', String.raw`\.(zip|sql)$`, 'TODO|FIXME']) expect(regexOk(ok)).toBe(true)
+  for (const bad of ['(a+)+$', '(a*)*', '(a|aa)+', '(x{1,}){2,}', String.raw`(a)\1`, '(', 'a'.repeat(301)]) expect(regexOk(bad)).toBe(false)
 })
