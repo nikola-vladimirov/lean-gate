@@ -829,7 +829,7 @@ test('routing and workflow buttons write the global config', async ($, on) => {
   await ui.press({ key: 'rt-code-model' })
   expect(saved().routing.code).toBe('opus:high')
   await ui.press({ key: 'rt-code-effort' })
-  expect(saved().routing.code).toBe('opus:low')
+  expect(saved().routing.code).toBe('opus:xhigh')
   await ui.press({ key: 'rt-code-cap' })
   expect(saved().agent_caps.code).toBe(1)
   await ui.press({ key: 'wf-agents' })

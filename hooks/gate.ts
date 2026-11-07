@@ -33,6 +33,8 @@ export type CustomRule = { id: string; tool: string; match: string; message: str
 export const ROUTING_KEYS = ['read', 'code', 'complex', 'review', 'plan'] as const
 export type RoutingKey = (typeof ROUTING_KEYS)[number]
 
+export const CODING_SECTIONS: readonly RoutingKey[] = ['code', 'complex']
+
 // The sections whose model:effort an agent was started with; an agent counts toward each of them.
 export function sectionsFor(routing: Record<RoutingKey, string>, input: { model?: unknown; effort?: unknown }): RoutingKey[] {
   if (typeof input.model !== 'string' || typeof input.effort !== 'string') return []
@@ -268,12 +270,16 @@ export const demoPaths = (files: string[], pattern: string): string[] => {
 export const nextLevel = (l: Level): Level => LEVELS[(LEVELS.indexOf(l) + 1) % LEVELS.length] ?? 'off'
 
 // Rules 1 and 2: the Agent tool input.
-export function agentProblems(input: { model?: unknown; effort?: unknown }): { rule: Rule; detail: string }[] {
+// Haiku passes only when its model and effort match a section that does no coding (the routing table says which).
+export function agentProblems(input: { model?: unknown; effort?: unknown }, routing?: Record<RoutingKey, string>): { rule: Rule; detail: string }[] {
   const out: { rule: Rule; detail: string }[] = []
   const model = typeof input.model === 'string' ? input.model : ''
   const effort = typeof input.effort === 'string' ? input.effort : ''
   if (model === '' || effort === '') out.push({ rule: 'agent-needs-model-effort', detail: `model=${model || '-'} effort=${effort || '-'}` })
-  if (/haiku/i.test(model)) out.push({ rule: 'no-haiku-coding', detail: `model=${model}` })
+  if (/haiku/i.test(model)) {
+    const hit = routing === undefined ? [] : sectionsFor(routing, input)
+    if (hit.length === 0 || hit.some(k => CODING_SECTIONS.includes(k))) out.push({ rule: 'no-haiku-coding', detail: `model=${model}` })
+  }
   return out
 }
 

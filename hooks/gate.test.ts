@@ -32,6 +32,10 @@ test('agent input: model and effort are both required, haiku is refused', () => 
   expect(agentProblems({ model: 'sonnet' }).map(p => p.rule)).toEqual(['agent-needs-model-effort'])
   expect(agentProblems({ model: 'sonnet', effort: 'medium' })).toEqual([])
   expect(agentProblems({ model: 'haiku', effort: 'low' }).map(p => p.rule)).toEqual(['no-haiku-coding'])
+  // Haiku passes only when its model:effort is a non-coding section's.
+  const haiku = { model: 'haiku', effort: 'low' }
+  expect(agentProblems(haiku, { ...DEFAULTS.routing, read: 'haiku:low' })).toEqual([])
+  expect(agentProblems(haiku, { ...DEFAULTS.routing, read: 'haiku:low', code: 'haiku:low' }).map(p => p.rule)).toEqual(['no-haiku-coding'])
 })
 
 test('segments: quoted text stays one token and heredoc bodies are skipped', () => {

@@ -7,6 +7,7 @@ import {
   CODE_RELEASE,
   RULES,
   ROUTING_KEYS,
+  CODING_SECTIONS,
   sectionsFor,
   changelogMissing,
   isBuilderCode,
@@ -82,8 +83,8 @@ const PRESETS = [
 ] as const
 const PONYTAIL = ['off', 'lite', 'full', 'ultra']
 // What a routing button steps through; a value typed into the config by hand is kept until the button is pressed.
-const MODEL_NAMES = ['sonnet', 'opus', 'free'] as const
-const EFFORTS = ['low', 'medium', 'high'] as const
+const MODEL_NAMES = ['haiku', 'sonnet', 'opus', 'fable', 'free'] as const
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 const AGENT_LIMITS = [0, 2, 3, 4, 6, 8] as const
 const SECTION_CAPS = [0, 1, 2, 3, 4, 6] as const
 const DELEGATE_AFTER = [4, 6, 8, 12, 16] as const
@@ -526,7 +527,7 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
       'agent-needs-model-effort': `lean-gate: set model and effort on every subagent (routing: ${ROUTING_KEYS.map(k => `${k}=${cfg.routing[k]}`).join(', ')})`,
       'no-haiku-coding': 'lean-gate: never use Haiku for coding, pick sonnet or opus',
     } as const
-    for (const p of agentProblems(e)) {
+    for (const p of agentProblems(e, cfg.routing)) {
       const deny = await trip($, mem, cfg, p.rule, p.detail, msg[p.rule as keyof typeof msg])
       if (deny !== undefined) return deny
     }
@@ -925,7 +926,9 @@ export const register: Register = on => {
       editGlobal($, mem, j => {
         const stored = (j.routing as Record<string, unknown> | undefined)?.[key]
         const [m = 'sonnet', ef = 'medium'] = (typeof stored === 'string' ? stored : cfg.routing[key]).split(':')
-        const next = part === 'model' ? cycle(MODEL_NAMES, m) : m
+        // Haiku is left out of the coding sections: it never writes code.
+        const choices = CODING_SECTIONS.includes(key) ? MODEL_NAMES.filter(n => n !== 'haiku') : MODEL_NAMES
+        const next = part === 'model' ? cycle(choices, m) : m
         const value = next === 'free' ? 'free' : `${next}:${part === 'effort' ? cycle(EFFORTS, ef) : ef || 'medium'}`
         j.routing = { ...(j.routing as object), [key]: value }
       })
@@ -979,7 +982,7 @@ export const register: Register = on => {
               </Box>,
             ])
           }),
-          note(<Text dimColor>Haiku never writes code. An agent counts toward every section with its model and effort. A project's own .lean-project.json overrides these.</Text>)
+          note(<Text dimColor>Haiku is not offered for coding and is refused there. An agent counts toward every section with its model and effort. A project's own .lean-project.json overrides these.</Text>)
         )}
         {section(
           'workflow', 'Workflow',
