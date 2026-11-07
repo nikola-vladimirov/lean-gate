@@ -653,6 +653,27 @@ export const register: Register = on => {
     return sections.length === result.sections.length ? result : { sections }
   }).catch(($, e, next) => next(e))
 
+  // While the panel is closed, a one-button row above the prompt reopens it (the app has no toolbar slot for a mod).
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const open = (await $.ui.panes().catch(() => [])).some(p => p.id === PANE)
+    if (open) return next(e)
+    // Other mods share this slot: draw theirs below ours. next(e) rejects only when nothing answers beneath (the test harness).
+    const below = await next(e).catch(() => undefined)
+    const { Box, Button } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        <Button key="open-panel" plain label="Open lean-gate panel" onPress={() => void $.ui.open({ id: PANE, title: 'lean-gate' }).then(() => $.ui.invalidate('ui.render')).catch(() => undefined)} />
+        {below}
+      </Box>
+    )
+  }).catch(($, e, next) => next(e))
+
+  on('ui.close', async ($, e, next) => {
+    const result = await next(e)
+    if (e.id === PANE) $.ui.invalidate('ui.render')
+    return result
+  }).catch(($, e, next) => next(e))
+
   // The band lives in a pane the surface docks beside the transcript, not above the prompt.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const b = await load($)

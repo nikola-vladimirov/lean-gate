@@ -582,6 +582,20 @@ test('the band renders compact and with details, and its buttons write the globa
   expect(w.noTimeout).toEqual([])
 })
 
+test('a closed panel leaves an Open button above the prompt that reopens it', async ($, on) => {
+  world(on, {})
+  const opened: string[] = []
+  on('ui.open', (_, e) => {
+    opened.push(e.id)
+    return { isPlaced: true }
+  })
+  const ui = await $.ui.mount({ plugin: 'lean-project', component: 'AbovePrompt', surface: 'terminal', props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 110, scroll: { offset: 0, bodyRows: 20 }, view: {} } })
+  await ui.press({ key: 'open-panel' })
+  await settle()
+  expect(opened).toEqual(['lean-gate'])
+  await ui.unmount()
+})
+
 // ---- Rules from the recurring reminders, and the rule builder.
 
 const DASH = String.fromCharCode(0x2014)
