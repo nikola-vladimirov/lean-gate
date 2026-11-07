@@ -1,4 +1,5 @@
-export type LeanGateRoute = 'main' | 'sonnet' | 'opus' | 'free'
+/** "main", "free", or "<model>:<effort>" such as "opus:xhigh". */
+export type LeanGateRoute = string
 
 export type LeanGateViolation = {
   /** Epoch milliseconds. */

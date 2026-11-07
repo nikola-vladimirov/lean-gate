@@ -16,7 +16,7 @@ Contents: [Opening and closing](#opening-and-closing) · [The top row](#the-top-
 | Item | Meaning | What you can do |
 | --- | --- | --- |
 | Dot and `warn` / `block` / `off` | The master level. It caps every rule: at `warn` every rule only warns, at `block` each rule uses its own level, at `off` nothing is enforced. | Press to cycle. |
-| `route main` | Which model Claude is told to use for this task: main (no instruction), sonnet·med, opus·high or free (a free OpenCode model). Anything but main adds a "Routing for this task" line to the session prompt. | Press to cycle. |
+| `route main` | Which model Claude is told to use for this task: main (no instruction), haiku, sonnet, opus, fable or free (a free OpenCode model). A second button beside it appears for a real model and cycles the effort (low, medium, high, xhigh, max). Anything but main adds a "Routing for this task" line (for example `opus:xhigh`) to the session prompt. Session only, not saved. | Press the model to cycle; press the effort to cycle. |
 | `no route` (orange) | The first Edit, Write or Agent call of the last turn had no `routing:` line before it. | Nothing; it clears next turn. |
 | `lead 6 / sub 0` | Reads (Read, Grep, Glob) the main session made itself, and subagents it started, since the last `/clear`. Turns orange when the main session has read many files in a row with no edit (see `delegate-more`). | None. |
 | `250k/300k` | Context used against the context limit (set under Workflow and limits). From 80 percent a **New session** button appears: it asks Claude to update the state file and tell you to start fresh. | Press New session. |

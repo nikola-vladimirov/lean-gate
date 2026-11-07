@@ -821,6 +821,19 @@ test('allow once and block once: the band arms a one-shot override that the next
   await ui.unmount()
 })
 
+test('the route button picks a model, then an effort', async ($, on) => {
+  world(on, config({ mode: 'warn' }))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ key: 'route-effort' })).toBeUndefined()
+  await ui.press({ key: 'route' })
+  await ui.press({ key: 'route' })
+  expect(await ui.find({ type: 'Button', label: 'route sonnet' })).toBeDefined()
+  await ui.press({ key: 'route-effort' })
+  await ui.press({ key: 'route-effort' })
+  expect(await ui.find({ type: 'Button', label: 'high' })).toBeDefined()
+  await ui.unmount()
+})
+
 test('routing and workflow buttons write the global config', async ($, on) => {
   const w = world(on, config({ mode: 'warn' }))
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })

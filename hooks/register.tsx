@@ -62,14 +62,11 @@ const EMPTY: LeanGateBand = {
 const band = atom({ plugin: 'lean-project', key: 'band' } as const, EMPTY)
 const PANE = 'lean-gate'
 
-const ROUTES: LeanGateRoute[] = ['main', 'sonnet', 'opus', 'free']
-const ROUTE_LABEL: Record<LeanGateRoute, string> = { main: 'main', sonnet: 'sonnet·med', opus: 'opus·high', free: 'free' }
-const ROUTE_TEXT: Record<LeanGateRoute, string> = {
-  main: '',
-  sonnet: 'sonnet:medium',
-  opus: 'opus:high',
-  free: 'a free OpenCode model (name ends in -free)',
-}
+// The route is "main" (no instruction), "free", or "<model>:<effort>", the same choices as Model routing.
+const ROUTE_MODELS = ['main', 'haiku', 'sonnet', 'opus', 'fable', 'free']
+const EFFORT_LIST = ['low', 'medium', 'high', 'xhigh', 'max']
+const routeOk = (v: unknown): v is LeanGateRoute => typeof v === 'string' && /^(main|free|(haiku|sonnet|opus|fable):(low|medium|high|xhigh|max))$/.test(v)
+const routeText = (r: LeanGateRoute) => (r === 'free' ? 'a free OpenCode model (name ends in -free)' : r)
 const PACKS = ['wp', 'bricks', 'ui-ux']
 // Ready-made patterns for the rule builder: the band has buttons, not a text field. Anything else goes in custom_rules by hand or via Ask Claude.
 const PRESETS = [
@@ -142,7 +139,7 @@ function sane(raw: unknown): LeanGateBand {
     .slice(-50)
   return {
     details: r.details === true,
-    route: oneOf(r.route, ROUTES, 'main'),
+    route: routeOk(r.route) ? r.route : 'main',
     run: num(r.run, 0),
     lead: num(r.lead, 0),
     sub: num(r.sub, 0),
@@ -726,7 +723,7 @@ export const register: Register = on => {
     if (auto_memory) sections.push({ id: 'lean-gate:auto-memory', text: 'Project memory is automatic: when you decide something, finish a milestone or learn a fact the next session needs, record it yourself with lean-project memory add "<one line>" --tag decision|state|link|note. One line each, no progress chatter.', scope: 'session' as const })
     if (auto_lessons) sections.push({ id: 'lean-gate:auto-lessons', text: 'Lessons are automatic: when the person corrects you, or you repeat a mistake, record it yourself with lean-project lesson "<what to do differently>". The second sighting of the same text becomes a local rule.', scope: 'session' as const })
     if (workflow !== '') sections.push({ id: 'lean-gate:workflow', text: `Workflow for this project: ${workflow}`, scope: 'session' as const })
-    if (route !== 'main') sections.push({ id: 'lean-gate:route', text: `Routing for this task: ${ROUTE_TEXT[route]}`, scope: 'session' as const })
+    if (route !== 'main') sections.push({ id: 'lean-gate:route', text: `Routing for this task: ${routeText(route)}`, scope: 'session' as const })
     return sections.length === result.sections.length ? result : { sections }
   }).catch(($, e, next) => next(e))
 
@@ -795,7 +792,10 @@ export const register: Register = on => {
       const r = await shell($, await here(), `lean-project pack ${state} ${name}`)
       $.ui.toast(`${name} ${state}: takes effect next session${r?.exitCode ? ` (${cut((r.stderr || r.stdout).trim(), 60)})` : ''}`)
     }
-    const cycleRoute = () => patch($, { route: ROUTES[(ROUTES.indexOf(b.route) + 1) % ROUTES.length] ?? 'main' })
+    const [rModel = 'main', rEffort = 'medium'] = b.route.split(':')
+    const setRoute = (m: string, ef: string) => patch($, { route: m === 'main' || m === 'free' ? m : `${m}:${ef}` })
+    const cycleRouteModel = () => setRoute(ROUTE_MODELS[(ROUTE_MODELS.indexOf(rModel) + 1) % ROUTE_MODELS.length] ?? 'main', rEffort)
+    const cycleRouteEffort = () => setRoute(rModel, EFFORT_LIST[(EFFORT_LIST.indexOf(rEffort) + 1) % EFFORT_LIST.length] ?? 'medium')
 
     const levelColor = { off: 'inactive', warn: 'warning', block: 'success' } as const
     const stateAge = now - b.stateAt
@@ -813,8 +813,9 @@ export const register: Register = on => {
         <Text color={levelColor[cfg.mode]}>●</Text>
         <Button key="mode" plain label={cfg.mode} onPress={() => void editGlobal($, mem, j => (j.mode = nextLevel(cfg.mode)))} />
       </Box>,
-      <Button key="route" plain label={`route ${ROUTE_LABEL[b.route]}`} onPress={cycleRoute} />,
+      <Button key="route" plain label={`route ${rModel}`} onPress={cycleRouteModel} />,
     ]
+    if (rModel !== 'main' && rModel !== 'free') parts.push(<Button key="route-effort" plain label={rEffort} onPress={cycleRouteEffort} />)
     if (b.noRoute) parts.push(<Text color="warning">no route</Text>)
     parts.push(
       <Text color={b.run >= cfg.delegate_after_lead_calls ? 'warning' : undefined}>
