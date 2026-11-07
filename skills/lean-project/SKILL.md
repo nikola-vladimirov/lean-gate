@@ -19,8 +19,8 @@ A full review runs on every major release and every 5 to 10 minor ones; `review-
 
 | The user wants to | Read |
 |---|---|
-| Start a new project | `STARTUP.md` first (mandatory setup cards), then `NEW-PROJECT.md` (loose ideas go through `GRILL.md`) |
-| Take over a project already under way that has no phased plan | `STARTUP.md` first (mandatory setup cards), then `NEW-PROJECT.md`, "Adopting a project" |
+| Start a new project | `STARTUP.md` first (mandatory setup cards), then `STRUCTURE.md` (the layout) and `NEW-PROJECT.md` (loose ideas go through `GRILL.md`) |
+| Take over a project already under way that has no phased plan | `STARTUP.md` first (mandatory setup cards), then `STRUCTURE.md`, "Adopting a project that exists", and `NEW-PROJECT.md`, "Adopting a project" |
 | Sharpen a fuzzy change, feature or design in an existing project | `GRILL.md` (with docs) |
 | Organize, audit or trim docs, CLAUDE.md, memory or handoffs | `DOCS.md` |
 | Build from the plan (a phase, a feature, a release) | `BUILD.md` |

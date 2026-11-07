@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULTS, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
+import { DEFAULTS, parseRegistry, projectAt, projectMentioned, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
 
 test('config: project beats global, rules merge per key, bad JSON falls back to defaults', () => {
   const global = parseJson('{"mode":"block","rules":{"routing-line":"block"},"context_limit":200000}')
@@ -174,4 +174,16 @@ test('rule 7 test commands: runners and interpreted test scripts count; lint, ty
 test('regexOk: ordinary patterns pass, hang-prone shapes are refused', () => {
   for (const ok of [String.raw`\bsudo\b`, String.raw`git\s+push\b[^|;&]*(--force\b|\s-f\b)`, '(demos?|examples?)/', String.raw`\.(zip|sql)$`, 'TODO|FIXME']) expect(regexOk(ok)).toBe(true)
   for (const bad of ['(a+)+$', '(a*)*', '(a|aa)+', '(x{1,}){2,}', String.raw`(a)\1`, '(', 'a'.repeat(301)]) expect(regexOk(bad)).toBe(false)
+})
+
+test('project registry: folder match picks the deepest project, a name in a prompt finds another one', () => {
+  const reg = parseRegistry(JSON.stringify([{ name: 'Nashenski', path: 'E:/Claude Sessions/nashenski', aliases: ['nashenski commerce'] }, { name: 'Sessions', path: 'E:/Claude Sessions' }, { name: 'bad' }]))
+  expect(reg.length).toBe(2)
+  expect(projectAt(reg, 'e:/claude sessions/nashenski/src')?.name).toBe('Nashenski')
+  expect(projectAt(reg, 'E:/Claude Sessions/other')?.name).toBe('Sessions')
+  expect(projectAt(reg, 'C:/x')).toBeUndefined()
+  expect(projectMentioned(reg, 'fix the Nashenski commerce checkout', 'C:/x')?.name).toBe('Nashenski')
+  expect(projectMentioned(reg, 'fix the Nashenski checkout', 'E:/Claude Sessions/nashenski')).toBeUndefined()
+  expect(projectMentioned(reg, 'nothing here', 'C:/x')).toBeUndefined()
+  expect(parseRegistry('{ nope')).toEqual([])
 })

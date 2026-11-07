@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook: once the conversation's context passes the limit, nudge (the user and Claude)
+. "$(dirname "$0")/gate-on.sh"; gate_on context_nudge || exit 0
 # to update the state file and start a fresh session. Silent below the limit; then once per step.
 # Context size = input + cache tokens of the latest main-thread reply in the transcript.
 input=$(cat)

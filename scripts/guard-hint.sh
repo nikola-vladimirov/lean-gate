@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # PostToolUse on Write/Edit: when Claude edits a doc or a test file, point it at the matching guard, once per session.
+. "$(dirname "$0")/gate-on.sh"; gate_on guard_hints || exit 0
 # The em dash check is lean-gate's no-em-dashes rule, not this hook. Silent otherwise, and for the reference copies.
 input=$(cat)
 field() { printf '%s' "$input" | tr -d '\n' | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p"; }

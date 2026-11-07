@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # SessionStart: lean-project is always on. Prints the standing rules for every session, the WordPress
+. "$(dirname "$0")/gate-on.sh"; gate_on startup_notes || exit 0
 # pointer when the working folder is a WordPress project, and a setup line once per project (marked in the data folder).
 root=${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
 cat <<'EOF'

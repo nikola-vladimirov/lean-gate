@@ -7,6 +7,10 @@ import {
   CODE_RELEASE,
   RULES,
   ROUTING_KEYS,
+  HELPERS,
+  parseRegistry,
+  projectAt,
+  projectMentioned,
   CODING_SECTIONS,
   sectionsFor,
   changelogMissing,
@@ -37,7 +41,7 @@ import {
   sha1Hex,
   repoKey,
 } from './gate'
-import type { Config, Level, RoutingKey } from './gate'
+import type { Config, Level, Project, RoutingKey } from './gate'
 
 const EMPTY: LeanGateBand = {
   details: false,
@@ -58,6 +62,9 @@ const EMPTY: LeanGateBand = {
   shut: [],
   board: [],
   lessons: [],
+  proj: '',
+  projNew: false,
+  projHit: null,
 }
 const band = atom({ plugin: 'lean-project', key: 'band' } as const, EMPTY)
 const PANE = 'lean-gate'
@@ -67,6 +74,7 @@ const ROUTE_MODELS = ['main', 'haiku', 'sonnet', 'opus', 'fable', 'free']
 const EFFORT_LIST = ['low', 'medium', 'high', 'xhigh', 'max']
 const routeOk = (v: unknown): v is LeanGateRoute => typeof v === 'string' && /^(main|free|(haiku|sonnet|opus|fable):(low|medium|high|xhigh|max))$/.test(v)
 const routeText = (r: LeanGateRoute) => (r === 'free' ? 'a free OpenCode model (name ends in -free)' : r)
+const HELPER_LABEL: Record<(typeof HELPERS)[number], string> = { startup_notes: 'startup notes', context_nudge: 'context nudge', guard_hints: 'doc and test hints', session_drafts: 'session drafts' }
 const PACKS = ['wp', 'bricks', 'ui-ux']
 // Ready-made patterns for the rule builder: the band has buttons, not a text field. Anything else goes in custom_rules by hand or via Ask Claude.
 const PRESETS = [
@@ -156,6 +164,9 @@ function sane(raw: unknown): LeanGateBand {
     dueRepos: Array.isArray(r.dueRepos) ? r.dueRepos.filter((n): n is string => typeof n === 'string').slice(0, 40) : [],
     shut: Array.isArray(r.shut) ? r.shut.filter((n): n is string => typeof n === 'string').slice(0, 40) : [],
     board: Array.isArray(r.board) ? r.board.filter((n): n is string => typeof n === 'string').slice(0, 16) : [],
+    proj: typeof r.proj === 'string' ? r.proj : '',
+    projNew: r.projNew === true,
+    projHit: typeof (r.projHit as { name?: unknown } | null)?.name === 'string' && typeof (r.projHit as { path?: unknown }).path === 'string' ? (r.projHit as { name: string; path: string }) : null,
     lessons: Array.isArray(r.lessons) ? r.lessons.filter((n): n is string => typeof n === 'string').slice(0, 12) : [],
   }
 }
@@ -378,6 +389,24 @@ async function readBoard($: EngineInterface) {
 async function readLessons($: EngineInterface) {
   const r = await shell($, norm(await $.session.cwd()), 'lean-project lessons')
   await patch($, { lessons: lines(r?.stdout ?? '', 12) })
+}
+
+// Project registry (~/.claude/lean-projects.json): which project the folder is, and whether a prompt names another one.
+const loadRegistry = async ($: EngineInterface) => parseRegistry((await readText($, `${await claudeDir($)}/lean-projects.json`)) ?? undefined)
+function editRegistry($: EngineInterface, mem: Mem, edit: (list: Project[]) => Project[]): Promise<void> {
+  return enqueue(mem, async () => {
+    const file = `${await claudeDir($)}/lean-projects.json`
+    await $.fs.write(file, `${JSON.stringify(edit(parseRegistry((await readText($, file)) ?? undefined)), null, 2)}
+`)
+    $.ui.invalidate('ui.render')
+  }).catch(() => undefined)
+}
+const PROJECT_MARKERS = ['AGENTS.md', 'CLAUDE.md', '.git', 'README.md', 'package.json', 'composer.json']
+async function detectProject($: EngineInterface) {
+  const cwd = norm(await $.session.cwd())
+  const hit = projectAt(await loadRegistry($), cwd)
+  const marked = hit === undefined ? (await $.fs.list(cwd).catch(() => [])).some(f => PROJECT_MARKERS.includes(f.name)) : false
+  await patch($, { proj: hit?.name ?? '', projNew: marked })
 }
 
 // Rule 5: was the "routing:" line in the assistant text before this first Edit/Write/Agent call?
@@ -667,6 +696,10 @@ export const register: Register = on => {
     mem.agentsBy = {}
     mem.counted.clear()
     await patch($, { run: 0, noRoute: false }).catch(() => undefined)
+    void (async () => {
+      const hit = projectMentioned(await loadRegistry($), String((e as { text?: unknown }).text ?? ''), norm(await $.session.cwd()))
+      await patch($, { projHit: hit === undefined ? null : { name: hit.name, path: hit.path } })
+    })().catch(() => undefined)
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -713,6 +746,7 @@ export const register: Register = on => {
       await readMemory($)
       await readBoard($)
       await readLessons($)
+      await detectProject($)
     })().catch(() => undefined)
     return result
   }).catch(($, e, next) => next(e))
@@ -921,6 +955,26 @@ export const register: Register = on => {
       $.ui.toast(cut((r?.stdout || r?.stderr || 'lean-project not found').trim().split('\n')[0] ?? '', 100))
       await readMemory($)
     }
+    // Project buttons: the registry is a file in ~/.claude; start, adopt and the walk test are asks that follow STRUCTURE.md.
+    const registerHere = async () => {
+      const dir = await here()
+      await editRegistry($, mem, list => (projectAt(list, dir) ? list : [...list, { name: base(dir), path: dir, aliases: [] }]))
+      await detectProject($)
+    }
+    const unregisterHere = async () => {
+      const dir = await here()
+      await editRegistry($, mem, list => list.filter(p => p.path.toLowerCase() !== projectAt(list, dir)?.path.toLowerCase()))
+      await detectProject($)
+    }
+    const startProject = ask('Start a new project in this folder: follow STRUCTURE.md in the lean-project skill (the setup cards, then the stage scaffold with AGENTS.md as the entry). Ask me what it is for first.', 'Ask Claude: start a project')
+    const adoptProject = ask('Adopt this folder as a hub project: audit it, show me a migration map and wait for my approval before changing anything (STRUCTURE.md, adopting). Keep my existing CLAUDE.md and state file.', 'Ask Claude: adopt this folder')
+    const walkTest = ask('Run the walk test on this project (STRUCTURE.md): from the files alone, orient, say what the next step is and report the status. List anything you could not find.', 'Ask Claude: walk test')
+    const attachHit = ask(`Read the entry file (AGENTS.md, else CLAUDE.md) and the state file of ${b.projHit?.name ?? 'the project'} at ${b.projHit?.path ?? ''}, and use them for this chat. Do not edit anything there.`, 'Ask Claude: read that project')
+    const switchHit = ask(`Change this session\x27s working directory to ${b.projHit?.path ?? ''} with the change_directory tool, then read its entry file and state file.`, 'Ask Claude: switch folder')
+    const toggleHelper = (key: (typeof HELPERS)[number]) => editGlobal($, mem, j => {
+        const stored = (j.helpers as Record<string, unknown> | undefined)?.[key]
+        j.helpers = { ...(j.helpers as object), [key]: stored === false }
+      })
     const toggleAuto = (key: 'auto_memory' | 'auto_lessons') => editGlobal($, mem, j => (j[key] = j[key] !== true))
     const askBoard = ask('Run lean-project board and tell me in a few lines which cards are blocked or waiting on another card, and what each needs.', 'Ask Claude: check the board')
     const addLesson = ask('Record a lesson with lean-project lesson "<what to do differently>" for what went wrong or was corrected in this session. Ask me what it should say first.', 'Ask Claude: record a lesson')
@@ -962,6 +1016,24 @@ export const register: Register = on => {
     return stack(
       <Box flexDirection="column" width={e.props.bodyColumns}>
         {compact}
+        {section(
+          'project', 'Project',
+          note(<Text dimColor wrap="truncate-end">{b.proj ? `registered: ${b.proj}` : b.projNew ? 'a project folder that is not registered' : 'no project detected in this folder'}</Text>),
+          <Box flexDirection="row" gap={1} flexWrap="wrap">
+            {b.proj === '' ? gb('proj-add', 'Register this folder', registerHere) : gb('proj-remove', 'Unregister', unregisterHere)}
+            {gb('proj-start', 'Start project', startProject)}
+            {gb('proj-adopt', 'Adopt this folder', adoptProject)}
+            {gb('proj-walk', 'Walk test', walkTest)}
+          </Box>,
+          b.projHit !== null && note(<Text color="warning" wrap="truncate-end">you mentioned {b.projHit.name} ({b.projHit.path})</Text>),
+          b.projHit !== null && (
+            <Box flexDirection="row" gap={1} flexWrap="wrap">
+              {gb('proj-attach', `Attach ${b.projHit.name}`, attachHit)}
+              {gb('proj-switch', 'Switch folder', switchHit)}
+              {gb('proj-ignore', 'Ignore', () => patch($, { projHit: null }))}
+            </Box>
+          )
+        )}
         {section('rules', 'Rules', note(<Text dimColor>press a level to cycle off, warn, block</Text>), ...ruleRows)}
         {section(
           'builder', 'Rule builder',
@@ -1005,6 +1077,13 @@ export const register: Register = on => {
             {gb('wf-edit', 'Edit workflow text', editWorkflow)}
           </Box>,
           note(<Text dimColor wrap="truncate-end">{cfg.workflow === '' ? 'no workflow text set' : cfg.workflow}</Text>)
+        )}
+        {section(
+          'helpers', 'Built-in helpers',
+          note(<Text dimColor>small scripts that run on their own; each is one click</Text>),
+          <Box flexDirection="row" gap={1} flexWrap="wrap">
+            {HELPERS.map(k => gb(`hk-${k}`, `${HELPER_LABEL[k]}: ${cfg.helpers[k] ? 'on' : 'off'}`, () => toggleHelper(k)))}
+          </Box>
         )}
         {section(
           'memory', 'Project memory',

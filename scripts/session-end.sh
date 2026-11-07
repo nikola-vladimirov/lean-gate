@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # SessionEnd hook: write the handoff draft of a real session (two or more user messages) to a dated file for review.
+. "$(dirname "$0")/gate-on.sh"; gate_on session_drafts || exit 0
 # No model call. Write-once: an existing draft is never overwritten. The folder is the plugin setting
 # session_drafts_dir (for example a folder in an Obsidian vault), or the plugin data folder when unset.
 input=$(cat)

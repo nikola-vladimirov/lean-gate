@@ -28,6 +28,10 @@ export const RULES = [
 export type Rule = (typeof RULES)[number]
 
 // A rule the person builds in the band: which tools it watches ("Edit|Write", "*" = all), a regex over the call's text, a message.
+// The shell helpers lean-gate switches: startup notes, the context nudge, doc and test guard hints, session drafts.
+export const HELPERS = ['startup_notes', 'context_nudge', 'guard_hints', 'session_drafts'] as const
+export type HelperKey = (typeof HELPERS)[number]
+
 export type CustomRule = { id: string; tool: string; match: string; message: string; level: Level }
 
 // read = reading and writing text and images; complex = hard coding; the rest are what they say.
@@ -60,6 +64,7 @@ export type Config = {
   pr_repos: string[]
   // When on, the session prompt tells Claude to record project memory notes, or lessons, by itself.
   auto_memory: boolean
+  helpers: Record<HelperKey, boolean>
   auto_lessons: boolean
   state_file: string
   // Paths a public repo must not receive (rule no-demo-files-public); a regex source, case-insensitive.
@@ -96,6 +101,7 @@ export const DEFAULTS: Config = {
   workflow: '',
   pr_repos: [],
   auto_memory: false,
+  helpers: { startup_notes: true, context_nudge: true, guard_hints: true, session_drafts: true },
   auto_lessons: false,
   delegate_after_lead_calls: 8,
   context_limit: 300000,
@@ -149,7 +155,7 @@ function customRule(v: unknown): CustomRule | undefined {
 }
 
 export function mergeConfig(...layers: Record<string, unknown>[]): Config {
-  const c: Config = { ...DEFAULTS, rules: { ...DEFAULTS.rules }, routing: { ...DEFAULTS.routing }, agent_caps: { ...DEFAULTS.agent_caps }, custom: [], pr_repos: [] }
+  const c: Config = { ...DEFAULTS, helpers: { ...DEFAULTS.helpers }, rules: { ...DEFAULTS.rules }, routing: { ...DEFAULTS.routing }, agent_caps: { ...DEFAULTS.agent_caps }, custom: [], pr_repos: [] }
   for (const l of layers) {
     if (isLevel(l.mode)) c.mode = l.mode
     if (typeof l.demo_pattern === 'string' && regexOk(l.demo_pattern)) c.demo_pattern = l.demo_pattern
@@ -172,6 +178,7 @@ export function mergeConfig(...layers: Record<string, unknown>[]): Config {
     if (typeof l.state_file === 'string') c.state_file = l.state_file
     if (typeof l.max_agents === 'number' && Number.isInteger(l.max_agents) && l.max_agents >= 0) c.max_agents = l.max_agents
     if (typeof l.workflow === 'string') c.workflow = l.workflow.slice(0, 600)
+    for (const k of HELPERS) if (typeof obj(l.helpers)[k] === 'boolean') c.helpers[k] = obj(l.helpers)[k] as boolean
     if (typeof l.auto_memory === 'boolean') c.auto_memory = l.auto_memory
     if (typeof l.auto_lessons === 'boolean') c.auto_lessons = l.auto_lessons
     if (Array.isArray(l.pr_repos)) c.pr_repos = l.pr_repos.filter((n): n is string => typeof n === 'string' && n !== '').slice(0, 40)
@@ -607,4 +614,40 @@ export function isTestCommand(command: string): boolean {
     if (n === 'php' && progName(script) === 'artisan') return a[k + 1] === 'test'
     return TEST_NAMES.has(progName(script)) || TEST_PATH.test(script) || (n === 'php' && TEST_SCRIPT.test(script))
   })
+}
+
+// Project registry: the projects the hub knows, matched by folder or by name. Detection reads; it never acts.
+export type Project = { name: string; path: string; aliases: string[] }
+
+export function parseRegistry(text: string | undefined): Project[] {
+  const list = (() => {
+    try {
+      return JSON.parse(text ?? '[]') as unknown
+    } catch {
+      return []
+    }
+  })()
+  if (!Array.isArray(list)) return []
+  const out: Project[] = []
+  for (const p of list) {
+    const o = obj(p)
+    if (typeof o.name !== 'string' || typeof o.path !== 'string' || o.name === '' || o.path === '') continue
+    out.push({ name: o.name, path: norm(o.path), aliases: Array.isArray(o.aliases) ? o.aliases.filter((a): a is string => typeof a === 'string' && a.length >= 4) : [] })
+  }
+  return out.slice(0, 200)
+}
+
+// The project whose folder holds `cwd` (the longest path wins).
+export function projectAt(reg: Project[], cwd: string): Project | undefined {
+  const c = norm(cwd).toLowerCase()
+  return reg.filter(p => c === p.path.toLowerCase() || c.startsWith(`${p.path.toLowerCase()}/`)).sort((a, b) => b.path.length - a.path.length)[0]
+}
+
+// A project named in the prompt (name or alias, whole word, 4+ letters) that is not the one already open.
+const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+export function projectMentioned(reg: Project[], text: string, cwd: string): Project | undefined {
+  const here = projectAt(reg, cwd)
+  const t = text.toLowerCase()
+  const named = (n: string) => n.length >= 4 && new RegExp('(^|[^a-z0-9])' + escRe(n.toLowerCase()) + '($|[^a-z0-9])').test(t)
+  return reg.find(p => p !== here && [p.name, ...p.aliases].some(named))
 }

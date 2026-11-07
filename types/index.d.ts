@@ -37,6 +37,12 @@ export type LeanGateBand = {
   /** Lines of `lean-project board` and `lean-project lessons`, read when the details open. */
   board: string[]
   lessons: string[]
+  /** Name of the registered project the folder belongs to; empty when none. */
+  proj: string
+  /** True when the folder has project markers but is not in the registry. */
+  projNew: boolean
+  /** A registered project named in the last prompt that is not the open one. */
+  projHit: { name: string; path: string } | null
   /** Ids of the details sections the person folded shut; everything else shows. */
   shut: string[]
 }

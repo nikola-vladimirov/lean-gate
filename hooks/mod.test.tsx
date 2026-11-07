@@ -844,6 +844,29 @@ test('the route button picks a model, then an effort', async ($, on) => {
   await ui.unmount()
 })
 
+test('helper buttons switch the shell helpers in the global config', async ($, on) => {
+  const w = world(on, config({ mode: 'warn' }))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'details' })
+  await ui.press({ key: 'hk-context_nudge' })
+  expect(JSON.parse(w.files[CONFIG] ?? '{}').helpers.context_nudge).toBe(false)
+  await ui.press({ key: 'hk-context_nudge' })
+  expect(JSON.parse(w.files[CONFIG] ?? '{}').helpers.context_nudge).toBe(true)
+  await ui.unmount()
+})
+
+test('the project buttons register and unregister the folder, and a prompt naming a project shows it', async ($, on) => {
+  const w = world(on, config({ mode: 'warn' }))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'details' })
+  await ui.press({ key: 'proj-add' })
+  const reg = () => JSON.parse(w.files[`${CLAUDE}/lean-projects.json`] ?? '[]') as { name: string }[]
+  expect(reg().length).toBe(1)
+  await ui.press({ key: 'proj-remove' })
+  expect(reg().length).toBe(0)
+  await ui.unmount()
+})
+
 test('routing and workflow buttons write the global config', async ($, on) => {
   const w = world(on, config({ mode: 'warn' }))
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
