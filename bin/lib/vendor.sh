@@ -41,12 +41,13 @@ cmd_vendor() {
     retire)
       local s="${LEAN_SETTINGS:-$HOME/.claude/settings.json}"
       [ -f "$s" ] || die "vendor retire: no settings file"
+      cp "$s" "$s.bak"
       node -e '
         const fs = require("fs"), f = process.argv[1], j = JSON.parse(fs.readFileSync(f, "utf8"));
         j.enabledPlugins = j.enabledPlugins || {};
         for (const k of ["ponytail@ponytail", "wp-woo-performance-audit@wp-woo-performance-audit", "lean-gate@lean-gate-local"]) if (k in j.enabledPlugins) j.enabledPlugins[k] = false;
         fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");
-      ' "$s" && echo "standalone ponytail, wp-woo-performance-audit and lean-gate switched off (next session)"
+      ' "$s" && echo "standalone ponytail, wp-woo-performance-audit and lean-gate switched off (next session; the old file is kept as settings.json.bak)"
       return 0 ;;
     *) die "vendor: status | update ponytail | retire" ;;
   esac

@@ -15,7 +15,7 @@ phpcs_standard() {
 
 phpcs_files() {
   local tag; tag=$(git describe --tags --abbrev=0 2>/dev/null)
-  { [ -n "$tag" ] && git diff --name-only "$tag" -- '*.php' 2>/dev/null || git diff --name-only HEAD -- '*.php' 2>/dev/null; git ls-files -o --exclude-standard -- '*.php' 2>/dev/null; } | sort -u | while IFS= read -r f; do [ -f "$f" ] && echo "$f"; done
+  { [ -n "$tag" ] && git diff --name-only "$tag" -- '*.php' 2>/dev/null || git diff --name-only HEAD -- '*.php' 2>/dev/null; git ls-files -o --exclude-standard -- '*.php' 2>/dev/null; } | sort -u | grep -Ev '(^|/)(vendor|node_modules)/' | while IFS= read -r f; do [ -f "$f" ] && echo "$f"; done
 }
 
 cmd_phpcs() {

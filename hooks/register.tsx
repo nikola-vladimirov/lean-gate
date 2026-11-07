@@ -288,7 +288,10 @@ const CODE_GLOBS = ['*.php', '*.js', '*.jsx', '*.ts', '*.tsx', '*.py', '*.sh']
 // Git Bash when it is installed (plain `bash` on Windows may be WSL's), else whatever `bash` is on PATH.
 async function shell($: EngineInterface, cwd: string, command: string) {
   const bash = (await $.fs.exists(GIT_BASH).catch(() => false)) ? GIT_BASH : 'bash'
-  return $.process.run([bash, '-c', command], { cwd, timeoutMs: OTHER_MS }).catch(() => undefined)
+  // The app does not put the plugin's bin folder on PATH for its own processes, so `lean-project` is found through the plugin root.
+  const pluginRoot = $.plugin.root
+  const root = pluginRoot ? `export PATH="$(cygpath -u '${pluginRoot}' 2>/dev/null || echo '${norm(pluginRoot)}')/bin:$PATH"; ` : ''
+  return $.process.run([bash, '-c', `${root}${command}`], { cwd, timeoutMs: OTHER_MS }).catch(() => undefined)
 }
 
 // A fingerprint of the uncommitted code: the diff of tracked code files against HEAD, plus the untracked code files' names and sizes.

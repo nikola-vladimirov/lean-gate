@@ -32,6 +32,7 @@ function world(on: On, files: Record<string, string>) {
     git: [] as { argv: string[]; cwd: string; env?: Record<string, string> }[],
     order: [] as string[],
     noTimeout: [] as string[],
+    shells: [] as string[],
     gitSilent: false,
     failing: undefined as RegExp | undefined,
     bottom: 0,
@@ -68,7 +69,10 @@ function world(on: On, files: Record<string, string>) {
     if (typeof e.init?.timeoutMs !== 'number') ctx.noTimeout.push(e.argv.join(' '))
     const done = (exitCode: number, stdout = '') => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
     if (e.argv[0] === 'gh') return done(0, ctx.ghPublic ? 'false\n' : 'true\n')
-    if (e.argv[0] !== 'git') return done(0)
+    if (e.argv[0] !== 'git') {
+      ctx.shells.push(e.argv.join(' '))
+      return done(0)
+    }
     ctx.order.push('git')
     // A timeout rejects the call, as the engine does.
     if (ctx.gitSilent) return { deny: 'timeout' }
@@ -736,6 +740,8 @@ test('project memory: the band shows the index line and its buttons ask Claude o
   for (const key of ['mem-remember', 'mem-recall', 'mem-forget']) expect(await ui.find({ key })).toBeDefined()
   await ui.press({ key: 'mem-remember' })
   expect(w.toasts.at(-1)).toContain('project memory note')
+  // The CLI is reached through the plugin bin folder, since the app does not put it on PATH.
+  expect(w.shells.some(s => s.includes('/bin:$PATH') && s.includes('lean-project memory'))).toBe(true)
   await ui.press({ key: 'mem-forget' })
   expect(w.noTimeout).toEqual([])
   await ui.unmount()
