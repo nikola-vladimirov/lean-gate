@@ -53,6 +53,7 @@ const EMPTY: LeanGateBand = {
   memory: '',
   memoryProjects: [],
   dueRepos: [],
+  shut: [],
 }
 const band = atom({ plugin: 'lean-project', key: 'band' } as const, EMPTY)
 const PANE = 'lean-gate'
@@ -147,6 +148,7 @@ function sane(raw: unknown): LeanGateBand {
     memory: typeof r.memory === 'string' ? r.memory : '',
     memoryProjects: Array.isArray(r.memoryProjects) ? r.memoryProjects.filter((n): n is string => typeof n === 'string').slice(0, 12) : [],
     dueRepos: Array.isArray(r.dueRepos) ? r.dueRepos.filter((n): n is string => typeof n === 'string').slice(0, 40) : [],
+    shut: Array.isArray(r.shut) ? r.shut.filter((n): n is string => typeof n === 'string').slice(0, 40) : [],
   }
 }
 const load = async ($: EngineInterface): Promise<LeanGateBand> => sane(await read($, band))
@@ -801,6 +803,14 @@ export const register: Register = on => {
     if (!b.details) return stack(compact)
 
     const level = (rule: string) => cfg.rules[rule] ?? 'off'
+    // A title that folds its body shut or open; the folded ids are kept in the band state.
+    const flip = (id: string) => update($, band, x => { const s = sane(x); return { ...s, shut: s.shut.includes(id) ? s.shut.filter(n => n !== id) : [...s.shut, id] } })
+    const fold = (id: string, title: string, body: RenderChildren[]) => (
+      <Box key={id} flexDirection="column">
+        {gb(`sec-${id}`, `${b.shut.includes(id) ? '▸' : '▾'} ${title}`, () => flip(id))}
+        {!b.shut.includes(id) && <Box flexDirection="column" paddingLeft={2}>{body}</Box>}
+      </Box>
+    )
     // One rule per row: the level button, then the name over a dim one-line meaning. Rules sit in groups, each under a title.
     const ruleRow = (rule: string, info: string) => (
       <Box key={`row-${rule}`} flexDirection="row" gap={1}>
@@ -819,10 +829,7 @@ export const register: Register = on => {
     if (loose.length > 0) groups.push(['Other', loose.map(r => ruleRow(r, ''))])
     if (cfg.custom.length > 0) groups.push(['Your rules', cfg.custom.map(r => ruleRow(r.id, r.message))])
     const ruleRows = groups.map(([title, rows], i) => (
-      <Box key={`group-${title}`} flexDirection="column" marginTop={i === 0 ? 0 : 1}>
-        <Text>{title.toUpperCase()}</Text>
-        {rows}
-      </Box>
+      <Box key={`group-${title}`} flexDirection="column" marginTop={i === 0 ? 0 : 1}>{fold(`rules:${title}`, `${title} (${rows.length})`, rows)}</Box>
     ))
     const ponytail = (await readText($, `${await claudeDir($)}/.ponytail-active`))?.trim() ?? 'off'
     const recent = b.violations.slice(-5).reverse()
@@ -872,22 +879,16 @@ export const register: Register = on => {
       $.ui.toast(`lean-gate: the next ${onceRule} hit is ${kind === 'allow' ? 'allowed' : 'blocked'} once`)
     }
 
-    // Each block gets a dim title line and an indented body, so the sections read one by one.
     // A plain Button pads its label by one column, so text lines get the same pad to line up with the buttons.
     const note = (child: RenderChildren) => <Box paddingLeft={1}>{child}</Box>
-    const section = (title: string, ...body: RenderChildren[]) => (
-      <Box flexDirection="column" marginTop={1}>
-        <Text dimColor>▸ {title}</Text>
-        <Box flexDirection="column" paddingLeft={2}>{body}</Box>
-      </Box>
-    )
+    const section = (id: string, title: string, ...body: RenderChildren[]) => <Box key={id} flexDirection="column" marginTop={1}>{fold(id, title, body)}</Box>
 
     return stack(
       <Box flexDirection="column" width={e.props.bodyColumns}>
         {compact}
-        {section('rules (press the level to cycle off, warn, block)', ...ruleRows)}
+        {section('rules', 'Rules', note(<Text dimColor>press a level to cycle off, warn, block</Text>), ...ruleRows)}
         {section(
-          'rule builder',
+          'builder', 'Rule builder',
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {gb('rb-pattern', `pattern: ${preset.label} (${preset.tool})`, () => { mem.draft.preset = (mem.draft.preset + 1) % PRESETS.length; redraw() })}
             {gb('rb-level', `level: ${mem.draft.level}`, () => { mem.draft.level = nextLevel(mem.draft.level); redraw() })}
@@ -902,14 +903,14 @@ export const register: Register = on => {
           gb('rb-ask', 'Ask Claude to write a custom rule', askRule)
         )}
         {section(
-          'model routing (model:effort per kind of work, press to change)',
+          'routing', 'Model routing',
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {ROUTING_KEYS.map(k => gb(`rt-${k}`, `${k}: ${cfg.routing[k]}`, () => setRouting(k, cycle(MODEL_CHOICES, cfg.routing[k]))))}
           </Box>,
           note(<Text dimColor>Haiku never writes code; a project's own .lean-project.json overrides these</Text>)
         )}
         {section(
-          'workflow',
+          'workflow', 'Workflow',
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {gb('wf-agents', `max agents per turn: ${cfg.max_agents === 0 ? 'no limit' : cfg.max_agents}`, () => setMaxAgents(cycle(AGENT_LIMITS, cfg.max_agents)))}
             {gb('wf-edit', 'Edit workflow text', editWorkflow)}
@@ -917,7 +918,7 @@ export const register: Register = on => {
           note(<Text dimColor wrap="truncate-end">{cfg.workflow === '' ? 'no workflow text set' : cfg.workflow}</Text>)
         )}
         {section(
-          'project memory',
+          'memory', 'Project memory',
           note(<Text dimColor wrap="truncate-end">{b.memory || 'no memory for this project yet'}</Text>),
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {gb('mem-remember', 'Remember', remember)}
@@ -932,21 +933,21 @@ export const register: Register = on => {
           )
         )}
         {section(
-          'review',
+          'review', 'Review',
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {gb('a-reviewed', 'Reviewed', reviewed)}
             {b.dueRepos.map(n => gb(`rv-${n}`, `Reviewed ${n}`, () => reviewChild(n)))}
           </Box>
         )}
         {section(
-          'packs (apply next session)',
+          'packs', 'Packs (apply next session)',
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {PACKS.flatMap(p => [gb(`${p}-on`, `${p} on`, () => setPack(p, 'on')), gb(`${p}-off`, `${p} off`, () => setPack(p, 'off'))])}
           </Box>,
           b.packs !== '' && note(<Text dimColor wrap="truncate-end">{b.packs}</Text>)
         )}
         {section(
-          'ponytail',
+          'ponytail', 'Ponytail',
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {PONYTAIL.map(l => (
               <Button key={`pt-${l}`} label={l} {...(l === ponytail ? { variant: 'primary' as const } : { plain: true as const, dimColor: true })} onPress={() => void $.command.run({ command: 'ponytail', args: l })} />
@@ -955,7 +956,7 @@ export const register: Register = on => {
           </Box>
         )}
         {section(
-          'recent violations',
+          'violations', 'Recent violations',
           recent.length === 0 ? note(<Text dimColor>none</Text>) : recent.map(v => note(<Text wrap="truncate-end" color={v.action === 'block' ? 'error' : 'warning'}>{v.action} {v.rule} {cut(v.detail, 60)}</Text>)),
           onceRule !== undefined && (
             <Box flexDirection="row" gap={1} flexWrap="wrap">

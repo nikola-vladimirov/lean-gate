@@ -33,6 +33,8 @@ export type LeanGateBand = {
   memoryProjects: string[]
   /** Immediate child repos of a non-repo cwd whose review is due; read when the details open. */
   dueRepos: string[]
+  /** Ids of the details sections the person folded shut; everything else shows. */
+  shut: string[]
 }
 
 declare module 'claude-code' {
