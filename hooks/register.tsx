@@ -664,15 +664,14 @@ export const register: Register = on => {
     const tokens = (await $.session.usage().catch(() => undefined))?.context.tokens
     const { Box, Text, Button } = $.ui.resolve(e)
     // A labelled rule above our band, with a blank line before it, keeps it visibly apart from ponytail's.
-    // 4 columns short of bodyColumns: the prompt box pads its content, and a full-width rule wrapped onto a second line.
-    const cols = (e.props.bodyColumns ?? 60) - 4
-    const rule = '── lean-gate ' + '─'.repeat(Math.max(4, cols - 13))
+    // Short fixed rules: the app draws this text in a proportional font, so a rule sized to bodyColumns wrapped or fell short.
+    const rule = '── lean-gate ──────────'
     const stack = (mine: NonNullable<typeof below>) => (
       <Box flexDirection="column">
         <Text> </Text>
         <Text dimColor>{rule}</Text>
         {mine}
-        <Text dimColor>{'─'.repeat(cols)}</Text>
+        <Text dimColor>{'─'.repeat(rule.length)}</Text>
         {below}
       </Box>
     )
