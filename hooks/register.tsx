@@ -416,6 +416,23 @@ function editRegistry($: EngineInterface, mem: Mem, edit: (list: Project[]) => P
   }).catch(() => undefined)
 }
 const PROJECT_MARKERS = ['AGENTS.md', 'CLAUDE.md', '.git', 'README.md', 'package.json', 'composer.json']
+// Registers every immediate child folder that looks like a project (not archives, backups or reference copies).
+async function registerChildren($: EngineInterface, mem: Mem): Promise<number> {
+  const cwd = norm(await $.session.cwd())
+  const dirs = (await $.fs.list(cwd).catch(() => [])).filter(f => f.kind === 'dir' && !f.name.startsWith('.') && !/(-reference|^archive|^backups?)$/i.test(f.name)).slice(0, 60)
+  const found: Project[] = []
+  for (const d of dirs) {
+    const inside = await $.fs.list(`${cwd}/${d.name}`).catch(() => [])
+    if (inside.some(f => PROJECT_MARKERS.filter(m => m !== 'README.md').includes(f.name))) found.push({ name: d.name, path: `${cwd}/${d.name}`, aliases: [] })
+  }
+  let added = 0
+  await editRegistry($, mem, list => {
+    const fresh = found.filter(p => !list.some(x => x.path.toLowerCase() === p.path.toLowerCase()))
+    added = fresh.length
+    return [...list, ...fresh]
+  })
+  return added
+}
 async function detectProject($: EngineInterface) {
   const cwd = norm(await $.session.cwd())
   const hit = projectAt(await loadRegistry($), cwd)
@@ -989,6 +1006,11 @@ export const register: Register = on => {
       await editRegistry($, mem, list => list.filter(p => p.path.toLowerCase() !== projectAt(list, dir)?.path.toLowerCase()))
       await detectProject($)
     }
+    const registerAll = async () => {
+      const n = await registerChildren($, mem)
+      $.ui.toast(n > 0 ? `registered ${n} project folder${n === 1 ? '' : 's'}` : 'no new project folders found here')
+      await detectProject($)
+    }
     const startProject = ask('Start a new project in this folder: follow STRUCTURE.md in the lean-project skill (the setup cards, then the stage scaffold with AGENTS.md as the entry). Ask me what it is for first.', 'Ask Claude: start a project')
     const adoptProject = ask('Adopt this folder as a hub project: audit it, show me a migration map and wait for my approval before changing anything (STRUCTURE.md, adopting). Keep my existing CLAUDE.md and state file.', 'Ask Claude: adopt this folder')
     const walkTest = ask('Run the walk test on this project (STRUCTURE.md): from the files alone, orient, say what the next step is and report the status. List anything you could not find.', 'Ask Claude: walk test')
@@ -1062,6 +1084,7 @@ export const register: Register = on => {
           note(<Text dimColor wrap="truncate-end">{b.proj ? `registered: ${b.proj}` : b.projNew ? 'a project folder that is not registered' : 'no project detected in this folder'}</Text>),
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {b.proj === '' ? gb('proj-add', 'Register this folder', registerHere) : gb('proj-remove', 'Unregister', unregisterHere)}
+            {gb('proj-all', 'Register folders here', registerAll)}
             {gb('proj-start', 'Start project', startProject)}
             {gb('proj-adopt', 'Adopt this folder', adoptProject)}
             {gb('proj-walk', 'Walk test', walkTest)}

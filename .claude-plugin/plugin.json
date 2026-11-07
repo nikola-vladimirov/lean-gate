@@ -2,7 +2,7 @@
   "name": "lean-project",
   "displayName": "lean-project",
   "version": "0.31.6",
-  "description": "Spend fewer tokens per session: new-project plans with phase gates (loose ideas grilled into decisions first), plans reconstructed for projects already under way, grilling with a glossary for fuzzy changes, lean docs and state files, file maps for reading only the needed lines, model routing for builds, a shared board so parallel agents exchange facts while they run, release-gate reviews (code, performance, security) of the code changed since the last tag, with a full review on major releases and every 5 to 10 minor ones, a session-end handoff draft written for review (no model call), a lessons review that lists stale unpromoted lessons and drops superseded ones, a layer table saying which file answers which question, a sessions command and a session-start line naming the project's newest draft, a command list in its own file so the always-loaded skill stays short, a selftest run in CI on every push, an em-dash hint on written files, a 400-token budget check for the session-start hook, a gain command that logs token use per run, a trivial-task default for the routing line,idempotent board posts, a lessons export to a vault note, command groups split into bin/lib, a reminder to start a fresh session when the context grows, per-project memory linked across projects, a control band with an enforcing rule gate (rule builder included), and on-demand packs (Bricks, WordPress skills, the ui-ux plugin) that stay off until needed (lean-project pack on or off).",
+  "description": "One hub for how Claude works on your projects: lean-gate (a docked panel and an enforcing rule gate, every setting a button) controls the lean-project token-saving skills, ponytail, the WordPress performance audit, PHPCS with the WordPress standard and the ICM project structure. Projects are registered, detected, started and adopted from the panel, and every project follows one layout with AGENTS.md as the entry file. Includes model routing with agent caps, project memory, a shared board, lessons, a release review gate, and on-demand packs.",
   "author": {
     "name": "nikola-vladimirov",
     "url": "https://github.com/nikola-vladimirov"
@@ -56,6 +56,7 @@
   "skills": [
     "./skills",
     "./vendor/ponytail/skills",
-    "./vendor/wp-audit/skills"
+    "./vendor/wp-audit/skills",
+    "./vendor/icm/skills"
   ]
 }

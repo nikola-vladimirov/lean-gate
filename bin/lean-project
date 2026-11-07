@@ -21,6 +21,7 @@
 #   lean-project delegate config | set <key> <value> | check | run <brief> <output>   route bulk work to the project's runner (none, llama, opencode)
 #   lean-project audit perf [dir or files...]  performance and HPOS scan of WordPress and WooCommerce code (wp-woo-performance-audit skill); files = the release list from review-scope
 #   lean-project pack status|on|off <bricks|wp|ui-ux>   skill packs and plugins that stay off until needed; takes effect in the next session
+#   lean-project icm links|index|viz [folder]   the ICM checks on a hub project: unresolved links, folder indexes, a graph (needs Python 3)
 #   lean-project phpcs [status|fix] [files]   PHP_CodeSniffer with the WordPress standard on the changed PHP files (needs PHP and Composer)
 #   lean-project vendor status|update ponytail|retire   the vendored tools (ponytail, performance audit), updating them, and switching off the standalone plugins they replace
 #   lean-project memory add|list|recall|forget|link|unlink|index|projects   per-project memory, linked across projects; session start prints only its one-line index
@@ -833,6 +834,7 @@ case "$cmd" in
   pack) cmd_pack "$@" ;;
   vendor) cmd_vendor "$@" ;;
   phpcs) cmd_phpcs "$@" ;;
+  icm) cmd_icm "$@" ;;
   memory) cmd_memory "$@" || exit 1 ;;
   gain) cmd_gain "$@" ;;
   *) sed -n '5,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;

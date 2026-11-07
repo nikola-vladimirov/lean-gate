@@ -881,6 +881,20 @@ test('the project buttons register and unregister the folder, and a prompt namin
   await ui.unmount()
 })
 
+test('Register folders here adds the child folders that look like projects', async ($, on) => {
+  const w = world(on, config({ mode: 'warn' }))
+  w.dirs['C:/proj'] = ['shop', 'old-reference', 'notes']
+  w.dirs['C:/proj/shop'] = ['AGENTS.md', 'src']
+  w.dirs['C:/proj/old-reference'] = ['.git']
+  w.dirs['C:/proj/notes'] = ['a.txt']
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'details' })
+  await ui.press({ key: 'proj-all' })
+  const reg = JSON.parse(w.files[`${CLAUDE}/lean-projects.json`] ?? '[]') as { name: string }[]
+  expect(reg.map(p => p.name)).toEqual(['shop'])
+  await ui.unmount()
+})
+
 test('ponytail mode button cycles the flag file, and an unregistered folder shows the setup button', async ($, on) => {
   const w = world(on, config({ mode: 'warn' }))
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })

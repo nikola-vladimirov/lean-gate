@@ -1,6 +1,6 @@
 # Vendored tools and the standalone plugins they replace. Sourced by bin/lean-project.
 #   lean-project vendor status            versions of the vendored tools and which standalone plugins are still enabled
-#   lean-project vendor update ponytail   fetch the latest tag from its repo into vendor/ (review the diff, then commit)
+#   lean-project vendor update ponytail|icm   fetch the latest from its repo into vendor/ (review the diff, then commit)
 #   lean-project vendor retire            switch off the standalone plugins the hub contains (next session)
 
 vendor_root() { cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd; }
@@ -10,7 +10,7 @@ cmd_vendor() {
   case "${1:-status}" in
     status)
       local n v
-      for n in ponytail wp-audit; do
+      for n in ponytail wp-audit icm; do
         v=$(cut -d' ' -f1 "$root/vendor/$n/VERSION" 2>/dev/null)
         echo "$n: ${v:-not vendored}"
       done
@@ -20,7 +20,14 @@ cmd_vendor() {
       done
       return 0 ;;
     update)
-      [ "${2:-}" = ponytail ] || die "vendor update: only 'ponytail' for now"
+      if [ "${2:-}" = icm ]; then
+        local t2; t2=$(mktemp -d)
+        git clone -q --depth 1 https://github.com/RinDig/icm-architect.git "$t2/icm" || die "vendor update: clone failed"
+        local x; for x in SKILL.md references assets scripts; do rm -rf "$root/vendor/icm/skills/icm-architect/$x"; cp -r "$t2/icm/$x" "$root/vendor/icm/skills/icm-architect/"; done
+        cp "$t2/icm/LICENSE" "$root/vendor/icm/LICENSE"; echo "$(git -C "$t2/icm" rev-parse --short HEAD) https://github.com/RinDig/icm-architect" > "$root/vendor/icm/VERSION"
+        rm -rf "$t2"; echo "icm-architect updated: review with git diff, run the tests, then commit"; return 0
+      fi
+      [ "${2:-}" = ponytail ] || die "vendor update: ponytail or icm"
       local tag tmp; tmp=$(mktemp -d)
       tag=$(gh api repos/DietrichGebert/ponytail/releases/latest --jq .tag_name 2>/dev/null) || die "vendor update: could not read the latest ponytail tag"
       git clone -q --depth 1 --branch "$tag" https://github.com/DietrichGebert/ponytail.git "$tmp/pt" || die "vendor update: clone failed"
