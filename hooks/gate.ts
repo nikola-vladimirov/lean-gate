@@ -55,6 +55,9 @@ export type Config = {
   max_agents: number
   workflow: string
   pr_repos: string[]
+  // When on, the session prompt tells Claude to record project memory notes, or lessons, by itself.
+  auto_memory: boolean
+  auto_lessons: boolean
   state_file: string
   // Paths a public repo must not receive (rule no-demo-files-public); a regex source, case-insensitive.
   demo_pattern: string
@@ -88,6 +91,8 @@ export const DEFAULTS: Config = {
   max_agents: 0,
   workflow: '',
   pr_repos: [],
+  auto_memory: false,
+  auto_lessons: false,
   delegate_after_lead_calls: 8,
   context_limit: 300000,
   routing: { read: 'sonnet:medium', code: 'sonnet:high', complex: 'opus:high', review: 'opus:high', plan: 'opus:high' },
@@ -163,6 +168,8 @@ export function mergeConfig(...layers: Record<string, unknown>[]): Config {
     if (typeof l.state_file === 'string') c.state_file = l.state_file
     if (typeof l.max_agents === 'number' && Number.isInteger(l.max_agents) && l.max_agents >= 0) c.max_agents = l.max_agents
     if (typeof l.workflow === 'string') c.workflow = l.workflow.slice(0, 600)
+    if (typeof l.auto_memory === 'boolean') c.auto_memory = l.auto_memory
+    if (typeof l.auto_lessons === 'boolean') c.auto_lessons = l.auto_lessons
     if (Array.isArray(l.pr_repos)) c.pr_repos = l.pr_repos.filter((n): n is string => typeof n === 'string' && n !== '').slice(0, 40)
   }
   return c

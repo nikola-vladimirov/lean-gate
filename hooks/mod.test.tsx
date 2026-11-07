@@ -836,6 +836,12 @@ test('routing and workflow buttons write the global config', async ($, on) => {
   expect(saved().max_agents).toBe(2)
   await ui.press({ key: 'wf-delegate' })
   expect(saved().delegate_after_lead_calls).toBe(12)
+  await ui.press({ key: 'mem-auto' })
+  expect(saved().auto_memory).toBe(true)
+  await ui.press({ key: 'mem-auto' })
+  expect(saved().auto_memory).toBe(false)
+  await ui.press({ key: 'les-auto' })
+  expect(saved().auto_lessons).toBe(true)
   await ui.unmount()
 })
 

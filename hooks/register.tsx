@@ -55,6 +55,8 @@ const EMPTY: LeanGateBand = {
   memoryProjects: [],
   dueRepos: [],
   shut: [],
+  board: [],
+  lessons: [],
 }
 const band = atom({ plugin: 'lean-project', key: 'band' } as const, EMPTY)
 const PANE = 'lean-gate'
@@ -155,6 +157,8 @@ function sane(raw: unknown): LeanGateBand {
     memoryProjects: Array.isArray(r.memoryProjects) ? r.memoryProjects.filter((n): n is string => typeof n === 'string').slice(0, 12) : [],
     dueRepos: Array.isArray(r.dueRepos) ? r.dueRepos.filter((n): n is string => typeof n === 'string').slice(0, 40) : [],
     shut: Array.isArray(r.shut) ? r.shut.filter((n): n is string => typeof n === 'string').slice(0, 40) : [],
+    board: Array.isArray(r.board) ? r.board.filter((n): n is string => typeof n === 'string').slice(0, 16) : [],
+    lessons: Array.isArray(r.lessons) ? r.lessons.filter((n): n is string => typeof n === 'string').slice(0, 12) : [],
   }
 }
 const load = async ($: EngineInterface): Promise<LeanGateBand> => sane(await read($, band))
@@ -365,6 +369,17 @@ async function readMemory($: EngineInterface) {
   const [index, projects] = await Promise.all([shell($, cwd, 'lean-project memory index'), shell($, cwd, 'lean-project memory projects')])
   const names = (projects?.stdout ?? '').split('\n').map(l => l.trim().split(/\s+/)[1]).filter((n): n is string => !!n && /^[a-z0-9._-]+$/.test(n))
   await patch($, { memory: cut((index?.stdout ?? '').trim(), 160), memoryProjects: names.slice(0, 12) })
+}
+
+// The shared task board and the lessons, as the CLI prints them: a few trimmed lines each, shown in the details.
+const lines = (out: string, n: number) => out.split('\n').map(l => cut(l.trim(), 100)).filter(Boolean).slice(0, n)
+async function readBoard($: EngineInterface) {
+  const r = await shell($, norm(await $.session.cwd()), 'lean-project board')
+  await patch($, { board: r === undefined || r.exitCode ? ['no board here yet: cards appear when work is delegated'] : lines(r.stdout, 16) })
+}
+async function readLessons($: EngineInterface) {
+  const r = await shell($, norm(await $.session.cwd()), 'lean-project lessons')
+  await patch($, { lessons: lines(r?.stdout ?? '', 12) })
 }
 
 // Rule 5: was the "routing:" line in the assistant text before this first Edit/Write/Agent call?
@@ -702,8 +717,10 @@ export const register: Register = on => {
   on('prompt.compose', async ($, e, next) => {
     const result = await next(e)
     const { route } = await load($)
-    const { workflow } = await loadConfig($)
+    const { workflow, auto_memory, auto_lessons } = await loadConfig($)
     const sections = [...result.sections]
+    if (auto_memory) sections.push({ id: 'lean-gate:auto-memory', text: 'Project memory is automatic: when you decide something, finish a milestone or learn a fact the next session needs, record it yourself with lean-project memory add "<one line>" --tag decision|state|link|note. One line each, no progress chatter.', scope: 'session' as const })
+    if (auto_lessons) sections.push({ id: 'lean-gate:auto-lessons', text: 'Lessons are automatic: when the person corrects you, or you repeat a mistake, record it yourself with lean-project lesson "<what to do differently>". The second sighting of the same text becomes a local rule.', scope: 'session' as const })
     if (workflow !== '') sections.push({ id: 'lean-gate:workflow', text: `Workflow for this project: ${workflow}`, scope: 'session' as const })
     if (route !== 'main') sections.push({ id: 'lean-gate:route', text: `Routing for this task: ${ROUTE_TEXT[route]}`, scope: 'session' as const })
     return sections.length === result.sections.length ? result : { sections }
@@ -753,6 +770,8 @@ export const register: Register = on => {
         await patch($, { packs: cut(((await shell($, await here(), 'lean-project pack status'))?.stdout ?? '').trim().split('\n').slice(0, 2).join(' | '), 100) })
         await patch($, { dueRepos: await dueChildren($, await here()) })
         await readMemory($)
+        await readBoard($)
+        await readLessons($)
       }
     }
     const review = async () => {
@@ -887,6 +906,10 @@ export const register: Register = on => {
       $.ui.toast(cut((r?.stdout || r?.stderr || 'lean-project not found').trim().split('\n')[0] ?? '', 100))
       await readMemory($)
     }
+    const toggleAuto = (key: 'auto_memory' | 'auto_lessons') => editGlobal($, mem, j => (j[key] = j[key] !== true))
+    const askBoard = ask('Run lean-project board and tell me in a few lines which cards are blocked or waiting on another card, and what each needs.', 'Ask Claude: check the board')
+    const addLesson = ask('Record a lesson with lean-project lesson "<what to do differently>" for what went wrong or was corrected in this session. Ask me what it should say first.', 'Ask Claude: record a lesson')
+    const reviewLessons = ask('Run lean-project lessons review, then rewrite each old lesson into a rule (record it again) or drop it with lean-project lessons drop.', 'Ask Claude: review old lessons')
     const remember = ask('Add a project memory note for what we decided or did in this session: lean-project memory add "<one line>" --tag decision|state|link|note.', 'Ask Claude: add a project memory note')
     const recall = ask('Run lean-project memory recall and tell me in a few lines where this project stands.', 'Ask Claude: recall project memory')
     const forgetLast = () => memShell(String.raw`n=$(lean-project memory list | tail -n 1 | cut -d" " -f1); case "$n" in ''|*[!0-9]*) echo "memory: nothing to forget" ;; *) lean-project memory forget "$n" ;; esac`)
@@ -971,13 +994,34 @@ export const register: Register = on => {
             {gb('mem-remember', 'Remember', remember)}
             {gb('mem-recall', 'Recall', recall)}
             {gb('mem-forget', 'Forget last', forgetLast)}
+            {gb('mem-auto', `automatic: ${cfg.auto_memory ? 'on' : 'off'}`, () => toggleAuto('auto_memory'))}
           </Box>,
+          note(<Text dimColor>automatic: Claude records decisions and milestones by itself</Text>),
           b.memoryProjects.length > 0 && (
             <Box flexDirection="row" gap={1} flexWrap="wrap">
               <Text dimColor>link to</Text>
               {b.memoryProjects.map(n => gb(`mem-link-${n}`, n, () => memShell(`lean-project memory link ${n}`)))}
             </Box>
           )
+        )}
+        {section(
+          'board', 'Board (how agents talk to each other)',
+          ...(b.board.length === 0 ? [note(<Text dimColor>not read yet: press Refresh</Text>)] : b.board.map(l => note(<Text dimColor wrap="truncate-end">{l}</Text>))),
+          <Box flexDirection="row" gap={1} flexWrap="wrap">
+            {gb('board-refresh', 'Refresh', () => readBoard($))}
+            {gb('board-ask', 'Ask Claude to check it', askBoard)}
+          </Box>
+        )}
+        {section(
+          'lessons', 'Lessons and local rules',
+          ...(b.lessons.length === 0 ? [note(<Text dimColor>not read yet: press Refresh</Text>)] : b.lessons.map(l => note(<Text dimColor wrap="truncate-end">{l}</Text>))),
+          <Box flexDirection="row" gap={1} flexWrap="wrap">
+            {gb('les-refresh', 'Refresh', () => readLessons($))}
+            {gb('les-add', 'Add lesson', addLesson)}
+            {gb('les-review', 'Review old', reviewLessons)}
+            {gb('les-auto', `automatic: ${cfg.auto_lessons ? 'on' : 'off'}`, () => toggleAuto('auto_lessons'))}
+          </Box>,
+          note(<Text dimColor>a lesson seen twice becomes a local rule; automatic: Claude records them itself</Text>)
         )}
         {section(
           'review', 'Review',

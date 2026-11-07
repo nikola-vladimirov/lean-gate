@@ -33,6 +33,9 @@ export type LeanGateBand = {
   memoryProjects: string[]
   /** Immediate child repos of a non-repo cwd whose review is due; read when the details open. */
   dueRepos: string[]
+  /** Lines of `lean-project board` and `lean-project lessons`, read when the details open. */
+  board: string[]
+  lessons: string[]
   /** Ids of the details sections the person folded shut; everything else shows. */
   shut: string[]
 }
