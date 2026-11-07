@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULTS, parseRegistry, projectAt, projectMentioned, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
+import { isPhpcsCommand, DEFAULTS, parseRegistry, projectAt, projectMentioned, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
 
 test('config: project beats global, rules merge per key, bad JSON falls back to defaults', () => {
   const global = parseJson('{"mode":"block","rules":{"routing-line":"block"},"context_limit":200000}')
@@ -186,4 +186,9 @@ test('project registry: folder match picks the deepest project, a name in a prom
   expect(projectMentioned(reg, 'fix the Nashenski checkout', 'E:/Claude Sessions/nashenski')).toBeUndefined()
   expect(projectMentioned(reg, 'nothing here', 'C:/x')).toBeUndefined()
   expect(parseRegistry('{ nope')).toEqual([])
+})
+
+test('isPhpcsCommand: phpcs, phpcbf, composer scripts and lean-project phpcs count; mentions do not', () => {
+  for (const c of ['vendor/bin/phpcs src', 'phpcbf a.php', 'composer run lint', 'composer phpcs', 'lean-project phpcs', 'php vendor/bin/phpcs']) expect(isPhpcsCommand(c)).toBe(true)
+  for (const c of ['cat phpcs.xml', 'git commit -m "run phpcs"', 'composer install', 'lean-project board']) expect(isPhpcsCommand(c)).toBe(false)
 })

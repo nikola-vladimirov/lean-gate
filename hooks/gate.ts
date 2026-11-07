@@ -24,12 +24,13 @@ export const RULES = [
   'push-after-tag',
   'one-pr-per-fix',
   'distinctive-session-names',
+  'phpcs-before-done',
 ] as const
 export type Rule = (typeof RULES)[number]
 
 // A rule the person builds in the band: which tools it watches ("Edit|Write", "*" = all), a regex over the call's text, a message.
 // The shell helpers lean-gate switches: startup notes, the context nudge, doc and test guard hints, session drafts.
-export const HELPERS = ['startup_notes', 'context_nudge', 'guard_hints', 'session_drafts'] as const
+export const HELPERS = ['startup_notes', 'context_nudge', 'guard_hints', 'session_drafts', 'ponytail'] as const
 export type HelperKey = (typeof HELPERS)[number]
 
 export type CustomRule = { id: string; tool: string; match: string; message: string; level: Level }
@@ -64,6 +65,7 @@ export type Config = {
   pr_repos: string[]
   // When on, the session prompt tells Claude to record project memory notes, or lessons, by itself.
   auto_memory: boolean
+  phpcs_standard: string
   helpers: Record<HelperKey, boolean>
   auto_lessons: boolean
   state_file: string
@@ -96,12 +98,14 @@ export const DEFAULTS: Config = {
     'push-after-tag': 'warn',
     'one-pr-per-fix': 'warn',
     'distinctive-session-names': 'block',
+    'phpcs-before-done': 'warn',
   },
   max_agents: 0,
   workflow: '',
   pr_repos: [],
   auto_memory: false,
-  helpers: { startup_notes: true, context_nudge: true, guard_hints: true, session_drafts: true },
+  phpcs_standard: 'WordPress',
+  helpers: { startup_notes: true, context_nudge: true, guard_hints: true, session_drafts: true, ponytail: true },
   auto_lessons: false,
   delegate_after_lead_calls: 8,
   context_limit: 300000,
@@ -179,6 +183,7 @@ export function mergeConfig(...layers: Record<string, unknown>[]): Config {
     if (typeof l.max_agents === 'number' && Number.isInteger(l.max_agents) && l.max_agents >= 0) c.max_agents = l.max_agents
     if (typeof l.workflow === 'string') c.workflow = l.workflow.slice(0, 600)
     for (const k of HELPERS) if (typeof obj(l.helpers)[k] === 'boolean') c.helpers[k] = obj(l.helpers)[k] as boolean
+    if (typeof l.phpcs_standard === 'string' && /^[A-Za-z-]{3,30}$/.test(l.phpcs_standard)) c.phpcs_standard = l.phpcs_standard
     if (typeof l.auto_memory === 'boolean') c.auto_memory = l.auto_memory
     if (typeof l.auto_lessons === 'boolean') c.auto_lessons = l.auto_lessons
     if (Array.isArray(l.pr_repos)) c.pr_repos = l.pr_repos.filter((n): n is string => typeof n === 'string' && n !== '').slice(0, 40)
@@ -597,6 +602,19 @@ const TEST_NAMES = new Set(['phpunit', 'pytest', 'vitest', 'jest'])
 const INTERPRETERS = new Set(['php', 'node', 'bash', 'sh', 'python', 'python3', 'py'])
 const TEST_PATH = /(^|[\\/])tests?[\\/][^ ]*\.(php|js|mjs|sh)$/i
 const TEST_SCRIPT = /(test|check|harness)[^/\\]*\.php$/i
+
+// PHP_CodeSniffer or its fixer, run directly, through composer scripts or through lean-project phpcs.
+export function isPhpcsCommand(command: string): boolean {
+  return allSegments(command).some(seg => {
+    const t = exe(seg)
+    const n = progName(t[0]?.v ?? '')
+    const a = t.slice(1).map(x => x.v)
+    if (n === 'phpcs' || n === 'phpcbf') return true
+    if (n === 'lean-project') return a[0] === 'phpcs'
+    if (n === 'composer') return a[0] === 'run' && /^(lint|phpcs|cs)/.test(a[1] ?? '') || a[0] === 'lint' || a[0] === 'phpcs'
+    return INTERPRETERS.has(n) && a.some(x => /(^|\/)phpc(s|bf)(\.phar)?$/.test(x))
+  })
+}
 
 export function isTestCommand(command: string): boolean {
   return allSegments(command).some(seg => {

@@ -1,0 +1,46 @@
+# Vendored tools and the standalone plugins they replace. Sourced by bin/lean-project.
+#   lean-project vendor status            versions of the vendored tools and which standalone plugins are still enabled
+#   lean-project vendor update ponytail   fetch the latest tag from its repo into vendor/ (review the diff, then commit)
+#   lean-project vendor retire            switch off the standalone plugins the hub contains (next session)
+
+vendor_root() { cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd; }
+
+cmd_vendor() {
+  local root; root=$(vendor_root)
+  case "${1:-status}" in
+    status)
+      local n v
+      for n in ponytail wp-audit; do
+        v=$(cut -d' ' -f1 "$root/vendor/$n/VERSION" 2>/dev/null)
+        echo "$n: ${v:-not vendored}"
+      done
+      local s="${LEAN_SETTINGS:-$HOME/.claude/settings.json}" k
+      for k in ponytail@ponytail wp-woo-performance-audit@wp-woo-performance-audit; do
+        grep -q "\"$k\": true" "$s" 2>/dev/null && echo "standalone still on: $k"
+      done
+      return 0 ;;
+    update)
+      [ "${2:-}" = ponytail ] || die "vendor update: only 'ponytail' for now"
+      local tag tmp; tmp=$(mktemp -d)
+      tag=$(gh api repos/DietrichGebert/ponytail/releases/latest --jq .tag_name 2>/dev/null) || die "vendor update: could not read the latest ponytail tag"
+      git clone -q --depth 1 --branch "$tag" https://github.com/DietrichGebert/ponytail.git "$tmp/pt" || die "vendor update: clone failed"
+      local f
+      for f in activate config instructions map mode-tracker runtime subagent; do cp "$tmp/pt/hooks/ponytail-$f.js" "$root/vendor/ponytail/hooks/"; done
+      rm -rf "$root/vendor/ponytail/skills" && cp -r "$tmp/pt/skills" "$root/vendor/ponytail/skills"
+      cp "$tmp/pt/LICENSE" "$root/vendor/ponytail/LICENSE"
+      echo "${tag#v} https://github.com/DietrichGebert/ponytail" > "$root/vendor/ponytail/VERSION"
+      rm -rf "$tmp"; echo "ponytail updated to ${tag#v}: review with git diff, run the tests, then commit"
+      return 0 ;;
+    retire)
+      local s="${LEAN_SETTINGS:-$HOME/.claude/settings.json}"
+      [ -f "$s" ] || die "vendor retire: no settings file"
+      node -e '
+        const fs = require("fs"), f = process.argv[1], j = JSON.parse(fs.readFileSync(f, "utf8"));
+        j.enabledPlugins = j.enabledPlugins || {};
+        for (const k of ["ponytail@ponytail", "wp-woo-performance-audit@wp-woo-performance-audit", "lean-gate@lean-gate-local"]) if (k in j.enabledPlugins) j.enabledPlugins[k] = false;
+        fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");
+      ' "$s" && echo "standalone ponytail, wp-woo-performance-audit and lean-gate switched off (next session)"
+      return 0 ;;
+    *) die "vendor: status | update ponytail | retire" ;;
+  esac
+}

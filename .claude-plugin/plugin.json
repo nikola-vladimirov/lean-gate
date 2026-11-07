@@ -52,5 +52,10 @@
       "default": "backups"
     }
   },
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "skills": [
+    "./skills",
+    "./vendor/ponytail/skills",
+    "./vendor/wp-audit/skills"
+  ]
 }

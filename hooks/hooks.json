@@ -10,6 +10,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-vendor.sh\" ponytail ponytail/hooks/ponytail-activate.js",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -42,6 +52,26 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/context-check.sh\"",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-vendor.sh\" ponytail ponytail/hooks/ponytail-mode-tracker.js",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-vendor.sh\" ponytail ponytail/hooks/ponytail-subagent.js",
+            "timeout": 15
           }
         ]
       }

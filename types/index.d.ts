@@ -37,6 +37,9 @@ export type LeanGateBand = {
   /** Lines of `lean-project board` and `lean-project lessons`, read when the details open. */
   board: string[]
   lessons: string[]
+  /** Ponytail mode from ~/.claude/.ponytail-active, and the lines of lean-project vendor status and phpcs status; read when the details open. */
+  ptMode: string
+  tools: string[]
   /** Name of the registered project the folder belongs to; empty when none. */
   proj: string
   /** True when the folder has project markers but is not in the registry. */

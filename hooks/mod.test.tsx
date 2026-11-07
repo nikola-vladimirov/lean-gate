@@ -383,9 +383,23 @@ test('rule 8 delegate-more: warn toasts once at the threshold and allows', async
   expect(lines(w.files).filter(l => l.includes('\tdelegate-more\twarn\t')).length).toBe(1)
 })
 
+test('phpcs-before-done: PHP edited and no PHPCS run is logged at turn end, a PHPCS run clears it', async ($, on) => {
+  const w = world(on, config({ mode: 'warn', rules: { 'lean-project-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off', 'state-file-fresh': 'off', 'tests-before-done': 'off' } }))
+  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.php', old_string: 'a', new_string: 'b' })
+  await $.turn.complete({ ...DONE })
+  await settle()
+  expect(lines(w.files).map(l => l.split('	')[2])).toContain('phpcs-before-done')
+  const before = lines(w.files).length
+  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.php', old_string: 'a', new_string: 'b' })
+  await $.tool.call(BASH('lean-project phpcs'))
+  await $.turn.complete({ ...DONE })
+  await settle()
+  expect(lines(w.files).length).toBe(before)
+})
+
 test('rules 6 and 7 at turn.complete: code edited with no state file and no test run', async ($, on) => {
   // The session-fact rules would log a row per PHP edit here; they have their own test.
-  const w = world(on, config({ mode: 'warn', rules: { 'lean-project-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off' } }))
+  const w = world(on, config({ mode: 'warn', rules: { 'lean-project-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off', 'phpcs-before-done': 'off' } }))
   await $.tool.call({ tool: 'Edit', file_path: 'C:\\proj\\src\\a.php', old_string: 'a', new_string: 'b' })
   await $.turn.complete({ ...DONE })
   await settle()
@@ -864,6 +878,18 @@ test('the project buttons register and unregister the folder, and a prompt namin
   expect(reg().length).toBe(1)
   await ui.press({ key: 'proj-remove' })
   expect(reg().length).toBe(0)
+  await ui.unmount()
+})
+
+test('ponytail mode button cycles the flag file, and an unregistered folder shows the setup button', async ($, on) => {
+  const w = world(on, config({ mode: 'warn' }))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button', label: 'Set up project' })).toBeDefined()
+  await ui.press({ key: 'details' })
+  await ui.press({ key: 'pt-mode' })
+  expect(w.files[`${CLAUDE}/.ponytail-active`]).toBe('lite')
+  await ui.press({ key: 'pt-mode' })
+  expect(w.files[`${CLAUDE}/.ponytail-active`]).toBe('full')
   await ui.unmount()
 })
 

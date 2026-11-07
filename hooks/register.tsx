@@ -27,6 +27,7 @@ import {
   isLeanSkill,
   isStateFile,
   isTestCommand,
+  isPhpcsCommand,
   isWpCode,
   isWpSkill,
   reviewUnscoped,
@@ -62,6 +63,8 @@ const EMPTY: LeanGateBand = {
   shut: [],
   board: [],
   lessons: [],
+  ptMode: '',
+  tools: [],
   proj: '',
   projNew: false,
   projHit: null,
@@ -74,7 +77,7 @@ const ROUTE_MODELS = ['main', 'haiku', 'sonnet', 'opus', 'fable', 'free']
 const EFFORT_LIST = ['low', 'medium', 'high', 'xhigh', 'max']
 const routeOk = (v: unknown): v is LeanGateRoute => typeof v === 'string' && /^(main|free|(haiku|sonnet|opus|fable):(low|medium|high|xhigh|max))$/.test(v)
 const routeText = (r: LeanGateRoute) => (r === 'free' ? 'a free OpenCode model (name ends in -free)' : r)
-const HELPER_LABEL: Record<(typeof HELPERS)[number], string> = { startup_notes: 'startup notes', context_nudge: 'context nudge', guard_hints: 'doc and test hints', session_drafts: 'session drafts' }
+const HELPER_LABEL: Record<(typeof HELPERS)[number], string> = { startup_notes: 'startup notes', context_nudge: 'context nudge', guard_hints: 'doc and test hints', session_drafts: 'session drafts', ponytail: 'ponytail hooks' }
 const PACKS = ['wp', 'bricks', 'ui-ux']
 // Ready-made patterns for the rule builder: the band has buttons, not a text field. Anything else goes in custom_rules by hand or via Ask Claude.
 const PRESETS = [
@@ -95,13 +98,13 @@ const DELEGATE_AFTER = [4, 6, 8, 12, 16] as const
 const CONTEXT_LIMITS = [200000, 300000, 500000, 1000000] as const
 const ROUTING_LABEL: Record<RoutingKey, string> = { read: 'Reading and writing (text, images)', code: 'Coding', complex: 'Complex coding', review: 'Review', plan: 'Planning' }
 // Rules that only ever warn (they run after the work), so a block override has nothing to act on.
-const WARN_ONLY = new Set(['routing-line', 'state-file-fresh', 'tests-before-done', 'push-after-tag'])
+const WARN_ONLY = new Set(['routing-line', 'state-file-fresh', 'tests-before-done', 'phpcs-before-done', 'push-after-tag'])
 // The details view lists rules by group, each with a one-line meaning.
 const RULE_GROUPS: readonly (readonly [string, readonly string[]])[] = [
   ['Agents and models', ['agent-needs-model-effort', 'no-haiku-coding', 'free-opencode-only', 'delegate-more', 'max-agents', 'review-edited-files-only', 'distinctive-session-names']],
   ['Every session', ['lean-project-first', 'ponytail-active', 'routing-line', 'state-file-fresh', 'tests-before-done', 'no-em-dashes']],
   ['Releases and git', ['release-needs-review', 'changelog-before-tag', 'push-after-tag', 'one-pr-per-fix', 'no-demo-files-public']],
-  ['WordPress and docs', ['wp-skills-for-wp-code', 'docs-before-builder']],
+  ['WordPress and docs', ['wp-skills-for-wp-code', 'docs-before-builder', 'phpcs-before-done']],
 ]
 const RULE_INFO: Record<string, string> = {
   'agent-needs-model-effort': 'Agent calls must set a model and effort',
@@ -115,6 +118,7 @@ const RULE_INFO: Record<string, string> = {
   'routing-line': 'State the model routing before the first call',
   'state-file-fresh': 'Touch the state file after code edits',
   'tests-before-done': 'Run tests after code edits',
+  'phpcs-before-done': 'Run PHPCS after PHP edits',
   'no-em-dashes': 'No em dashes in files or commit messages',
   'distinctive-session-names': 'Sub-session titles start with date and time',
   'release-needs-review': 'Review before a release tag',
@@ -164,6 +168,8 @@ function sane(raw: unknown): LeanGateBand {
     dueRepos: Array.isArray(r.dueRepos) ? r.dueRepos.filter((n): n is string => typeof n === 'string').slice(0, 40) : [],
     shut: Array.isArray(r.shut) ? r.shut.filter((n): n is string => typeof n === 'string').slice(0, 40) : [],
     board: Array.isArray(r.board) ? r.board.filter((n): n is string => typeof n === 'string').slice(0, 16) : [],
+    ptMode: typeof r.ptMode === 'string' ? r.ptMode : '',
+    tools: Array.isArray(r.tools) ? r.tools.filter((n): n is string => typeof n === 'string').slice(0, 8) : [],
     proj: typeof r.proj === 'string' ? r.proj : '',
     projNew: r.projNew === true,
     projHit: typeof (r.projHit as { name?: unknown } | null)?.name === 'string' && typeof (r.projHit as { path?: unknown }).path === 'string' ? (r.projHit as { name: string; path: string }) : null,
@@ -178,6 +184,8 @@ type Mem = {
   edited: Set<string>
   stateTouched: boolean
   tested: boolean
+  phpcs: boolean
+  php: number
   routed: boolean
   warned: Set<string>
   // Skills loaded this session (kept across turns) and the rule-builder draft the band is editing.
@@ -392,6 +400,12 @@ async function readLessons($: EngineInterface) {
 }
 
 // Project registry (~/.claude/lean-projects.json): which project the folder is, and whether a prompt names another one.
+// Ponytail mode (the flag file its hooks keep) and the status lines of the vendored tools and PHPCS.
+async function readTools($: EngineInterface) {
+  const mode = ((await readText($, `${await claudeDir($)}/.ponytail-active`)) ?? 'off').trim() || 'off'
+  const r = await shell($, norm(await $.session.cwd()), 'lean-project vendor status; lean-project phpcs status')
+  await patch($, { ptMode: mode, tools: lines(r?.stdout ?? '', 8) })
+}
 const loadRegistry = async ($: EngineInterface) => parseRegistry((await readText($, `${await claudeDir($)}/lean-projects.json`)) ?? undefined)
 function editRegistry($: EngineInterface, mem: Mem, edit: (list: Project[]) => Project[]): Promise<void> {
   return enqueue(mem, async () => {
@@ -644,6 +658,7 @@ async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny
     mem.tested = true
     await patch($, { tests: ran.isError ? 'fail' : 'pass' })
   }
+  if (e.tool === 'Bash' && isPhpcsCommand(e.command)) mem.phpcs = true
   if ((e.tool === 'Edit' || e.tool === 'Write') && !ran.isError) {
     const path = norm(e.file_path)
     const now = await $.clock.now()
@@ -652,17 +667,20 @@ async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny
       await patch($, { stateAt: now })
     } else if (CODE_EDITED.test(path)) {
       mem.edited.add(path)
+      if (/.php$/i.test(path)) mem.php++
       await patch($, { codeAt: now })
     }
   }
 }
 
 export const register: Register = on => {
-  const mem: Mem = { edited: new Set(), stateTouched: false, tested: false, routed: false, warned: new Set(), leanLoaded: false, wpSkill: false, draft: { preset: 0, level: 'warn' }, docsRead: false, agents: 0, agentsBy: {}, counted: new Map(), tagged: false, pushed: false, once: new Map(), run: 0, lead: 0, sub: 0, chain: Promise.resolve() }
+  const mem: Mem = { edited: new Set(), stateTouched: false, tested: false, phpcs: false, php: 0, routed: false, warned: new Set(), leanLoaded: false, wpSkill: false, draft: { preset: 0, level: 'warn' }, docsRead: false, agents: 0, agentsBy: {}, counted: new Map(), tagged: false, pushed: false, once: new Map(), run: 0, lead: 0, sub: 0, chain: Promise.resolve() }
   const resetTurn = () => {
     mem.edited.clear()
     mem.stateTouched = false
     mem.tested = false
+    mem.phpcs = false
+    mem.php = 0
     mem.routed = false
     mem.tagged = false
     mem.pushed = false
@@ -711,6 +729,7 @@ export const register: Register = on => {
       const n = mem.edited.size
       const stateTouched = mem.stateTouched
       const tested = mem.tested
+      const phpUnchecked = mem.php > 0 && !mem.phpcs
       const unpushed = mem.tagged && !mem.pushed
       resetTurn()
       void (async () => {
@@ -718,6 +737,7 @@ export const register: Register = on => {
         if (unpushed) await trip($, mem, cfg, 'push-after-tag', 'a tag was made this turn and nothing was pushed', '', false)
         if (n > 0 && !stateTouched) await trip($, mem, cfg, 'state-file-fresh', `${n} code file(s) edited, no state file touched`, '', false)
         if (n > 0 && !tested) await trip($, mem, cfg, 'tests-before-done', `${n} code file(s) edited, no test command ran`, '', false)
+        if (phpUnchecked) await trip($, mem, cfg, 'phpcs-before-done', 'PHP files edited, PHPCS did not run', '', false)
         await refreshRelease($)
       })().catch(() => undefined)
     }
@@ -746,6 +766,7 @@ export const register: Register = on => {
       await readMemory($)
       await readBoard($)
       await readLessons($)
+      await readTools($)
       await detectProject($)
     })().catch(() => undefined)
     return result
@@ -818,6 +839,7 @@ export const register: Register = on => {
         await readMemory($)
         await readBoard($)
         await readLessons($)
+        await readTools($)
       }
     }
     const review = async () => {
@@ -860,6 +882,7 @@ export const register: Register = on => {
       </Box>,
       <Button key="route" plain label={`route ${rModel}`} onPress={cycleRouteModel} />,
     ]
+    if (b.proj === '') parts.push(<Button key="setup" plain label="Set up project" onPress={() => void (b.projNew ? adoptProject() : startProject())} />)
     if (rModel !== 'main' && rModel !== 'free') parts.push(<Button key="route-effort" plain label={rEffort} onPress={cycleRouteEffort} />)
     if (b.noRoute) parts.push(<Text color="warning">no route</Text>)
     parts.push(
@@ -971,6 +994,24 @@ export const register: Register = on => {
     const walkTest = ask('Run the walk test on this project (STRUCTURE.md): from the files alone, orient, say what the next step is and report the status. List anything you could not find.', 'Ask Claude: walk test')
     const attachHit = ask(`Read the entry file (AGENTS.md, else CLAUDE.md) and the state file of ${b.projHit?.name ?? 'the project'} at ${b.projHit?.path ?? ''}, and use them for this chat. Do not edit anything there.`, 'Ask Claude: read that project')
     const switchHit = ask(`Change this session\x27s working directory to ${b.projHit?.path ?? ''} with the change_directory tool, then read its entry file and state file.`, 'Ask Claude: switch folder')
+    // Ponytail, the performance audit and PHPCS: each button runs the matching lean-project command and toasts its first line.
+    const PT_MODES = ['off', 'lite', 'full', 'ultra']
+    const stepPonytail = async () => {
+      const cur = ((await readText($, `${await claudeDir($)}/.ponytail-active`)) ?? 'off').trim()
+      await $.fs.write(`${await claudeDir($)}/.ponytail-active`, PT_MODES[(PT_MODES.indexOf(cur) + 1) % PT_MODES.length] ?? 'off')
+      await readTools($)
+    }
+    const runTool = (label: string, command: string, andThen?: () => Promise<void>) => async () => {
+      const r = await shell($, await here(), command)
+      const text = (r?.stdout || r?.stderr || '').trim().split(/\r?\n/).filter(l => l.trim() !== '')
+      $.ui.toast(`${label}: ${cut(text[text.length - 1] ?? (r?.exitCode ? 'failed' : 'done'), 80)}`)
+      if (andThen) await andThen()
+    }
+    const PHPCS_STANDARDS = ['WordPress', 'WordPress-Extra', 'WordPress-Core', 'WordPress-Docs']
+    const stepStandard = () => editGlobal($, mem, j => {
+      const cur = typeof j.phpcs_standard === 'string' ? j.phpcs_standard : 'WordPress'
+      j.phpcs_standard = PHPCS_STANDARDS[(PHPCS_STANDARDS.indexOf(cur) + 1) % PHPCS_STANDARDS.length]
+    })
     const toggleHelper = (key: (typeof HELPERS)[number]) => editGlobal($, mem, j => {
         const stored = (j.helpers as Record<string, unknown> | undefined)?.[key]
         j.helpers = { ...(j.helpers as object), [key]: stored === false }
@@ -1129,6 +1170,29 @@ export const register: Register = on => {
             {b.dueRepos.map(n => gb(`rv-${n}`, `Reviewed ${n}`, () => reviewChild(n)))}
           </Box>,
           b.release === 'due' && b.dueRepos.length === 0 && note(<Text dimColor>a review is due: use Review and Reviewed in the top row</Text>)
+        )}
+        {section(
+          'ponytail', 'Ponytail',
+          note(<Text dimColor wrap="truncate-end">{b.tools.find(l => l.startsWith('ponytail')) ?? 'ponytail: not read yet'}</Text>),
+          <Box flexDirection="row" gap={1} flexWrap="wrap">
+            {gb('pt-mode', `mode: ${b.ptMode || 'off'}`, stepPonytail)}
+            {gb('hk-ponytail', `hooks: ${cfg.helpers.ponytail ? 'on' : 'off'}`, () => toggleHelper('ponytail'))}
+            {gb('pt-update', 'Update', runTool('ponytail', 'lean-project vendor update ponytail', () => readTools($)))}
+            {b.tools.some(l => l.startsWith('standalone')) && gb('pt-retire', 'Switch off standalone plugins', runTool('hub', 'lean-project vendor retire', () => readTools($)))}
+          </Box>,
+          note(<Text dimColor>mode cycles off, lite, full, ultra (the lazy-senior-dev rules); hooks switches its startup and prompt hooks</Text>)
+        )}
+        {section(
+          'wpdev', 'WordPress checks (performance audit, PHPCS)',
+          note(<Text dimColor wrap="truncate-end">{b.tools.find(l => l.startsWith('phpcs')) ?? 'phpcs: not read yet'}</Text>),
+          <Box flexDirection="row" gap={1} flexWrap="wrap">
+            {gb('audit-run', 'Performance audit', runTool('audit', 'lean-project audit perf'))}
+            {gb('phpcs-run', 'Run PHPCS', runTool('phpcs', 'lean-project phpcs'))}
+            {gb('phpcs-fix', 'Fix with PHPCBF', runTool('phpcbf', 'lean-project phpcs fix'))}
+            {gb('phpcs-std', `standard: ${cfg.phpcs_standard}`, stepStandard)}
+            {gb('phpcs-status', 'Refresh', () => readTools($))}
+          </Box>,
+          note(<Text dimColor>the audit and PHPCS check the PHP files changed since the last tag; PHPCS needs PHP and Composer on this machine</Text>)
         )}
         {section(
           'packs', 'Packs (apply next session)',

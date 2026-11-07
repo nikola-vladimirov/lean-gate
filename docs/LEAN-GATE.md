@@ -2,7 +2,7 @@
 
 The lean-gate panel is the control surface of lean-project. It sits in a docked pane beside the chat, shows how the session is going, and lets you change every setting with button presses. This page explains each part, how to use it, and gives examples.
 
-Contents: [Opening and closing](#opening-and-closing) · [The top row](#the-top-row) · [Rules](#rules) · [Rule builder](#rule-builder) · [Model routing](#model-routing) · [Workflow and limits](#workflow-and-limits) · [Project memory](#project-memory) · [Board](#board) · [Lessons and local rules](#lessons-and-local-rules) · [Review](#review) · [Packs](#packs) · [Recent violations](#recent-violations) · [Config files](#config-files)
+Contents: [Project](#project) · [Ponytail](#ponytail) · [WordPress checks](#wordpress-checks) · [Built-in helpers](#built-in-helpers) · [Opening and closing](#opening-and-closing) · [The top row](#the-top-row) · [Rules](#rules) · [Rule builder](#rule-builder) · [Model routing](#model-routing) · [Workflow and limits](#workflow-and-limits) · [Project memory](#project-memory) · [Board](#board) · [Lessons and local rules](#lessons-and-local-rules) · [Review](#review) · [Packs](#packs) · [Recent violations](#recent-violations) · [Config files](#config-files)
 
 ## Opening and closing
 
@@ -176,6 +176,36 @@ Example: before a WordPress task, press `wp on`, then start a new session.
 
 The last five rule hits, newest first, each as `block` or `warn`, the rule and a short detail. **Allow once** overrides the last rule that fired so its next hit is let through, even a block. **Block once** makes the next hit refuse, even a warning (not for the warn-only rules). Each override is spent after one hit.
 
+## Project
+
+Detection and setup for the folder you are in. The registry is `~/.claude/lean-projects.json` (name, path, aliases).
+
+- The line under the title says whether the folder is **registered**, a project folder that is **not registered** (it has an `AGENTS.md`, `CLAUDE.md`, `.git`, a README or a package file), or neither.
+- **Register this folder** adds it to the registry; **Unregister** removes it. Once registered, the top row stops showing **Set up project**.
+- **Set up project** (top row, only for an unregistered folder) adopts the folder if it looks like a project and starts a new one if it does not. **Start project** and **Adopt this folder** do the same on demand. Both ask Claude to follow `STRUCTURE.md`: the setup cards, then the layout with `AGENTS.md` as the entry. Adopting shows a migration map and waits for your approval before anything changes.
+- **Walk test** asks Claude to orient from the files alone and report the next step and the status.
+- Name a registered project in a chat started somewhere else ("fix the Nashenski checkout") and a line appears: **Attach** (read its entry and state file for this chat), **Switch folder** (change the session to it) or **Ignore**. Nothing happens without your press. A name or alias must be four letters or more.
+
+## Ponytail
+
+Ponytail (the lazy senior dev rules, MIT, vendored at the version shown) is part of the hub. Its hooks load the rules at session start, for subagents and on `/ponytail` commands.
+
+- **mode** cycles off, lite, full, ultra by writing `~/.claude/.ponytail-active`.
+- **hooks** switches its three hooks on or off (the `helpers.ponytail` key).
+- **Update** fetches the latest release into `vendor/ponytail` (`lean-project vendor update ponytail`); review the diff and commit it.
+- **Switch off standalone plugins** appears while the separate ponytail, wp-woo-performance-audit or lean-gate-local plugins are still enabled. Until then the hub stays quiet about ponytail so nothing loads twice.
+
+## WordPress checks
+
+- **Performance audit** runs `lean-project audit perf` on the PHP changed since the last tag (the vendored wp-woo-performance-audit skill; its skills are also available to Claude).
+- **Run PHPCS** and **Fix with PHPCBF** run PHP_CodeSniffer with the WordPress standard on the PHP files changed since the last tag plus uncommitted ones. **standard** cycles WordPress, WordPress-Extra, WordPress-Core and WordPress-Docs (`phpcs_standard`).
+- PHPCS needs PHP and Composer on the machine and the WPCS standard installed; the status line under the title says what is missing and the command to fix it.
+- The `phpcs-before-done` rule (warn only) logs a warning at the end of a turn that edited PHP without running PHPCS.
+
+## Built-in helpers
+
+Four small scripts run on their own: startup notes, the context nudge, doc and test hints, and session drafts. Each is one button (on or off) and obeys the master mode: with the mode off, none run. They are stored under `helpers` in the config.
+
 ## Config files
 
 | File | Holds |
@@ -184,7 +214,7 @@ The last five rule hits, newest first, each as `block` or `warn`, the rule and a
 | `<project>/.lean-project.json` | Per-project tuning of `rules`, `routing`, `agent_caps` and limits. It cannot change `mode`, `workflow`, `custom_rules` or `demo_pattern`, since that file can arrive with a cloned repo. |
 | `~/.claude/lean-violations.tsv` | The rule hit log, trimmed to its last 500 lines. |
 
-Keys: `mode`, `rules`, `custom_rules`, `routing`, `agent_caps`, `max_agents`, `delegate_after_lead_calls`, `context_limit`, `workflow`, `pr_repos`, `state_file`, `demo_pattern`, `auto_memory`, `auto_lessons`.
+Keys: `helpers`, `phpcs_standard`, `mode`, `rules`, `custom_rules`, `routing`, `agent_caps`, `max_agents`, `delegate_after_lead_calls`, `context_limit`, `workflow`, `pr_repos`, `state_file`, `demo_pattern`, `auto_memory`, `auto_lessons`.
 
 ```json
 {
