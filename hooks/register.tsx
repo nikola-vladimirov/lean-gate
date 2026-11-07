@@ -82,6 +82,34 @@ const MODEL_CHOICES = ['sonnet:medium', 'sonnet:high', 'opus:medium', 'opus:high
 const AGENT_LIMITS = [0, 2, 3, 4, 6, 8] as const
 // Rules that only ever warn (they run after the work), so a block override has nothing to act on.
 const WARN_ONLY = new Set(['routing-line', 'state-file-fresh', 'tests-before-done', 'push-after-tag'])
+// The details view lists rules by group, each with a one-line meaning.
+const RULE_GROUPS: readonly (readonly [string, readonly string[]])[] = [
+  ['Agents and models', ['agent-needs-model-effort', 'no-haiku-coding', 'free-opencode-only', 'delegate-more', 'max-agents', 'review-edited-files-only']],
+  ['Every session', ['lean-project-first', 'ponytail-active', 'routing-line', 'state-file-fresh', 'tests-before-done', 'no-em-dashes']],
+  ['Releases and git', ['release-needs-review', 'changelog-before-tag', 'push-after-tag', 'one-pr-per-fix', 'no-demo-files-public']],
+  ['WordPress and docs', ['wp-skills-for-wp-code', 'docs-before-builder']],
+]
+const RULE_INFO: Record<string, string> = {
+  'agent-needs-model-effort': 'Agent calls must set a model and effort',
+  'no-haiku-coding': 'Haiku never writes code',
+  'free-opencode-only': 'OpenCode runs must use a free model',
+  'delegate-more': 'Long runs of reads go to a subagent',
+  'max-agents': 'Limit on subagents per turn',
+  'review-edited-files-only': 'A review agent is scoped to files',
+  'lean-project-first': 'Load lean-project before editing code',
+  'ponytail-active': 'Ponytail on before editing code',
+  'routing-line': 'State the model routing before the first call',
+  'state-file-fresh': 'Touch the state file after code edits',
+  'tests-before-done': 'Run tests after code edits',
+  'no-em-dashes': 'No em dashes in files or commit messages',
+  'release-needs-review': 'Review before a release tag',
+  'changelog-before-tag': 'Changelog or readme change before a tag',
+  'push-after-tag': 'Push the tag in the same turn',
+  'one-pr-per-fix': 'Listed repos take PRs, not pushes to main',
+  'no-demo-files-public': 'No demo files in a push to a public repo',
+  'wp-skills-for-wp-code': 'Load the wp-* skills for WordPress code',
+  'docs-before-builder': 'Read the docs before builder or WordPress code',
+}
 // Rule 8 counts reading tools only: Bash is neither counted nor ever denied.
 const DELEGATE = new Set(['Read', 'Grep', 'Glob'])
 const TOOL_MS = 3000
@@ -773,19 +801,29 @@ export const register: Register = on => {
     if (!b.details) return stack(compact)
 
     const level = (rule: string) => cfg.rules[rule] ?? 'off'
-    const allRules: string[] = [...RULES, ...cfg.custom.map(r => r.id)]
-    const ruleRows = []
-    for (let i = 0; i < allRules.length; i += 2) {
-      ruleRows.push(
-        <Box flexDirection="row">
-          {allRules.slice(i, i + 2).map(rule => (
-            <Box key={`cell-${rule}`} width={34}>
-              <Button key={`rule-${rule}`} plain label={`${level(rule).padEnd(5)} ${cut(rule, 24)}`} onPress={() => void editGlobal($, mem, j => (j.rules = { ...(j.rules as object), [rule]: nextLevel(level(rule)) }))} />
-            </Box>
-          ))}
+    // One rule per row: the level button, then the name over a dim one-line meaning. Rules sit in groups, each under a title.
+    const ruleRow = (rule: string, info: string) => (
+      <Box key={`row-${rule}`} flexDirection="row" gap={1}>
+        <Box width={7}>
+          <Button key={`rule-${rule}`} plain label={level(rule)} onPress={() => void editGlobal($, mem, j => (j.rules = { ...(j.rules as object), [rule]: nextLevel(level(rule)) }))} />
         </Box>
-      )
-    }
+        <Box flexDirection="column" flexShrink={1}>
+          <Text>{rule}</Text>
+          <Text dimColor>{info}</Text>
+        </Box>
+      </Box>
+    )
+    const grouped = new Set(RULE_GROUPS.flatMap(([, rules]) => rules))
+    const groups: [string, RenderChildren[]][] = RULE_GROUPS.map(([title, rules]) => [title, rules.map(r => ruleRow(r, RULE_INFO[r] ?? ''))])
+    const loose = RULES.filter(r => !grouped.has(r))
+    if (loose.length > 0) groups.push(['Other', loose.map(r => ruleRow(r, ''))])
+    if (cfg.custom.length > 0) groups.push(['Your rules', cfg.custom.map(r => ruleRow(r.id, r.message))])
+    const ruleRows = groups.map(([title, rows], i) => (
+      <Box key={`group-${title}`} flexDirection="column" marginTop={i === 0 ? 0 : 1}>
+        <Text>{title.toUpperCase()}</Text>
+        {rows}
+      </Box>
+    ))
     const ponytail = (await readText($, `${await claudeDir($)}/.ponytail-active`))?.trim() ?? 'off'
     const recent = b.violations.slice(-5).reverse()
 
@@ -847,7 +885,7 @@ export const register: Register = on => {
     return stack(
       <Box flexDirection="column" width={e.props.bodyColumns}>
         {compact}
-        {section('rules (press to cycle off, warn, block)', ...ruleRows)}
+        {section('rules (press the level to cycle off, warn, block)', ...ruleRows)}
         {section(
           'rule builder',
           <Box flexDirection="row" gap={1} flexWrap="wrap">
