@@ -4,6 +4,8 @@ Before any task starts, decide two things and write them in one line in the repl
 
 ## 1. Model routing
 
+lean-gate outranks this table. Its Model routing (read, code, complex, review, plan: model, effort, agent cap) and its rules are the routing; the table below only fills what lean-gate does not set.
+
 | Job | Route |
 |---|---|
 | Bulk reads, searches, summaries, first drafts of routine text or code | Sonnet at medium effort, or a free OpenCode model (`-free`) that has passed a trial on this kind of task |
@@ -36,4 +38,4 @@ Pick the tool that matches the work. Load its schema only when the task needs it
 
 - The project index lists the routing rules that apply to it.
 - The handoff logs each task's routing line.
-- Session-start check: if a task starts without a routing line, stop and write one first.
+- Session-start check: if a task starts without a routing line, write one first. Whether that stops work or only warns is lean-gate's `routing-line` rule.

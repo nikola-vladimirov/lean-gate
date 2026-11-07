@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PostToolUse on Write/Edit: when Claude edits a doc or a test file, point it at the matching guard, once per session.
-# Also flags an em dash in any text file it wrote (the user's rule is none). Silent otherwise, and for the reference copies.
+# The em dash check is lean-gate's no-em-dashes rule, not this hook. Silent otherwise, and for the reference copies.
 input=$(cat)
 field() { printf '%s' "$input" | tr -d '\n' | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p"; }
 raw=$(field file_path | sed 's/\\\\/\//g')
@@ -9,13 +9,6 @@ session=$(field session_id | tr -cd 'A-Za-z0-9-')
 [ -n "$f" ] && [ -n "$session" ] || exit 0
 
 msg=""
-case "$f" in
-  */reference/*|*/builder/*|*/reverse/*) ;;  # third-party copies keep their own punctuation
-  *.md|*.sh|*.php|*.js|*.ts|*.json|*.txt|*.yml|*.yaml)
-    if [ -f "$raw" ] && grep -q $'\xe2\x80\x94' "$raw"; then
-      msg="lean-project: $raw contains an em dash. The user's rule is none: use a colon, a comma or parentheses instead. Fix it before you finish."
-    fi ;;
-esac
 
 kind=""
 case "$f" in

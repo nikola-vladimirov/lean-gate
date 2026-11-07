@@ -64,9 +64,11 @@ The context-limit reminder, the new-session steps and the session-end draft are 
 
 ## After any mode: improve
 
-Record a lesson with `lean-project lesson` (usage in `TOOLS.md`). Offer a plugin issue only if it helps every user, and post only on the user's yes.
+Record a lesson with `lean-project lesson` (usage in `TOOLS.md`) when lean-gate's automatic lessons is on or the person asks. Offer a plugin issue only if it helps every user, and post only on the user's yes.
 
 ## Precedence
+
+lean-gate (the panel and `~/.claude/lean-project.json`) outranks this skill. Where `ROUTING.md`, `BUILD.md` or any guide here names a model, effort or agent count, the lean-gate routing and agent caps win; the tables here are only defaults for what lean-gate does not set. A rule lean-gate blocks is a stop, not a suggestion; a rule it sets to warn or off makes this skill's matching instruction advisory (routing line, tests, state file, review before a tag, em dashes, context limit). Delegated runner work (`lean-project delegate`) is also under lean-gate: free OpenCode models only, and the agent caps apply.
 
 The user's own rules (CLAUDE.md, memory) outrank this skill. Never delete content: replaced text moves verbatim to an archive file. Confirm before anything outward-facing (pushing, creating remotes, posting).
 

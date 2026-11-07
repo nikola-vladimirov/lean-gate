@@ -23,6 +23,7 @@ export const RULES = [
   'changelog-before-tag',
   'push-after-tag',
   'one-pr-per-fix',
+  'distinctive-session-names',
 ] as const
 export type Rule = (typeof RULES)[number]
 
@@ -89,6 +90,7 @@ export const DEFAULTS: Config = {
     'changelog-before-tag': 'warn',
     'push-after-tag': 'warn',
     'one-pr-per-fix': 'warn',
+    'distinctive-session-names': 'block',
   },
   max_agents: 0,
   workflow: '',

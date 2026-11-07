@@ -12,7 +12,11 @@ usage=$(tail -n 300 "$transcript" | grep '"usage"' | grep -v '"isSidechain":true
 num() { printf '%s' "$usage" | grep -o "\"$1\":[0-9]*" | head -n 1 | grep -o '[0-9]*$'; }
 ctx=$(( $(num input_tokens || echo 0) + $(num cache_creation_input_tokens || echo 0) + $(num cache_read_input_tokens || echo 0) ))
 
-limit=${CLAUDE_PLUGIN_OPTION_CONTEXT_LIMIT:-300000}
+# lean-gate owns the limit: the project file beats the global one; the plugin option is only the fallback.
+gate_limit() { sed -n 's/.*"context_limit"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$1" 2>/dev/null | head -n 1; }
+cwd0=$(field cwd | sed 's/\\\\/\//g')
+limit=$(gate_limit "$cwd0/.lean-project.json"); [ -n "$limit" ] || limit=$(gate_limit "$HOME/.claude/lean-project.json")
+limit=${limit:-${CLAUDE_PLUGIN_OPTION_CONTEXT_LIMIT:-300000}}
 step=${CLAUDE_PLUGIN_OPTION_REMIND_EVERY:-50000}
 case "$limit$step" in *[!0-9]*|'') exit 0 ;; esac
 [ "$ctx" -ge "$limit" ] && [ "$step" -gt 0 ] || exit 0

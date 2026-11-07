@@ -45,6 +45,7 @@ The master level in the top row caps these. Four rules can only warn (marked bel
 | `delegate-more` | After several reads in a row with no edit, the next read is refused with "delegate bulk reading to a subagent". Edit, Write and Agent reset the count. |
 | `max-agents` | Limit on subagents per turn (set under Workflow and limits), and the per-section caps under Model routing. |
 | `review-edited-files-only` | A review agent is scoped to the edited files, not the whole repo. |
+| `distinctive-session-names` | A new session (start_session or hand_off_to_session) needs a title that starts with the date and time, `YYYY-MM-DD HH:MM`, then what it is about, so it can be found later. A proposal card the person accepts keeps its own title. |
 
 **Every session**
 

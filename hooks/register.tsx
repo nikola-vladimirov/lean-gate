@@ -90,7 +90,7 @@ const ROUTING_LABEL: Record<RoutingKey, string> = { read: 'Reading and writing (
 const WARN_ONLY = new Set(['routing-line', 'state-file-fresh', 'tests-before-done', 'push-after-tag'])
 // The details view lists rules by group, each with a one-line meaning.
 const RULE_GROUPS: readonly (readonly [string, readonly string[]])[] = [
-  ['Agents and models', ['agent-needs-model-effort', 'no-haiku-coding', 'free-opencode-only', 'delegate-more', 'max-agents', 'review-edited-files-only']],
+  ['Agents and models', ['agent-needs-model-effort', 'no-haiku-coding', 'free-opencode-only', 'delegate-more', 'max-agents', 'review-edited-files-only', 'distinctive-session-names']],
   ['Every session', ['lean-project-first', 'ponytail-active', 'routing-line', 'state-file-fresh', 'tests-before-done', 'no-em-dashes']],
   ['Releases and git', ['release-needs-review', 'changelog-before-tag', 'push-after-tag', 'one-pr-per-fix', 'no-demo-files-public']],
   ['WordPress and docs', ['wp-skills-for-wp-code', 'docs-before-builder']],
@@ -108,6 +108,7 @@ const RULE_INFO: Record<string, string> = {
   'state-file-fresh': 'Touch the state file after code edits',
   'tests-before-done': 'Run tests after code edits',
   'no-em-dashes': 'No em dashes in files or commit messages',
+  'distinctive-session-names': 'Sub-session titles start with date and time',
   'release-needs-review': 'Review before a release tag',
   'changelog-before-tag': 'Changelog or readme change before a tag',
   'push-after-tag': 'Push the tag in the same turn',
@@ -473,6 +474,12 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
     if (deny !== undefined) return deny
   }
 
+  // A new session must be findable later: its title starts with the date and time. A card the user accepts (proposal_id) keeps its own title.
+  if ((tool === 'mcp__ccd_session__start_session' || tool === 'mcp__ccd_session__hand_off_to_session') && rec.proposal_id === undefined && !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2} \S/.test(String(rec.title ?? ''))) {
+    const deny = await trip($, mem, cfg, 'distinctive-session-names', 'sub-session title lacks a date and time', 'lean-gate: name the session distinctively: start the title with the date and time (YYYY-MM-DD HH:MM), then what it is about')
+    if (deny !== undefined) return deny
+  }
+
   if (isLead && (tool === 'Edit' || tool === 'Write')) {
     const path = norm(String(rec.file_path ?? ''))
     if (CODE_EDITED.test(path) && !mem.leanLoaded) {
@@ -718,8 +725,12 @@ export const register: Register = on => {
   on('prompt.compose', async ($, e, next) => {
     const result = await next(e)
     const { route } = await load($)
-    const { workflow, auto_memory, auto_lessons } = await loadConfig($)
+    const { workflow, auto_memory, auto_lessons, mode, routing, agent_caps } = await loadConfig($)
     const sections = [...result.sections]
+    if (mode !== 'off') {
+      const table = ROUTING_KEYS.map(k => `${k} ${routing[k]}${agent_caps[k] ? ` (max ${agent_caps[k]} agents)` : ''}`).join('; ')
+      sections.push({ id: 'lean-gate:precedence', text: `lean-gate is on (${mode}) and takes precedence over lean-project: where ROUTING.md, BUILD.md or any lean-project guide names a model, effort or agent count, use the lean-gate routing instead: ${table}. lean-project only fills gaps lean-gate does not cover. Every Agent call needs model and effort; a rule that blocks is a stop, not a suggestion.`, scope: 'session' as const })
+    }
     if (auto_memory) sections.push({ id: 'lean-gate:auto-memory', text: 'Project memory is automatic: when you decide something, finish a milestone or learn a fact the next session needs, record it yourself with lean-project memory add "<one line>" --tag decision|state|link|note. One line each, no progress chatter.', scope: 'session' as const })
     if (auto_lessons) sections.push({ id: 'lean-gate:auto-lessons', text: 'Lessons are automatic: when the person corrects you, or you repeat a mistake, record it yourself with lean-project lesson "<what to do differently>". The second sighting of the same text becomes a local rule.', scope: 'session' as const })
     if (workflow !== '') sections.push({ id: 'lean-gate:workflow', text: `Workflow for this project: ${workflow}`, scope: 'session' as const })

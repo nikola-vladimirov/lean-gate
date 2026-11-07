@@ -32,6 +32,8 @@ Every call is prefixed with `LEAN_BOARD=<absolute path to BOARD.md> LEAN_AS=<age
 
 ## Routing
 
+lean-gate outranks this table: use its model, effort and agent caps per section; the rows below are defaults where lean-gate sets nothing.
+
 | Work | Model | Effort | How |
 |---|---|---|---|
 | Bulk reading: API docs, reference or competitor projects, long logs | haiku | low | Agent, background, several at once; returns answers with source paths, or writes them into one named doc section |
@@ -51,7 +53,7 @@ Pass both with the Agent tool's `model` (`haiku`, `sonnet`, `opus`) and `effort`
 
 ## How to delegate
 
-- **Always set `model` and `effort` on every Agent call, from the table.** An Agent call without `model` runs on the lead's active model, which is the cost this table exists to avoid. Explore and general-purpose agents inherit the same way, so pass `model` on them too. Never write a delegated call with the parameter left out, and never leave the choice to the default.
+- **Always set `model` and `effort` on every Agent call, from lean-gate's Model routing (this table only where lean-gate sets nothing).** An Agent call without `model` runs on the lead's active model, which is the cost this table exists to avoid. Explore and general-purpose agents inherit the same way, so pass `model` on them too. Never write a delegated call with the parameter left out, and never leave the choice to the default.
 - **Read-only tasks:** Agent with `model` and `run_in_background: true`; run independent ones in parallel, at most about 5 at a time.
 - **Writing tasks:** one at a time in the same checkout by default. Parallel writers only on disjoint files and only with `isolation: "worktree"` (needs git); the lead merges.
 - **A large independent piece** (hours of work): propose a separate session (`start_session`, `model` set, own worktree). Start it only when the user asked for separate or parallel work.
