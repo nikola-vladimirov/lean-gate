@@ -125,7 +125,7 @@ const DONE = { answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason
 
 test('rule 1 agent-needs-model-effort: block denies, warn allows and logs, off allows, compliant passes', async ($, on) => {
   const w = world(on, config({ mode: 'block' }))
-  expect((await $.tool.call({ ...AGENT })).deny).toContain('set model and effort on every subagent (routing: read=sonnet:medium, review=opus:high, code=sonnet:high, text=sonnet:medium, plan=opus:high)')
+  expect((await $.tool.call({ ...AGENT })).deny).toContain('set model and effort on every subagent (routing: read=sonnet:medium, code=sonnet:high, complex=opus:high, review=opus:high, plan=opus:high)')
   expect((await $.tool.call({ ...AGENT, model: 'sonnet' })).deny).toBeDefined()
   expect((await $.tool.call({ ...AGENT, model: 'sonnet', effort: 'medium' })).deny).toBeUndefined()
   expect(lines(w.files).length).toBe(2)
@@ -726,7 +726,18 @@ test('routing: a project or global config changes any model:effort and the agent
   const deny = (await $.tool.call({ ...AGENT })).deny
   expect(deny).toContain('code=opus:medium')
   expect(deny).toContain('plan=free')
-  expect(deny).toContain('text=sonnet:medium')
+  expect(deny).toContain('complex=opus:high')
+})
+
+test('agent caps: an agent counts toward the section with its model and effort; the one over the cap is refused and not counted', async ($, on) => {
+  world(on, config({ mode: 'block', agent_caps: { code: 1 }, rules: { 'max-agents': 'block' } }))
+  const coding = { ...AGENT, model: 'sonnet', effort: 'high' }
+  expect((await $.tool.call({ ...coding })).deny).toBeUndefined()
+  expect((await $.tool.call({ ...coding })).deny).toContain('at most 1 sonnet:high agents')
+  // Another model and effort belongs to other sections, which have no cap.
+  expect((await $.tool.call({ ...AGENT, model: 'opus', effort: 'high' })).deny).toBeUndefined()
+  await $.prompt.submit({ text: 'next', asUser: true }).catch(() => undefined)
+  expect((await $.tool.call({ ...coding })).deny).toBeUndefined()
 })
 
 test('max-agents: the subagent over the limit is refused, and a new prompt starts the count again', async ($, on) => {
@@ -814,10 +825,17 @@ test('routing and workflow buttons write the global config', async ($, on) => {
   const w = world(on, config({ mode: 'warn' }))
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await ui.press({ key: 'details' })
-  await ui.press({ key: 'rt-code' })
-  expect(JSON.parse(w.files[CONFIG] ?? '{}').routing.code).toBe('opus:medium')
+  const saved = () => JSON.parse(w.files[CONFIG] ?? '{}')
+  await ui.press({ key: 'rt-code-model' })
+  expect(saved().routing.code).toBe('opus:high')
+  await ui.press({ key: 'rt-code-effort' })
+  expect(saved().routing.code).toBe('opus:low')
+  await ui.press({ key: 'rt-code-cap' })
+  expect(saved().agent_caps.code).toBe(1)
   await ui.press({ key: 'wf-agents' })
-  expect(JSON.parse(w.files[CONFIG] ?? '{}').max_agents).toBe(2)
+  expect(saved().max_agents).toBe(2)
+  await ui.press({ key: 'wf-delegate' })
+  expect(saved().delegate_after_lead_calls).toBe(12)
   await ui.unmount()
 })
 

@@ -7,6 +7,7 @@ import {
   CODE_RELEASE,
   RULES,
   ROUTING_KEYS,
+  sectionsFor,
   changelogMissing,
   isBuilderCode,
   readsDocs,
@@ -35,7 +36,7 @@ import {
   sha1Hex,
   repoKey,
 } from './gate'
-import type { Config, Level } from './gate'
+import type { Config, Level, RoutingKey } from './gate'
 
 const EMPTY: LeanGateBand = {
   details: false,
@@ -79,8 +80,13 @@ const PRESETS = [
 ] as const
 const PONYTAIL = ['off', 'lite', 'full', 'ultra']
 // What a routing button steps through; a value typed into the config by hand is kept until the button is pressed.
-const MODEL_CHOICES = ['sonnet:medium', 'sonnet:high', 'opus:medium', 'opus:high', 'free'] as const
+const MODEL_NAMES = ['sonnet', 'opus', 'free'] as const
+const EFFORTS = ['low', 'medium', 'high'] as const
 const AGENT_LIMITS = [0, 2, 3, 4, 6, 8] as const
+const SECTION_CAPS = [0, 1, 2, 3, 4, 6] as const
+const DELEGATE_AFTER = [4, 6, 8, 12, 16] as const
+const CONTEXT_LIMITS = [200000, 300000, 500000, 1000000] as const
+const ROUTING_LABEL: Record<RoutingKey, string> = { read: 'Reading and writing (text, images)', code: 'Coding', complex: 'Complex coding', review: 'Review', plan: 'Planning' }
 // Rules that only ever warn (they run after the work), so a block override has nothing to act on.
 const WARN_ONLY = new Set(['routing-line', 'state-file-fresh', 'tests-before-done', 'push-after-tag'])
 // The details view lists rules by group, each with a one-line meaning.
@@ -168,6 +174,9 @@ type Mem = {
   // Documentation read this session; Agent calls this turn; a tag made and a push done this turn.
   docsRead: boolean
   agents: number
+  // Agents this turn per routing section, and the sections each call counted toward (so a refused call can be taken back out).
+  agentsBy: Record<string, number>
+  counted: Map<string, RoutingKey[]>
   tagged: boolean
   pushed: boolean
   // One-shot overrides from the band: the next hit of this rule is allowed (even a block) or blocked (even a warn).
@@ -483,6 +492,17 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
       const deny = await trip($, mem, cfg, 'max-agents', `${mem.agents} subagents this turn, the limit is ${cfg.max_agents}`, `lean-gate: at most ${cfg.max_agents} subagents per turn for this project; fold the work into fewer agents`)
       if (deny !== undefined) return deny
     }
+    if (isLead) {
+      // Count and check in one step, with nothing awaited between, so parallel agents are each counted.
+      const hit = sectionsFor(cfg.routing, rec)
+      for (const k of hit) mem.agentsBy[k] = (mem.agentsBy[k] ?? 0) + 1
+      mem.counted.set(e.tool_use_id, hit)
+      const over = hit.find(k => cfg.agent_caps[k] > 0 && (mem.agentsBy[k] ?? 0) > cfg.agent_caps[k])
+      if (over !== undefined) {
+        const deny = await trip($, mem, cfg, 'max-agents', `${mem.agentsBy[over]} ${cfg.routing[over]} agents this turn, the limit is ${cfg.agent_caps[over]}`, `lean-gate: at most ${cfg.agent_caps[over]} ${cfg.routing[over]} agents per turn; fold the work into fewer agents`)
+        if (deny !== undefined) return deny
+      }
+    }
     if (reviewUnscoped(rec)) {
       const deny = await trip($, mem, cfg, 'review-edited-files-only', cut(String(rec.description ?? 'review agent'), 60), 'lean-gate: scope the review to the edited files (list them or run lean-project review-scope)')
       if (deny !== undefined) return deny
@@ -590,7 +610,7 @@ async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny
 }
 
 export const register: Register = on => {
-  const mem: Mem = { edited: new Set(), stateTouched: false, tested: false, routed: false, warned: new Set(), leanLoaded: false, wpSkill: false, draft: { preset: 0, level: 'warn' }, docsRead: false, agents: 0, tagged: false, pushed: false, once: new Map(), run: 0, lead: 0, sub: 0, chain: Promise.resolve() }
+  const mem: Mem = { edited: new Set(), stateTouched: false, tested: false, routed: false, warned: new Set(), leanLoaded: false, wpSkill: false, draft: { preset: 0, level: 'warn' }, docsRead: false, agents: 0, agentsBy: {}, counted: new Map(), tagged: false, pushed: false, once: new Map(), run: 0, lead: 0, sub: 0, chain: Promise.resolve() }
   const resetTurn = () => {
     mem.edited.clear()
     mem.stateTouched = false
@@ -610,7 +630,11 @@ export const register: Register = on => {
     }
     if (deny !== undefined) {
       // A denied subagent never ran, so it does not count toward max_agents.
-      if (e.tool === 'Agent' && e.agentId === undefined) mem.agents = Math.max(0, mem.agents - 1)
+      if (e.tool === 'Agent' && e.agentId === undefined) {
+        mem.agents = Math.max(0, mem.agents - 1)
+        for (const k of mem.counted.get(e.tool_use_id) ?? []) mem.agentsBy[k] = Math.max(0, (mem.agentsBy[k] ?? 0) - 1)
+      }
+      mem.counted.delete(e.tool_use_id)
       return { deny }
     }
     const ran = await next(e)
@@ -621,6 +645,8 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     mem.run = 0
     mem.agents = 0
+    mem.agentsBy = {}
+    mem.counted.clear()
     await patch($, { run: 0, noRoute: false }).catch(() => undefined)
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -867,8 +893,18 @@ export const register: Register = on => {
 
     // Model routing and the workflow limits: each button steps through a short list and writes the global config.
     const cycle = <T,>(list: readonly T[], cur: T): T => list[(list.indexOf(cur) + 1) % list.length] as T
-    const setRouting = (key: string, value: string) => editGlobal($, mem, j => (j.routing = { ...(j.routing as object), [key]: value }))
+    // Steps one part of a section's model:effort from the value in the file, so two quick presses build on each other.
+    const stepRouting = (key: RoutingKey, part: 'model' | 'effort') =>
+      editGlobal($, mem, j => {
+        const stored = (j.routing as Record<string, unknown> | undefined)?.[key]
+        const [m = 'sonnet', ef = 'medium'] = (typeof stored === 'string' ? stored : cfg.routing[key]).split(':')
+        const next = part === 'model' ? cycle(MODEL_NAMES, m) : m
+        const value = next === 'free' ? 'free' : `${next}:${part === 'effort' ? cycle(EFFORTS, ef) : ef || 'medium'}`
+        j.routing = { ...(j.routing as object), [key]: value }
+      })
     const setMaxAgents = (n: number) => editGlobal($, mem, j => (j.max_agents = n))
+    const setCap = (key: string, n: number) => editGlobal($, mem, j => (j.agent_caps = { ...(j.agent_caps as object), [key]: n }))
+    const setNum = (key: string, n: number) => editGlobal($, mem, j => (j[key] = n))
     const editWorkflow = ask('Set the "workflow" text in ~/.claude/lean-project.json (or this project\'s .lean-project.json): a few short lines saying where each kind of work happens, how many agents and at what effort, and the order of steps. Ask me what it should say first.', 'Ask Claude: write the workflow text')
     const lastHit = recent[0]
     const onceRule = lastHit === undefined ? undefined : lastHit.rule
@@ -904,15 +940,26 @@ export const register: Register = on => {
         )}
         {section(
           'routing', 'Model routing',
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
-            {ROUTING_KEYS.map(k => gb(`rt-${k}`, `${k}: ${cfg.routing[k]}`, () => setRouting(k, cycle(MODEL_CHOICES, cfg.routing[k]))))}
-          </Box>,
-          note(<Text dimColor>Haiku never writes code; a project's own .lean-project.json overrides these</Text>)
+          note(<Text dimColor>press a button to step through its choices</Text>),
+          ...ROUTING_KEYS.map(k => {
+            const [m = 'sonnet', ef = 'medium'] = cfg.routing[k].split(':')
+            const cap = cfg.agent_caps[k]
+            return fold(`rt:${k}`, ROUTING_LABEL[k], [
+              <Box flexDirection="row" gap={1} flexWrap="wrap">
+                {gb(`rt-${k}-model`, `model: ${m}`, () => stepRouting(k, 'model'))}
+                {m !== 'free' && gb(`rt-${k}-effort`, `effort: ${ef}`, () => stepRouting(k, 'effort'))}
+                {gb(`rt-${k}-cap`, `agents at once: ${cap === 0 ? 'no limit' : cap}`, () => setCap(k, cycle(SECTION_CAPS, cap)))}
+              </Box>,
+            ])
+          }),
+          note(<Text dimColor>Haiku never writes code. An agent counts toward every section with its model and effort. A project's own .lean-project.json overrides these.</Text>)
         )}
         {section(
           'workflow', 'Workflow',
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {gb('wf-agents', `max agents per turn: ${cfg.max_agents === 0 ? 'no limit' : cfg.max_agents}`, () => setMaxAgents(cycle(AGENT_LIMITS, cfg.max_agents)))}
+            {gb('wf-delegate', `delegate after ${cfg.delegate_after_lead_calls} reads`, () => setNum('delegate_after_lead_calls', cycle(DELEGATE_AFTER, cfg.delegate_after_lead_calls)))}
+            {gb('wf-context', `context limit ${kilo(cfg.context_limit)}`, () => setNum('context_limit', cycle(CONTEXT_LIMITS, cfg.context_limit)))}
             {gb('wf-edit', 'Edit workflow text', editWorkflow)}
           </Box>,
           note(<Text dimColor wrap="truncate-end">{cfg.workflow === '' ? 'no workflow text set' : cfg.workflow}</Text>)

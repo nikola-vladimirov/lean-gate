@@ -29,8 +29,16 @@ export type Rule = (typeof RULES)[number]
 // A rule the person builds in the band: which tools it watches ("Edit|Write", "*" = all), a regex over the call's text, a message.
 export type CustomRule = { id: string; tool: string; match: string; message: string; level: Level }
 
-export const ROUTING_KEYS = ['read', 'review', 'code', 'text', 'plan'] as const
+// read = reading and writing text and images; complex = hard coding; the rest are what they say.
+export const ROUTING_KEYS = ['read', 'code', 'complex', 'review', 'plan'] as const
 export type RoutingKey = (typeof ROUTING_KEYS)[number]
+
+// The sections whose model:effort an agent was started with; an agent counts toward each of them.
+export function sectionsFor(routing: Record<RoutingKey, string>, input: { model?: unknown; effort?: unknown }): RoutingKey[] {
+  if (typeof input.model !== 'string' || typeof input.effort !== 'string') return []
+  const want = `${input.model}:${input.effort}`.toLowerCase()
+  return ROUTING_KEYS.filter(k => routing[k].toLowerCase() === want)
+}
 
 export type Config = {
   mode: Level
@@ -41,6 +49,8 @@ export type Config = {
   context_limit: number
   // Model:effort for each kind of work; a project file can change any of them.
   routing: Record<RoutingKey, string>
+  // Most agents in one turn started with each section's model:effort (0 = no limit).
+  agent_caps: Record<RoutingKey, number>
   // Most Agent calls in one turn (0 = no limit), a short workflow text shown to Claude each session, and the repo folders that take pull requests only.
   max_agents: number
   workflow: string
@@ -80,7 +90,8 @@ export const DEFAULTS: Config = {
   pr_repos: [],
   delegate_after_lead_calls: 8,
   context_limit: 300000,
-  routing: { read: 'sonnet:medium', review: 'opus:high', code: 'sonnet:high', text: 'sonnet:medium', plan: 'opus:high' },
+  routing: { read: 'sonnet:medium', code: 'sonnet:high', complex: 'opus:high', review: 'opus:high', plan: 'opus:high' },
+  agent_caps: { read: 0, code: 0, complex: 0, review: 0, plan: 0 },
   state_file: '',
 }
 
@@ -129,7 +140,7 @@ function customRule(v: unknown): CustomRule | undefined {
 }
 
 export function mergeConfig(...layers: Record<string, unknown>[]): Config {
-  const c: Config = { ...DEFAULTS, rules: { ...DEFAULTS.rules }, routing: { ...DEFAULTS.routing }, custom: [], pr_repos: [] }
+  const c: Config = { ...DEFAULTS, rules: { ...DEFAULTS.rules }, routing: { ...DEFAULTS.routing }, agent_caps: { ...DEFAULTS.agent_caps }, custom: [], pr_repos: [] }
   for (const l of layers) {
     if (isLevel(l.mode)) c.mode = l.mode
     if (typeof l.demo_pattern === 'string' && regexOk(l.demo_pattern)) c.demo_pattern = l.demo_pattern
@@ -144,6 +155,8 @@ export function mergeConfig(...layers: Record<string, unknown>[]): Config {
     for (const k of ROUTING_KEYS) {
       const v = obj(l.routing)[k]
       if (typeof v === 'string') c.routing[k] = v
+      const cap = obj(l.agent_caps)[k]
+      if (typeof cap === 'number' && Number.isInteger(cap) && cap >= 0) c.agent_caps[k] = cap
     }
     if (typeof l.delegate_after_lead_calls === 'number' && l.delegate_after_lead_calls > 0) c.delegate_after_lead_calls = l.delegate_after_lead_calls
     if (typeof l.context_limit === 'number' && l.context_limit > 0) c.context_limit = l.context_limit
