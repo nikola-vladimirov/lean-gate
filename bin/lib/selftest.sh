@@ -133,9 +133,9 @@ cmd_selftest() {
   LESSONS_FILE="$tmp/lessons/LESSONS.md" bash "$(cd "$(dirname "$0")" && pwd)/lean-project" lessons export "$ex" > /dev/null
   head -1 "$ex" | grep -q '^---$' || { echo "FAIL lessons export wrote no frontmatter"; fail=1; }
   LESSONS_FILE="$tmp/lessons/LESSONS.md" bash "$(cd "$(dirname "$0")" && pwd)/lean-project" lessons export "$ex" > /dev/null 2>&1 && { echo "FAIL lessons export replaced a generated note"; fail=1; }
-  # guard hint: an em dash in a written file is flagged; the doc guard is named once per session
-  gh="$tmp/gh"; mkdir -p "$gh"; printf 'a \xe2\x80\x94 b\n' > "$gh/x.md"
-  echo "{\"session_id\":\"s1\",\"file_path\":\"$gh/x.md\"}" | CLAUDE_PLUGIN_DATA="$gh/d" bash "$(dirname "$0")/../scripts/guard-hint.sh" | grep -q 'em dash' || { echo "FAIL guard hint missed an em dash"; fail=1; }
+  # guard hint: the doc guard is named once per session (the em dash check belongs to lean-gate)
+  gh="$tmp/gh"; mkdir -p "$gh"; : > "$gh/x.md"
+  echo "{\"session_id\":\"s1\",\"file_path\":\"$gh/x.md\"}" | CLAUDE_PLUGIN_DATA="$gh/d" bash "$(dirname "$0")/../scripts/guard-hint.sh" | grep -q "docs-guard" || { echo "FAIL guard hint did not name the docs guard"; fail=1; }
   # delegation: the chain puts the chosen runner first and never repeats one; an unknown runner or a missing model fails
   dl="$tmp/dl"; mkdir -p "$dl"; printf 'runner=llama\nfallback=opencode,llama\n' > "$dl/.lean-project"
   chain=$(cd "$dl" && delegate_chain)
