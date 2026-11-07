@@ -1,6 +1,6 @@
 # lean-project
 
-**One hub for how Claude works on your projects.** lean-gate (a docked control panel and an enforcing rule gate) controls everything else in the plugin: the lean-project skills, ponytail, the WordPress performance audit, PHPCS with the WordPress standard and the ICM project structure. Every setting is a button, new and existing projects are set up and detected from the panel, and every project follows one layout with `AGENTS.md` as the entry file. Start with [docs/HUB.md](docs/HUB.md); the panel reference is [docs/LEAN-GATE.md](docs/LEAN-GATE.md).
+**One hub for how Claude works on your projects.** lean-gate (a docked control panel and an enforcing rule gate) controls everything else in the plugin: the lean-project skills, ponytail, the WordPress performance audit, PHPCS with the WordPress standard and the ICM project structure. Every setting is a button, new and existing projects are set up and detected from the panel, and every project follows one layout with `AGENTS.md` as the entry file. Beta 1.0.0-beta.1 (branch hub). Start with [docs/HUB.md](docs/HUB.md); the panel reference is [docs/LEAN-GATE.md](docs/LEAN-GATE.md).
 
 A Claude Code plugin that makes every session cheaper. Claude re-sends the whole conversation on every turn and loads some files into every session, so tokens go to orientation and old context before any work happens. lean-project keeps that overhead small, and keeps the work organised while it does.
 
