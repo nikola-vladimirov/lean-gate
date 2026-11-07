@@ -81,7 +81,6 @@ const PRESETS = [
   { id: 'debug', label: 'debug leftover', tool: 'Edit|Write', match: 'console\\.log\\(|var_dump\\(|print_r\\(', message: 'debug output left in code' },
   { id: 'todo', label: 'TODO left', tool: 'Edit|Write', match: '\\b(TODO|FIXME|XXX)\\b', message: 'unfinished marker written' },
 ] as const
-const PONYTAIL = ['off', 'lite', 'full', 'ultra']
 // What a routing button steps through; a value typed into the config by hand is kept until the button is pressed.
 const MODEL_NAMES = ['haiku', 'sonnet', 'opus', 'fable', 'free'] as const
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
@@ -881,7 +880,6 @@ export const register: Register = on => {
     const ruleRows = groups.map(([title, rows], i) => (
       <Box key={`group-${title}`} flexDirection="column" marginTop={i === 0 ? 0 : 1}>{fold(`rules:${title}`, `${title} (${rows.length})`, rows)}</Box>
     ))
-    const ponytail = (await readText($, `${await claudeDir($)}/.ponytail-active`))?.trim() ?? 'off'
     const recent = b.violations.slice(-5).reverse()
 
     // Rule builder: pick a ready-made pattern and a level, then Add. The draft lives in module memory, so a press only redraws.
@@ -955,6 +953,7 @@ export const register: Register = on => {
         {section('rules', 'Rules', note(<Text dimColor>press a level to cycle off, warn, block</Text>), ...ruleRows)}
         {section(
           'builder', 'Rule builder',
+          note(<Text dimColor>make your own rule: pick a ready-made pattern and a level, then Add rule. It appears under Your rules.</Text>),
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {gb('rb-pattern', `pattern: ${preset.label} (${preset.tool})`, () => { mem.draft.preset = (mem.draft.preset + 1) % PRESETS.length; redraw() })}
             {gb('rb-level', `level: ${mem.draft.level}`, () => { mem.draft.level = nextLevel(mem.draft.level); redraw() })}
@@ -985,7 +984,8 @@ export const register: Register = on => {
           note(<Text dimColor>Haiku is not offered for coding and is refused there. An agent counts toward every section with its model and effort. A project's own .lean-project.json overrides these.</Text>)
         )}
         {section(
-          'workflow', 'Workflow',
+          'workflow', 'Workflow and limits',
+          note(<Text dimColor>agent and read limits, and a note added to every session's prompt (Edit workflow text asks Claude to write it)</Text>),
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {gb('wf-agents', `max agents per turn: ${cfg.max_agents === 0 ? 'no limit' : cfg.max_agents}`, () => setMaxAgents(cycle(AGENT_LIMITS, cfg.max_agents)))}
             {gb('wf-delegate', `delegate after ${cfg.delegate_after_lead_calls} reads`, () => setNum('delegate_after_lead_calls', cycle(DELEGATE_AFTER, cfg.delegate_after_lead_calls)))}
@@ -1032,6 +1032,7 @@ export const register: Register = on => {
         )}
         {section(
           'review', 'Review',
+          note(<Text dimColor>Reviewed marks the current commit as reviewed, so release tags pass the release-needs-review rule</Text>),
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {b.release !== 'due' && gb('a-reviewed', 'Reviewed', reviewed)}
             {b.dueRepos.map(n => gb(`rv-${n}`, `Reviewed ${n}`, () => reviewChild(n)))}
@@ -1043,19 +1044,12 @@ export const register: Register = on => {
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {PACKS.flatMap(p => [gb(`${p}-on`, `${p} on`, () => setPack(p, 'on')), gb(`${p}-off`, `${p} off`, () => setPack(p, 'off'))])}
           </Box>,
-          b.packs !== '' && note(<Text dimColor wrap="truncate-end">{b.packs}</Text>)
-        )}
-        {section(
-          'ponytail', 'Ponytail',
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
-            {PONYTAIL.map(l => (
-              <Button key={`pt-${l}`} label={l} {...(l === ponytail ? { variant: 'primary' as const } : { plain: true as const, dimColor: true })} onPress={() => void $.command.run({ command: 'ponytail', args: l })} />
-            ))}
-            {gb('pt-hide', 'Hide ponytail band', async () => $.fs.write(`${await claudeDir($)}/.ponytail-band`, 'off'))}
-          </Box>
+          b.packs !== '' && note(<Text dimColor wrap="truncate-end">{b.packs}</Text>),
+          note(<Text dimColor>Skill sets kept off so they cost no tokens at startup. on brings one back, off parks it. wp = WordPress skills, bricks = Bricks and BricksExtras skills, ui-ux = the UI/UX plugin.</Text>)
         )}
         {section(
           'violations', 'Recent violations',
+          note(<Text dimColor>newest first. Allow once or Block once overrides the last rule that fired, for one hit only</Text>),
           recent.length === 0 ? note(<Text dimColor>none</Text>) : recent.map(v => note(<Text wrap="truncate-end" color={v.action === 'block' ? 'error' : 'warning'}>{v.action} {v.rule} {cut(v.detail, 60)}</Text>)),
           onceRule !== undefined && (
             <Box flexDirection="row" gap={1} flexWrap="wrap">

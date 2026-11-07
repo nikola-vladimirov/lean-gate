@@ -5,17 +5,17 @@ A Claude Code plugin that makes every session cheaper. Claude re-sends the whole
 Contents table below: open only the section you need.
 
 <!-- toc -->
-- 21-61: Features
-- 62-72: Install
-- 73-109: Delegating work
-- 110-122: Use
-- 123-164: Commands
-- 165-168: Minimal install (low context)
-- 169-179: Settings
-- 180-196: What a project gets
-- 197-200: Where your data lives
-- 201-204: Credits
-- 205-207: License
+- 21-63: Features
+- 64-74: Install
+- 75-111: Delegating work
+- 112-124: Use
+- 125-167: Commands
+- 168-171: Minimal install (low context)
+- 172-182: Settings
+- 183-199: What a project gets
+- 200-203: Where your data lives
+- 204-207: Credits
+- 208-210: License
 <!-- /toc -->
 
 ## Features
@@ -47,9 +47,8 @@ Contents table below: open only the section you need.
 - **Handoff draft.** `lean-project handoff` drafts the state file from the branch, the next open tasks and the cards in flight, for review before a reset.
 - **Builder skills on demand.** The 108 Bricks and BricksExtras skills live inside this one skill, in `builder/`. `builder/INDEX.md` routes a task to the one skill it needs, so nothing loads unless a plan step names a Bricks element, template or query. Their generated JSON schema data stays out of the plugin.
 - **Project memory.** `lean-project memory add "<note>" [--tag decision|state|link|note]` keeps short dated notes per project, `link` ties projects together, and session start prints one line (count, newest note, linked projects). `memory recall` reads the notes and the newest three of each linked project only when you ask; `forget` archives a note, never deletes it. Notes live in `~/.claude/lean-project/memory/<project>/`.
-- **Control band and rule gate.** A band above the prompt (open Details for the rest) shows the model route, delegation counts, context use, state-file age, test result and review status, and enforces rules on tool calls: model and effort on every subagent, no Haiku for coding, free OpenCode models only, review before release, state file and tests before done, no em dashes, lean-project and ponytail first, WordPress skills for WordPress code, no demo files to public repos, reviews scoped to edited files. Each rule is off, warn or block from the band; the rule builder adds your own from ready-made patterns, and the project memory section runs the memory actions. Config is `~/.claude/lean-project.json`; a project's `.lean-project.json` can tune rules, routing and limits, but not the mode, custom rules, workflow text or demo pattern, since that file can arrive with a cloned repo. `/lean-gate` opens the panel.
-  More rules: a subagent limit per turn (`max_agents`), docs read before WordPress or Bricks code, a changelog or readme change before a tag, a push after a tag, and pull requests only for the repo folders in `pr_repos` (push to main refused). The details view also sets the model and effort for each kind of work (reading and writing, coding, complex coding, review, planning, each with its own cap on agents at once, counted by the model and effort the agent was started with; a project's `.lean-project.json` overrides them, Haiku never writes code), the agent limit, a short `workflow` text shown to Claude each session (custom rule patterns with nested quantifiers, alternation inside a repeated group or backreferences are refused so a pattern cannot hang the client), and has Allow once and Block once for the last rule that fired. 0.29.3: the details view lines up its columns and text, and the band uses short fixed rules instead of full-width ones. 0.30.0: the band now lives in a docked panel (/lean-gate opens it), not above the prompt. 0.30.1: an Open button above the prompt reopens the panel once it is closed. 0.30.2: the details view groups the rules under titles, one per row with a one-line meaning. 0.31.0: every details section folds shut or open, model routing has a model, effort and agent cap button per kind of work, and the delegate and context limits have buttons. 0.31.1: automatic buttons for project memory and lessons, and Board and Lessons sections in the details. 0.31.2: one Reviewed button when a review is due, and the board, lessons and memory are read at session start. 0.31.3: routing offers haiku (not for coding) and fable, and the efforts low, medium, high, xhigh and max.
-- **Skills and plugins on demand.** The Bricks skills, the WordPress `wp-*` skills and the ui-ux plugin are off until a task needs them. `lean-project pack status` shows which are on; `lean-project pack on <bricks|wp|ui-ux>` turns one on, and `off` turns it back off. Changes take effect in the next session.
+- **Control panel and rule gate.** A panel docked beside the chat (`/lean-gate` opens it) shows the model route, delegation counts, context use, state-file age, test result and review status, and enforces rules on tool calls: model and effort on every subagent, no Haiku for coding, free OpenCode models only, review before release, state file and tests before done, no em dashes, lean-project first, WordPress skills and docs read before WordPress or Bricks code, changelog before a tag, a push after a tag, pull requests only for the repos in `pr_repos`, and no demo files to public repos. Each rule is off, warn or block with one press, and a rule builder adds your own. Model routing sets the model, effort and agents-at-once cap for each kind of work (reading and writing, coding, complex coding, review, planning). Project memory, the shared board, lessons and packs have their own sections, and project memory and lessons can record automatically. Everything is set by buttons and stored in `~/.claude/lean-project.json`; a project's `.lean-project.json` can tune rules, routing and limits. Full guide with examples: [docs/LEAN-GATE.md](docs/LEAN-GATE.md).
+- **Skills and plugins on demand (packs).** Skill sets used rarely stay off so they cost no tokens at startup: the Bricks skills, the WordPress `wp-*` skills and the ui-ux plugin. They return when a task needs them. `lean-project pack status` shows which are on; `lean-project pack on <bricks|wp|ui-ux>` turns one on, and `off` turns it back off. Changes take effect in the next session.
 - **Reverse engineering on demand.** The REA guide lives in `reverse/` and loads only for reverse-engineering tasks. REA's MCP server stays off by default (startup cost) and is switched on per folder.
 
 **Delegation**
