@@ -37,6 +37,6 @@ export type LeanGateBand = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'lean-project': { band: LeanGateBand; isHidden: boolean }
+    'lean-project': { band: LeanGateBand }
   }
 }

@@ -55,7 +55,7 @@ const EMPTY: LeanGateBand = {
   dueRepos: [],
 }
 const band = atom({ plugin: 'lean-project', key: 'band' } as const, EMPTY)
-const isHidden = atom({ plugin: 'lean-project', key: 'isHidden' } as const, false)
+const PANE = 'lean-gate'
 
 const ROUTES: LeanGateRoute[] = ['main', 'sonnet', 'opus', 'free']
 const ROUTE_LABEL: Record<LeanGateRoute, string> = { main: 'main', sonnet: 'sonnet·med', opus: 'opus·high', free: 'free' }
@@ -628,7 +628,8 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     const result = await next(e)
-    await $.command.register({ name: 'lean-gate', description: 'Show or hide the lean-gate band' }).catch(() => undefined)
+    await $.command.register({ name: 'lean-gate', description: 'Open the lean-gate panel' }).catch(() => undefined)
+    void $.ui.open({ id: PANE, title: 'lean-gate' }).catch(() => undefined)
     // Log housekeeping and git work run after the session has started, not in front of it.
     void (async () => {
       await trimLog($, mem)
@@ -638,9 +639,8 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'lean-gate' }, async $ => {
-    const hidden = !(await read($, isHidden))
-    await update($, isHidden, () => hidden)
-    return { text: hidden ? 'lean-gate band hidden (/lean-gate shows it again)' : 'lean-gate band shown' }
+    const r = await $.ui.open({ id: PANE, title: 'lean-gate' })
+    return { text: r.isPlaced ? 'lean-gate panel opened' : `lean-gate panel not shown: ${r.reason}` }
   })
 
   on('prompt.compose', async ($, e, next) => {
@@ -653,28 +653,15 @@ export const register: Register = on => {
     return sections.length === result.sections.length ? result : { sections }
   }).catch(($, e, next) => next(e))
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey || (await read($, isHidden))) return next(e)
-    // Other mods share this slot: draw theirs below ours. next(e) rejects only when nothing answers beneath (the test harness).
-    const below = await next(e).catch(() => undefined)
-
+  // The band lives in a pane the surface docks beside the transcript, not above the prompt.
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const b = await load($)
     const cfg = await loadConfig($)
     const now = await $.clock.now()
     const tokens = (await $.session.usage().catch(() => undefined))?.context.tokens
     const { Box, Text, Button } = $.ui.resolve(e)
     // A labelled rule above our band, with a blank line before it, keeps it visibly apart from ponytail's.
-    // Short fixed rules: the app draws this text in a proportional font, so a rule sized to bodyColumns wrapped or fell short.
-    const rule = '── lean-gate ──────────'
-    const stack = (mine: NonNullable<typeof below>) => (
-      <Box flexDirection="column">
-        <Text> </Text>
-        <Text dimColor>{rule}</Text>
-        {mine}
-        <Text dimColor>{'─'.repeat(rule.length)}</Text>
-        {below}
-      </Box>
-    )
+    const stack = (mine: RenderChildren) => <Box flexDirection="column">{mine}</Box>
 
     // Buttons that need a prompt submit it as the person's own words, else toast it.
     const ask = (text: string, hint = text) => () => void $.prompt.submit({ text, asUser: true }).catch(() => $.ui.toast(hint))
@@ -918,7 +905,7 @@ export const register: Register = on => {
             </Box>
           )
         )}
-        <Box marginTop={1}>{gb('hide', 'Hide lean-gate band', () => update($, isHidden, () => true))}</Box>
+        <Box marginTop={1}>{gb('hide', 'Close lean-gate panel', () => $.ui.close({ id: PANE }))}</Box>
       </Box>
     )
   }).catch(($, e, next) => next(e))

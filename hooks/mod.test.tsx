@@ -248,8 +248,9 @@ test('rule 4: git not answering fails open, even in block mode', async ($, on) =
 
 const BAND = {
   plugin: 'lean-project',
-  component: 'AbovePrompt',
-  props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 110, scroll: { offset: 0, bodyRows: 20 }, view: {} },
+  component: 'Pane',
+  requestId: 'lean-gate',
+  props: { title: 'lean-gate', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
 
 test('Reviewed in a subfolder of a repo marks the repo, and the release then passes', async ($, on) => {
@@ -579,14 +580,6 @@ test('the band renders compact and with details, and its buttons write the globa
     await ui.unmount()
   }
   expect(w.noTimeout).toEqual([])
-})
-
-test('the band yields to a survey', async ($, on) => {
-  world(on, {})
-  const ui = await $.ui.mount({ ...BAND, surface: 'terminal', props: { ...BAND.props, hasSurvey: true } })
-  expect(await ui.find({ type: 'Text', text: /engine/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /lead/ })).toBeUndefined()
-  await ui.unmount()
 })
 
 // ---- Rules from the recurring reminders, and the rule builder.
