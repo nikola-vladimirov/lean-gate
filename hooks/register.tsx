@@ -705,6 +705,10 @@ export const register: Register = on => {
     void (async () => {
       await trimLog($, mem)
       await refreshRelease($)
+      // The panel can open with its details already showing, so these are read now, not only when Details is pressed.
+      await readMemory($)
+      await readBoard($)
+      await readLessons($)
     })().catch(() => undefined)
     return result
   }).catch(($, e, next) => next(e))
@@ -1026,9 +1030,10 @@ export const register: Register = on => {
         {section(
           'review', 'Review',
           <Box flexDirection="row" gap={1} flexWrap="wrap">
-            {gb('a-reviewed', 'Reviewed', reviewed)}
+            {b.release !== 'due' && gb('a-reviewed', 'Reviewed', reviewed)}
             {b.dueRepos.map(n => gb(`rv-${n}`, `Reviewed ${n}`, () => reviewChild(n)))}
-          </Box>
+          </Box>,
+          b.release === 'due' && b.dueRepos.length === 0 && note(<Text dimColor>a review is due: use Review and Reviewed in the top row</Text>)
         )}
         {section(
           'packs', 'Packs (apply next session)',
