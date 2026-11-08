@@ -1,6 +1,6 @@
 # lean-gate hub: handoff
 
-Updated 2026-11-08 (beta.8). Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). Branch `hub`, `1.0.0-beta.6` pushed and installed as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`). `main` is 0.31.6, untouched. The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). To return to stable: in `~/.claude/settings.json` remove the marketplace `ref`, then `claude plugin update`.
+Updated 2026-11-08 (beta.8). Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). Branch `hub`, `1.0.0-beta.8` pushed (installed copy still beta.6 until `claude plugin update lean-gate` and a restart) as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`). `main` is 0.31.6, untouched. The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). To return to stable: in `~/.claude/settings.json` remove the marketplace `ref`, then `claude plugin update`.
 
 Guides: `docs/HUB.md` (start here), `docs/MANUAL.md` (every button, rule, setting and command; update it with every feature or fix, `lean-gate selftest` checks it), `skills/lean-gate/STRUCTURE.md` (project layout).
 
@@ -40,7 +40,7 @@ The violation log (500 rows) was 443 warnings from six rules. Changes:
 - Descriptions rewritten: plugin.json, marketplace.json and the README lead.
 - Tests: 71 (settings target, reminders, scope, quiet, reset and undo, export and import, Explain); selftest; validate.
 
-## beta.7: rule stats (phase 4, 2026-11-08; committed, not pushed)
+## beta.7: rule stats (phase 4, 2026-11-08; pushed)
 
 - `lean-gate stats [days]` (`bin/lib/stats.sh`): hits per rule (split block, warn, allow-once) and per project folder from `~/.claude/lean-violations.tsv`; old `lean-project-first` counts as `lean-gate-first`; `LEAN_VIOLATIONS` overrides the log.
 - Panel section Rule stats (7 days): top five rules and projects; `stats-off` turns the noisiest rule that is still on off (retired and off rules skipped; saves where presses save), `stats-refresh`. Parsing in `statRules` and `statsView` (`hooks/gate.ts`).
@@ -48,7 +48,7 @@ The violation log (500 rows) was 443 warnings from six rules. Changes:
 - User call: PHPCS is not for every project. `phpcs-before-done` now counts only WordPress PHP (`isWpCode`, or any PHP once a WordPress skill is loaded); a Laravel edit is not judged. Known gap: `WP_HINT` matches `__(`, which Laravel also uses.
 - Tests: 73, selftest (stats counts), validate.
 
-## beta.8: panel look (2026-11-08; committed, not pushed)
+## beta.8: panel look (2026-11-08; pushed)
 
 Grilled with the user. API limits: Text takes any colour and background; a Button takes no colour at rest (only `hover`); real hover tooltips only inside `Svg` with `isInteractive` (`<title>`), which the terminal does not have.
 - Colour as theme keys (`SECTION_COLOR`, `GROUP_COLOR`, `LEVEL_COLOR`, `MODEL_COLOR` in `hooks/text.ts`): an accent bar before every section and rule group title, the title in that colour on hover; a level dot on each rule row.
