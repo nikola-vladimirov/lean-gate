@@ -73,7 +73,7 @@ Release steps: commit on `hub`, fast-forward `main` to `hub` (main is an ancesto
 
 - GitHub release page `v1.0.0` published (notes from the CHANGELOG entry).
 - CI selftest runs on ubuntu-latest and macos-latest (`.github/workflows/selftest.yml`, fail-fast off). macOS found: bash 3.2 misreads a `case` inside `$(...)` (`cmd_audit_security`), and BSD `wc` pads counts (`pack status` printed "parked       1"; two selftest checks). Fixed.
-- The `main` and `v1.0.0` CI runs failed "migrate nested a folder when run at once" (Linux only, intermittent, never in Git Bash). `gate_migrate` now copies to per-process temp names and moves only while the target is missing, so overlapping hooks cannot nest; the check prints what it found if it fails again. Root cause of the lock overlap not found.
+- The `main` and `v1.0.0` CI runs failed "migrate nested a folder when run at once" (Linux only, intermittent, never in Git Bash). CI logs showed three hooks copying at once despite the mkdir lock (cause of the overlap not found). `gate_migrate` now copies to per-process temp names, moves only while the target is missing, and removes its copy if it landed inside a folder another hook made meanwhile; the check prints what it found if it ever fails again. Five CI runs in a row passed on both systems (before: 2 of 3 Linux runs failed).
 - The GitHub page looked broken in the app browser pane: GitHub loaded without its styles and scripts there (no githubassets.com requests). The manual itself renders fine (checked with the GitHub API).
 
 Release these as 1.0.1: CHANGELOG entry, version, fast-forward `main`, tag.
