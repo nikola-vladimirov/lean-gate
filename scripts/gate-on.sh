@@ -5,7 +5,7 @@
 # lean-project was the old name. Copy (never move) its settings, memory and plugin data to the new names once, so a
 # rollback to the old plugin still finds its own files. Each step runs only while its new target is missing.
 gate_migrate() {
-  local c="$HOME/.claude" old="" d=${CLAUDE_PLUGIN_DATA:-} f lock ok
+  local c="$HOME/.claude" old="" d=${CLAUDE_PLUGIN_DATA:-} f lock ok p
   # Only the installed plugin's own folder: cost, gain and the selftest point CLAUDE_PLUGIN_DATA at temp folders.
   # .migrated, not LESSONS.md, marks it done: an old folder may have no lessons, and a killed copy must resume.
   case "${d##*/}" in lean-gate-*) [ -e "$d/.migrated" ] && d="" ;; *) d="" ;; esac
@@ -21,14 +21,17 @@ gate_migrate() {
   lock="$c/.lean-gate-migrating"
   find "$lock" -maxdepth 0 -mmin +2 -exec rmdir {} \; 2>/dev/null
   mkdir "$lock" 2>/dev/null || return 0
-  # Each copy goes to a temp name, then mv: a hook killed mid-copy leaves no half target that would block the retry.
-  [ -e "$c/lean-gate.json" ] || [ ! -f "$c/lean-project.json" ] || { cp -p "$c/lean-project.json" "$c/lean-gate.json.tmp" && mv "$c/lean-gate.json.tmp" "$c/lean-gate.json"; }
-  [ -e "$c/lean-gate/memory" ] || [ ! -d "$c/lean-project/memory" ] || { mkdir -p "$c/lean-gate" && rm -rf "$c/lean-gate/.memory.tmp" && cp -Rp "$c/lean-project/memory" "$c/lean-gate/.memory.tmp" && mv "$c/lean-gate/.memory.tmp" "$c/lean-gate/memory"; }
+  # Each copy goes to a temp name of this process, then mv only while the target is still missing: a hook killed mid-copy
+  # leaves no half target, and even two hooks that both got past the lock can never copy a folder into another's.
+  p=${BASHPID:-$$}
+  [ -e "$c/lean-gate.json" ] || [ ! -f "$c/lean-project.json" ] || { cp -p "$c/lean-project.json" "$c/.lean-gate.json.$p" && { [ -e "$c/lean-gate.json" ] || mv "$c/.lean-gate.json.$p" "$c/lean-gate.json"; }; rm -f "$c/.lean-gate.json.$p"; }
+  [ -e "$c/lean-gate/memory" ] || [ ! -d "$c/lean-project/memory" ] || { mkdir -p "$c/lean-gate" && cp -Rp "$c/lean-project/memory" "$c/lean-gate/.memory.$p" && { [ -e "$c/lean-gate/memory" ] || mv "$c/lean-gate/.memory.$p" "$c/lean-gate/memory"; }; rm -rf "$c/lean-gate/.memory.$p"; }
   if [ -n "$old" ] && mkdir -p "$d"; then
     ok=1
     for f in LESSONS.md LESSONS-ARCHIVE.md last-full-review sessions "$old"/setup-nag-*; do
       f=${f##*/}; [ -e "$old/$f" ] && [ ! -e "$d/$f" ] || continue
-      rm -rf "$d/.$f.tmp"; { cp -Rp "$old/$f" "$d/.$f.tmp" && mv "$d/.$f.tmp" "$d/$f"; } || ok=""
+      { cp -Rp "$old/$f" "$d/.$f.$p" && { [ -e "$d/$f" ] || mv "$d/.$f.$p" "$d/$f"; }; } || ok=""
+      rm -rf "$d/.$f.$p"
     done
     [ -z "$ok" ] || touch "$d/.migrated"
   fi

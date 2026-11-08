@@ -264,7 +264,7 @@ cmd_selftest() {
   # hooks start together: four migrations at once copy each folder once, never nested, and leave no lock
   rm -rf "$mg/.claude/lean-gate" "$mg/.claude/lean-gate.json" "$mg/.claude/plugins/data/lean-gate-lean-gate"
   for _ in 1 2 3 4; do migrate "$mg/.claude/plugins/data/lean-gate-lean-gate" & done; wait
-  [ ! -e "$mg/.claude/lean-gate/memory/memory" ] && [ ! -e "$mg/.claude/plugins/data/lean-gate-lean-gate/sessions/sessions" ] || { echo "FAIL migrate nested a folder when run at once"; fail=1; }
+  [ -z "$(find "$mg/.claude/lean-gate/memory" "$mg/.claude/plugins/data/lean-gate-lean-gate/sessions" -mindepth 1 \( -name memory -o -name sessions -o -name ".memory.*" -o -name ".sessions.*" \) 2>/dev/null)" ] || { echo "FAIL migrate nested a folder when run at once"; fail=1; }
   [ ! -e "$mg/.claude/.lean-gate-migrating" ] || { echo "FAIL migrate left its lock"; fail=1; }
   # a lock held by another hook makes this run skip; the next run after it is gone copies
   rm -rf "$mg/.claude/lean-gate"; mkdir "$mg/.claude/.lean-gate-migrating"; migrate "$mg/.claude/plugins/data/lean-gate-lean-gate"

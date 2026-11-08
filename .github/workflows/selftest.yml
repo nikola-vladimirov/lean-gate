@@ -6,7 +6,12 @@ on:
 
 jobs:
   selftest:
-    runs-on: ubuntu-latest
+    # macOS checks the BSD sed and date paths; Linux the GNU ones.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
