@@ -1,6 +1,6 @@
 # lean-gate hub: handoff
 
-Updated 2026-11-08. Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). `1.0.1` released: tag `v1.0.1` on `main` and `hub` (same commit), pushed and installed as `lean-gate@lean-gate` from the default branch (the `hub` ref is gone from `~/.claude/settings.json` and `plugins/known_marketplaces.json`; backups `*.bak-before-1.0.0`). The local folder stays `E:Claude Sessionsean-project` (sessions and memory are keyed by it). Work continues on `hub`; release by fast-forwarding `main`.
+Updated 2026-11-08. Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). `1.0.1` released: tag `v1.0.1` on `main` and `hub` (same commit, CI green on Linux and macOS), GitHub release page published, pushed and installed as `lean-gate@lean-gate` from the default branch (the `hub` ref is gone from `~/.claude/settings.json` and `plugins/known_marketplaces.json`; backups `*.bak-before-1.0.0`). The local folder stays `E:Claude Sessionsean-project` (sessions and memory are keyed by it). Work continues on `hub`; release by fast-forwarding `main`.
 
 Guides: `docs/HUB.md` (start here), `docs/MANUAL.md` (every button, rule, setting and command; update it with every feature or fix, `lean-gate selftest` checks it), `skills/lean-gate/STRUCTURE.md` (project layout).
 
