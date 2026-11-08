@@ -538,8 +538,8 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
   }
 
   // A new session must be findable later: its title starts with the date and time. A card the user accepts (proposal_id) keeps its own title.
-  if ((tool === 'mcp__ccd_session__start_session' || tool === 'mcp__ccd_session__hand_off_to_session') && rec.proposal_id === undefined && !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2} \S/.test(String(rec.title ?? ''))) {
-    const deny = await trip($, mem, cfg, 'distinctive-session-names', 'sub-session title lacks a date and time', 'lean-gate: name the session distinctively: start the title with the date and time (YYYY-MM-DD HH:MM), then what it is about')
+  if ((tool === 'mcp__ccd_session__start_session' || tool === 'mcp__ccd_session__hand_off_to_session') && rec.proposal_id === undefined && !/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}|\d{2}:\d{2} \d{2}-\d{2}-\d{4}) \S/.test(String(rec.title ?? ''))) {
+    const deny = await trip($, mem, cfg, 'distinctive-session-names', 'sub-session title lacks a date and time', 'lean-gate: name the session distinctively: start the title with the date and time (HH:MM DD-MM-YYYY, or YYYY-MM-DD HH:MM), then what it is about')
     if (deny !== undefined) return deny
   }
 

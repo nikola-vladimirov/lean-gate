@@ -667,6 +667,8 @@ test('distinctive-session-names: a new session title must start with a date and 
   expect((await $.tool.call(S({ title: 'Fix the panel' }))).deny).toContain('date and time')
   expect((await $.tool.call(S({}))).deny).toContain('date and time')
   expect((await $.tool.call(S({ title: '2026-11-07 14:30 Fix the panel' }))).deny).toBeUndefined()
+  expect((await $.tool.call(S({ title: '14:30 07-11-2026 Fix the panel' }))).deny).toBeUndefined()
+  expect((await $.tool.call(S({ title: '07-11-2026 Fix the panel' }))).deny).toContain('date and time')
   expect((await $.tool.call(S({ proposal_id: 'task_1' }))).deny).toBeUndefined()
   expect((await $.tool.call({ tool: 'mcp__ccd_session__hand_off_to_session', title: 'Move it' } as never)).deny).toContain('date and time')
 })
