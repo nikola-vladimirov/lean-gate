@@ -47,7 +47,7 @@ cmd_vendor() {
         j.enabledPlugins = j.enabledPlugins || {};
         for (const k of ["ponytail@ponytail", "wp-woo-performance-audit@wp-woo-performance-audit", "lean-gate@lean-gate-local"]) if (k in j.enabledPlugins) j.enabledPlugins[k] = false;
         fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");
-      ' "$s" && echo "standalone ponytail, wp-woo-performance-audit and lean-gate switched off (next session; the old file is kept as settings.json.bak)"
+      ' "$s" && echo "standalone ponytail, wp-woo-performance-audit and the old lean-gate-local mod switched off (next session; the old file is kept as settings.json.bak)"
       return 0 ;;
     *) die "vendor: status | update ponytail | retire" ;;
   esac

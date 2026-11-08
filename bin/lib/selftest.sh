@@ -210,13 +210,14 @@ cmd_selftest() {
   mg="$tmp/mg"; mkdir -p "$mg/.claude/lean-project/memory/p" "$mg/.claude/plugins/data/lean-project-inline" "$mg/.claude/plugins/data/lean-project-lean-project/sessions"
   echo '{"mode":"warn"}' > "$mg/.claude/lean-project.json"; echo note > "$mg/.claude/lean-project/memory/p/notes.md"
   echo stray > "$mg/.claude/plugins/data/lean-project-inline/LESSONS.md"; echo main > "$mg/.claude/plugins/data/lean-project-lean-project/LESSONS.md"
-  touch "$mg/.claude/plugins/data/lean-project-lean-project/sessions/s.md"
+  touch "$mg/.claude/plugins/data/lean-project-lean-project/sessions/s.md"; echo 3 > "$mg/.claude/plugins/data/lean-project-lean-project/setup-nag-42"
   migrate() { (HOME="$mg" CLAUDE_PLUGIN_DATA="$1" . "$(dirname "$LIB")/../scripts/gate-on.sh"); }
   migrate "$mg/.claude/plugins/data/lean-gate-lean-gate"
   [ "$(cat "$mg/.claude/lean-gate.json" 2>/dev/null)" = '{"mode":"warn"}' ] || { echo "FAIL migrate global config"; fail=1; }
   [ -f "$mg/.claude/lean-gate/memory/p/notes.md" ] && [ -f "$mg/.claude/lean-project/memory/p/notes.md" ] || { echo "FAIL migrate memory"; fail=1; }
   [ "$(cat "$mg/.claude/plugins/data/lean-gate-lean-gate/LESSONS.md" 2>/dev/null)" = main ] || { echo "FAIL migrate lessons from the installed plugin's folder"; fail=1; }
   [ -f "$mg/.claude/plugins/data/lean-gate-lean-gate/sessions/s.md" ] || { echo "FAIL migrate session drafts"; fail=1; }
+  [ "$(cat "$mg/.claude/plugins/data/lean-gate-lean-gate/setup-nag-42" 2>/dev/null)" = 3 ] || { echo "FAIL migrate setup nag counts"; fail=1; }
   echo '{"mode":"block"}' > "$mg/.claude/lean-gate.json"; echo newer > "$mg/.claude/plugins/data/lean-gate-lean-gate/LESSONS.md"
   migrate "$mg/.claude/plugins/data/lean-gate-lean-gate"; migrate "$tmp/elsewhere"
   [ "$(cat "$mg/.claude/lean-gate.json")" = '{"mode":"block"}' ] && [ "$(cat "$mg/.claude/plugins/data/lean-gate-lean-gate/LESSONS.md")" = newer ] || { echo "FAIL migrate overwrote a newer file"; fail=1; }
@@ -233,6 +234,9 @@ cmd_selftest() {
   [ ! -e "$mg/.claude/lean-gate/memory" ] || { echo "FAIL migrate ran while locked"; fail=1; }
   rmdir "$mg/.claude/.lean-gate-migrating"; migrate "$mg/.claude/plugins/data/lean-gate-lean-gate"
   [ -f "$mg/.claude/lean-gate/memory/p/notes.md" ] || { echo "FAIL migrate after the lock"; fail=1; }
+  # phpcs: a global Composer install is found when PATH has no phpcs
+  pc="$tmp/pc"; mkdir -p "$pc/AppData/Roaming/Composer/vendor/bin"; printf '#!/bin/sh\n' > "$pc/AppData/Roaming/Composer/vendor/bin/phpcs"; chmod +x "$pc/AppData/Roaming/Composer/vendor/bin/phpcs"
+  [ "$(HOME="$pc"; COMPOSER_HOME=""; PATH="/usr/bin:/bin"; phpcs_path; command -v phpcs)" = "$pc/AppData/Roaming/Composer/vendor/bin/phpcs" ] || { echo "FAIL phpcs global Composer lookup"; fail=1; }
 
   rm -rf "$tmp"
   [ $fail = 0 ] && echo "selftest ok" || { echo "selftest FAILED"; return 1; }

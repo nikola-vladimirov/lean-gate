@@ -4,6 +4,18 @@
 #   lean-gate phpcs fix [files]   the same with phpcbf (fixes what it can)
 # The standard is "phpcs_standard" in ~/.claude/lean-gate.json (default WordPress; WordPress-Extra, WordPress-Core and WordPress-Docs also exist).
 
+# Windows: the app's PATH often has no PHP and no Composer bin. Add the newest Laragon PHP and the global Composer bin
+# (where `composer global require` puts phpcs), only when the command is not found already.
+phpcs_path() {
+  local p g
+  command -v php >/dev/null 2>&1 || { p=$(ls -d /c/laragon/bin/php/*/ 2>/dev/null | sort -V | tail -n 1); [ -n "$p" ] && PATH="${p%/}:$PATH"; }
+  command -v phpcs >/dev/null 2>&1 && return 0
+  for g in "${COMPOSER_HOME:-}" "$HOME/AppData/Roaming/Composer" "$HOME/.config/composer" "$HOME/.composer"; do
+    [ -n "$g" ] && [ -d "$g/vendor/bin" ] && { PATH="$PATH:$g/vendor/bin"; return 0; }
+  done
+  return 0
+}
+
 phpcs_find() { # $1 phpcs|phpcbf
   if [ -x "./vendor/bin/$1" ]; then echo "./vendor/bin/$1"; elif command -v "$1" >/dev/null 2>&1; then command -v "$1"; else return 1; fi
 }
@@ -21,6 +33,7 @@ phpcs_files() {
 cmd_phpcs() {
   local action="run" bin std files
   case "${1:-}" in status|fix) action="$1"; shift ;; run) shift ;; esac
+  phpcs_path
   std=$(phpcs_standard)
   if [ "$action" = status ]; then
     if bin=$(phpcs_find phpcs); then

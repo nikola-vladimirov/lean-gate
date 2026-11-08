@@ -23,7 +23,7 @@ gate_migrate() {
   [ -e "$c/lean-gate.json" ] || [ ! -f "$c/lean-project.json" ] || cp -p "$c/lean-project.json" "$c/lean-gate.json"
   [ -e "$c/lean-gate/memory" ] || [ ! -d "$c/lean-project/memory" ] || { mkdir -p "$c/lean-gate" && cp -Rp "$c/lean-project/memory" "$c/lean-gate/memory"; }
   if [ -n "$old" ] && [ ! -e "$d/LESSONS.md" ] && mkdir -p "$d"; then
-    for f in LESSONS.md LESSONS-ARCHIVE.md last-full-review sessions; do [ -e "$old/$f" ] && [ ! -e "$d/$f" ] && cp -Rp "$old/$f" "$d/"; done
+    for f in LESSONS.md LESSONS-ARCHIVE.md last-full-review sessions "$old"/setup-nag-*; do f=${f##*/}; [ -e "$old/$f" ] && [ ! -e "$d/$f" ] && cp -Rp "$old/$f" "$d/"; done
   fi
   rmdir "$lock" 2>/dev/null
   return 0

@@ -1,53 +1,37 @@
 # lean-gate hub: handoff
 
-Updated 2026-11-08. Branch `hub`. Installed: `1.0.0-beta.3` as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`), pushed. `main` is 0.31.6, untouched.
+Updated 2026-11-08. Branch `hub`. Installed: `1.0.0-beta.3` as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`). Committed on `hub`, not pushed yet: `1.0.0-beta.4`. `main` is 0.31.6, untouched. To return to stable: in `~/.claude/settings.json` remove the marketplace `ref`, then `claude plugin update`.
+
+Guides: `docs/HUB.md` (start here), `docs/LEAN-GATE.md` (every button), `skills/lean-gate/STRUCTURE.md` (project layout).
 
 ## Rename to lean-gate (phase 1 of the improvement plan, 2026-11-08)
 
-Done: plugin and marketplace `lean-gate`; CLI `bin/lean-gate` (`bin/lean-project` is a silent alias); skill `skills/lean-gate`; rule `lean-gate-first` (old id read through `RENAMED_RULES` in `hooks/gate.ts`); config `~/.claude/lean-gate.json` and `.lean-gate.json` (old files read while the new ones are missing, `readNewOrOld` in `hooks/register.tsx`, `gate_project_file` in `scripts/gate-on.sh`). `gate_migrate` in `scripts/gate-on.sh` copies (never moves) the old global config, `~/.claude/lean-project/memory` and the plugin data (lessons, session drafts, last full review) once, from every hook and the CLI. Kept on purpose: `lean-violations.tsv`, `lean-projects.json`, `lean-review/`, per-project `.lean-project` and `.lean-project-setup`, the GitHub repo name. Fixed on the way: Bash-run lessons went to the `lean-project-inline` data folder (glob sort); its two stray lessons were merged into the main file (backups `*.bak-2026-11-08`).
+Done: plugin and marketplace `lean-gate`; CLI `bin/lean-gate` (`bin/lean-project` is a silent alias); skill `skills/lean-gate`; rule `lean-gate-first` (old id read through `RENAMED_RULES` in `hooks/gate.ts`); config `~/.claude/lean-gate.json` and `.lean-gate.json` (old files read while the new ones are missing, `readNewOrOld` in `hooks/register.tsx`, `gate_project_file` in `scripts/gate-on.sh`). `gate_migrate` in `scripts/gate-on.sh` copies (never moves) the old global config, `~/.claude/lean-project/memory` and the plugin data (lessons, session drafts, last full review, setup-nag counts) once, under a mkdir lock because several hooks start together (beta.2 nested the memory folder; fixed in beta.3). Kept on purpose: `lean-violations.tsv`, `lean-projects.json`, `lean-review/`, per-project `.lean-project` and `.lean-project-setup`.
 
-Checks: 66 tests, selftest (with migration cases), `plugin validate` pass; tsc errors only the old ones in `mod.test.tsx`.
+Done on this machine: settings, memory, lessons and drafts copied (verified after restart); workspace `CLAUDE.md`, project CLAUDE.md files and workspace memory say lean-gate (`lean-gate-plugin.md`, stale state moved to `memory-archive.md`); old marketplace and the old `lean-gate-local` mod removed (mod folder in `archive/lean-gate-mod`); backups `settings.json.pre-lean-gate.bak`, `settings.json.bak-before-retire-2026-11-08`, `plugins/data/lean-project-lean-project.bak-2026-11-08`, `lean-projects.json.bak-2026-11-08b`.
 
-Install notes: `claude plugin marketplace remove lean-project` deleted the old plugin data folder; it was restored from `~/.claude/plugins/data/lean-project-lean-project.bak-2026-11-08` so the first lean-gate session copies the lessons. Settings backup: `settings.json.pre-lean-gate.bak`.
+## beta.4 (2026-11-08)
 
-After the first restart (2026-11-08): the copy ran (config, memory, lessons, session drafts all there), but two hooks ran it at once and nested the memory folder (`lean-gate/memory/memory`, an exact duplicate, removed). beta.3 adds a mkdir lock (`gate_migrate`) and a selftest that runs four copies at once; it fails on beta.2's code every time. Workspace `CLAUDE.md`, project CLAUDE.md files and the workspace memory now say lean-gate (`lean-project-plugin.md` became `lean-gate-plugin.md`). Still open: optional GitHub repo rename (GitHub redirects); the setup nag counter (`setup-nag-*` in the data folder) was not copied, so the nag shows up to three times again per project.
+- Setup-nag counts are copied with the rest of the plugin data.
+- `lean-gate phpcs` finds PHP and PHPCS when the PATH has neither: newest Laragon PHP, then the global Composer bin (`phpcs_path` in `bin/lib/phpcs.sh`). Installed here: PHPCS 3.13.6 with WPCS 3 in `%APPDATA%/Composer` (composer global, Laragon PHP 8.3); `lean-gate phpcs status` reports it.
+- Standalone ponytail and wp-woo-performance-audit switched off (`lean-gate vendor retire`); the hub's own copies run from the next session.
+- Registry: 15 projects registered (workspace children plus the TokenForge, Groundhogg and Nashenski repos), `lean-project` has alias `lean-gate`.
+- New test: Details renders all 14 panel sections (fails when one is missing). The panel cannot be screenshotted from a session (computer use refuses the Claude app), so this is the render check.
 
-Next phases of the plan: 2 noise reduction (routing-line, lean-gate-first cause, once-per-session warnings, skip scratch folders), 3 panel check and register.tsx split, 4 `lean-gate stats`, 5 release 1.0.0.
+Checks: 67 tests, selftest (migration, lock, nag, PHPCS lookup), `plugin validate` pass; tsc errors only the old ones in `mod.test.tsx`.
 
-## Where it stands
+## Waiting on the user
 
-lean-gate (docked panel plus rule gate) is now the hub that controls everything in the plugin. Guides: `docs/HUB.md` (start here), `docs/LEAN-GATE.md` (every button), `skills/lean-project/STRUCTURE.md` (project layout).
+- Push `hub` and `claude plugin update lean-gate@lean-gate` (plugin pushes are asked first).
+- GitHub repo rename `nikola-vladimirov/lean-project` to `lean-gate`: refused by the permission classifier ("Remote Repoint"); needs the user's explicit go or a permission rule. After it: `git remote set-url`, `plugin.json` homepage and repository, README `marketplace add` line, `settings.json` and `known_marketplaces.json` repo, workspace `CLAUDE.md` line 50, `lean-gate-plugin.md`.
 
-Done on `hub`:
-- Gate outranks lean-project: precedence line in the prompt, skill docs defer, shell helpers (`scripts/gate-on.sh`) obey the master mode and per-helper buttons, context limit read from the gate config.
-- Rules added: `distinctive-session-names` (block), `phpcs-before-done` (warn only). Master mode set to `block` in `~/.claude/lean-project.json`.
-- Route button picks model and effort like Model routing.
-- Project registry (`~/.claude/lean-projects.json`), detection, Set up / Start / Adopt / Walk test, Register folders here.
-- Vendored: ponytail 5.3.3, wp-woo-performance-audit 0.1.0, icm-architect 8bc2f56 (all MIT) under `vendor/`; `lean-project vendor status|update ponytail|icm|retire`, `lean-project phpcs`, `lean-project icm`.
-- Fix: the panel runs `lean-project` through the plugin bin folder (it was "command not found").
-- Layout standard: `AGENTS.md` entry, one-line `CLAUDE.md`, numbered stages with checks.
+## Next phases of the plan
 
-Checks at last commit: 64 tests, selftest, `plugin validate` pass; CI selftest green on main.
-
-## Install state
-
-Marketplace `lean-project` in `~/.claude/settings.json` has `ref: "hub"` (backup `settings.json.pre-hub.bak`). To return to stable, remove the ref, re-add the marketplace, `claude plugin update lean-project`.
-
-## Not done or not verified
-
-- The panel has never been seen rendered (Project, Ponytail, WordPress checks, Built-in helpers sections are untested visually).
-- PHPCS cannot run here: PHP and Composer are not installed.
-- Standalone ponytail, wp-woo-performance-audit and lean-gate-local are still enabled; press Switch off standalone plugins in the panel, then restart.
-- Registry starts empty (press Register folders here).
-- Release gate: `review-scope` measures from the last tag, so the earlier hub commits were reviewed by hand, not by the tool.
-
-## Next
-
-1. Restart, check the panel, press Review (confirms the PATH fix).
-2. Retire the standalone plugins, restart.
-3. Use the beta for a while, then merge `hub` into `main` as 1.0.0 (tag, push, reset the marketplace ref).
-4. Ideas: ICM walk test as a rule, an installer for PHP/Composer/WPCS, aliases editor for the registry.
+2. Noise reduction: retire `routing-line`; `lean-gate-first` fires because the skill load lives only in the panel module's memory (`mem.leanLoaded` in `hooks/register.tsx`), which resets on a module reload such as a plugin update or resume, so read the load from the session transcript instead; once-per-session warnings for `state-file-fresh` and `tests-before-done`; skip scratch folders.
+3. Split `hooks/register.tsx` (about 1250 lines) per section.
+4. `lean-gate stats` from the violation log.
+5. Release 1.0.0: full review (`review-scope` says one is due; never on a beta), merge `hub` into `main`, tag, push, reset the marketplace ref.
 
 ## Commands
 
-`claude plugin test .` · `npx --yes -p typescript@5 tsc --noEmit -p .` (old errors in `mod.test.tsx` about the Agent effort type) · `bash bin/lean-project selftest` · `claude plugin validate .`
+`claude plugin test .` · `npx --yes -p typescript@5 tsc --noEmit -p .` (old errors in `mod.test.tsx` about the Agent effort type) · `bash bin/lean-gate selftest` · `claude plugin validate .`

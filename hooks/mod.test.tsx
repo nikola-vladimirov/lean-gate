@@ -1001,3 +1001,12 @@ test('max-agents: a subagent that was denied does not count toward the limit', a
   expect((await $.tool.call({ ...ok })).deny).toBeUndefined()
   expect((await $.tool.call({ ...ok })).deny).toContain('at most 2 subagents')
 })
+
+test('Details renders every panel section open, with its title', async ($, on) => {
+  world(on, config({ mode: 'block' }))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'details' })
+  const titles = ['Project', 'Rules', 'Rule builder', 'Model routing', 'Workflow and limits', 'Built-in helpers', 'Project memory', 'Board', 'Lessons and local rules', 'Review', 'Ponytail', 'WordPress checks', 'Packs', 'Recent violations']
+  for (const t of titles) expect(await ui.find({ text: new RegExp(`^▾ ${t}`) })).toBeDefined()
+  await ui.unmount()
+})
