@@ -1,4 +1,4 @@
-# Selftest for bin/lean-project. Sourced by it, not run directly.
+# Selftest for bin/lean-gate. Sourced by it, not run directly.
 
 cmd_selftest() {
   local tmp f fail=0
@@ -95,7 +95,7 @@ cmd_selftest() {
   bd="$tmp/bd.md"; LEAN_BOARD="$bd" board_append add T9 "retry test" > /dev/null; LEAN_BOARD="$bd" board_append add T9 "retry test" > /dev/null
   [ "$(grep -c 'retry test' "$bd")" = 1 ] || { echo "FAIL board kept a retried post twice"; fail=1; }
   # review scope: a repo with one tag and one new file lists that file; a full review is due with no record
-  rs="$tmp/rs"; mkdir -p "$rs"; self="$(cd "$(dirname "$0")" && pwd)/lean-project"
+  rs="$tmp/rs"; mkdir -p "$rs"; self="$(cd "$(dirname "$0")" && pwd)/lean-gate"
   (cd "$rs" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base && git tag v1.0.0 && echo x > new.php)
   rsout=$(cd "$rs" && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope)
   echo "$rsout" | grep -q 'new.php' || { echo "FAIL review-scope missed a changed file"; fail=1; }
@@ -106,7 +106,7 @@ cmd_selftest() {
   ss="$tmp/ss"; mkdir -p "$ss/alpha" "$ss/data/sessions"
   printf 'Project: alpha\n' > "$ss/data/sessions/2026-11-01-aaaa.md"
   printf 'Project: beta\n' > "$ss/data/sessions/2026-11-02-bbbb.md"
-  self="$(cd "$(dirname "$0")" && pwd)/lean-project"
+  self="$(cd "$(dirname "$0")" && pwd)/lean-gate"
   here=$(cd "$ss/alpha" && CLAUDE_PLUGIN_DATA="$ss/data" bash "$self" sessions 5 --here)
   echo "$here" | grep -q 'aaaa' || { echo "FAIL sessions --here missed this project's draft"; fail=1; }
   echo "$here" | grep -q 'bbbb' && { echo "FAIL sessions --here listed another project"; fail=1; }
@@ -130,9 +130,9 @@ cmd_selftest() {
   pe status | grep -q '^wp: active 0, parked 1' || { echo "FAIL pack status"; fail=1; }
   # export: a generated note with frontmatter; a second export refuses to replace it
   ex="$tmp/vault/lessons.md"; mkdir -p "$tmp/vault"
-  LESSONS_FILE="$tmp/lessons/LESSONS.md" bash "$(cd "$(dirname "$0")" && pwd)/lean-project" lessons export "$ex" > /dev/null
+  LESSONS_FILE="$tmp/lessons/LESSONS.md" bash "$(cd "$(dirname "$0")" && pwd)/lean-gate" lessons export "$ex" > /dev/null
   head -1 "$ex" | grep -q '^---$' || { echo "FAIL lessons export wrote no frontmatter"; fail=1; }
-  LESSONS_FILE="$tmp/lessons/LESSONS.md" bash "$(cd "$(dirname "$0")" && pwd)/lean-project" lessons export "$ex" > /dev/null 2>&1 && { echo "FAIL lessons export replaced a generated note"; fail=1; }
+  LESSONS_FILE="$tmp/lessons/LESSONS.md" bash "$(cd "$(dirname "$0")" && pwd)/lean-gate" lessons export "$ex" > /dev/null 2>&1 && { echo "FAIL lessons export replaced a generated note"; fail=1; }
   # guard hint: the doc guard is named once per session (the em dash check belongs to lean-gate)
   gh="$tmp/gh"; mkdir -p "$gh"; : > "$gh/x.md"
   echo "{\"session_id\":\"s1\",\"file_path\":\"$gh/x.md\"}" | CLAUDE_PLUGIN_DATA="$gh/d" bash "$(dirname "$0")/../scripts/guard-hint.sh" | grep -q "docs-guard" || { echo "FAIL guard hint did not name the docs guard"; fail=1; }
@@ -206,6 +206,23 @@ cmd_selftest() {
   [ "$(wc -l < "$gd/data/gain.tsv")" = 2 ] || { echo "FAIL gain did not log two runs"; fail=1; }
   (cd "$gd/proj" && CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain) | tail -n 1 | grep -q '	+0$' || { echo "FAIL gain change figure"; fail=1; }
   unset LEAN_BOARD
+  # rename: the old lean-project settings, memory and lessons are copied once, never over a newer file, and the old ones stay
+  mg="$tmp/mg"; mkdir -p "$mg/.claude/lean-project/memory/p" "$mg/.claude/plugins/data/lean-project-inline" "$mg/.claude/plugins/data/lean-project-lean-project/sessions"
+  echo '{"mode":"warn"}' > "$mg/.claude/lean-project.json"; echo note > "$mg/.claude/lean-project/memory/p/notes.md"
+  echo stray > "$mg/.claude/plugins/data/lean-project-inline/LESSONS.md"; echo main > "$mg/.claude/plugins/data/lean-project-lean-project/LESSONS.md"
+  touch "$mg/.claude/plugins/data/lean-project-lean-project/sessions/s.md"
+  migrate() { (HOME="$mg" CLAUDE_PLUGIN_DATA="$1" . "$(dirname "$LIB")/../scripts/gate-on.sh"); }
+  migrate "$mg/.claude/plugins/data/lean-gate-lean-gate"
+  [ "$(cat "$mg/.claude/lean-gate.json" 2>/dev/null)" = '{"mode":"warn"}' ] || { echo "FAIL migrate global config"; fail=1; }
+  [ -f "$mg/.claude/lean-gate/memory/p/notes.md" ] && [ -f "$mg/.claude/lean-project/memory/p/notes.md" ] || { echo "FAIL migrate memory"; fail=1; }
+  [ "$(cat "$mg/.claude/plugins/data/lean-gate-lean-gate/LESSONS.md" 2>/dev/null)" = main ] || { echo "FAIL migrate lessons from the installed plugin's folder"; fail=1; }
+  [ -f "$mg/.claude/plugins/data/lean-gate-lean-gate/sessions/s.md" ] || { echo "FAIL migrate session drafts"; fail=1; }
+  echo '{"mode":"block"}' > "$mg/.claude/lean-gate.json"; echo newer > "$mg/.claude/plugins/data/lean-gate-lean-gate/LESSONS.md"
+  migrate "$mg/.claude/plugins/data/lean-gate-lean-gate"; migrate "$tmp/elsewhere"
+  [ "$(cat "$mg/.claude/lean-gate.json")" = '{"mode":"block"}' ] && [ "$(cat "$mg/.claude/plugins/data/lean-gate-lean-gate/LESSONS.md")" = newer ] || { echo "FAIL migrate overwrote a newer file"; fail=1; }
+  [ ! -e "$tmp/elsewhere" ] || { echo "FAIL migrate wrote into a folder that is not the plugin's"; fail=1; }
+  [ "$(cd "$mg" && gate_project_file "$mg")" = "$mg/.lean-gate.json" ] || { echo "FAIL project file default"; fail=1; }
+  echo '{}' > "$mg/.lean-project.json"; [ "$(gate_project_file "$mg")" = "$mg/.lean-project.json" ] || { echo "FAIL old project file fallback"; fail=1; }
 
   rm -rf "$tmp"
   [ $fail = 0 ] && echo "selftest ok" || { echo "selftest FAILED"; return 1; }

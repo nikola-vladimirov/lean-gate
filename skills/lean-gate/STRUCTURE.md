@@ -1,6 +1,6 @@
 # Hub structure: how every project is laid out
 
-One standard for starting and adopting projects. It merges the ICM method (Interpretable Context Methodology, `RinDig/icm-architect`, MIT: folder structure as agent architecture) with lean-project's own files. Read it for "start a project", "adopt this folder" and the walk test. lean-gate outranks it where they differ.
+One standard for starting and adopting projects. It merges the ICM method (Interpretable Context Methodology, `RinDig/icm-architect`, MIT: folder structure as agent architecture) with its own files. Read it for "start a project", "adopt this folder" and the walk test. The gate (the panel settings) outranks it where they differ.
 
 ## The layout
 

@@ -1,13 +1,13 @@
 {
-  "name": "lean-project",
-  "description": "lean-project: run Claude Code projects with fewer tokens per session.",
+  "name": "lean-gate",
+  "description": "lean-gate: run Claude Code projects with fewer tokens per session.",
   "owner": {
     "name": "nikola-vladimirov",
     "url": "https://github.com/nikola-vladimirov"
   },
   "plugins": [
     {
-      "name": "lean-project",
+      "name": "lean-gate",
       "source": "./",
       "description": "New-project plans with phase gates, adopting projects already under way, lean docs, file maps, model routing for builds, a shared agent board, release-gate reviews of changed code, and a fresh-session reminder."
     }

@@ -19,17 +19,17 @@ case "$f" in
 esac
 
 if [ -n "$kind" ]; then
-  state_dir=${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}/lean-project}
+  state_dir=${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}/lean-gate}
   mkdir -p "$state_dir" 2>/dev/null || exit 0
   find "$state_dir" -name 'guard-*' -mtime +7 -exec rm -f {} + 2>/dev/null
   marker="$state_dir/guard-$kind-$session"
   if [ ! -f "$marker" ]; then
     touch "$marker"
-    ref="${CLAUDE_PLUGIN_ROOT:-$(dirname "$0")/..}/skills/lean-project/reference/guard-skills"
+    ref="${CLAUDE_PLUGIN_ROOT:-$(dirname "$0")/..}/skills/lean-gate/reference/guard-skills"
     if [ "$kind" = docs ]; then
-      guard="lean-project: you are editing docs. Before you finish, check every function, flag, endpoint and config key they name against the code. Read only $ref/docs-guard.md for the method."
+      guard="lean-gate: you are editing docs. Before you finish, check every function, flag, endpoint and config key they name against the code. Read only $ref/docs-guard.md for the method."
     else
-      guard="lean-project: you are editing tests. Before you finish, check them against the test rules. Read only $ref/test-guard.md for the method."
+      guard="lean-gate: you are editing tests. Before you finish, check them against the test rules. Read only $ref/test-guard.md for the method."
     fi
     msg="${msg:+$msg }$guard"
   fi

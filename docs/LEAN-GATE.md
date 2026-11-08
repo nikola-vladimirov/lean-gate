@@ -1,6 +1,6 @@
 # The lean-gate panel
 
-The lean-gate panel is the control surface of lean-project. It sits in a docked pane beside the chat, shows how the session is going, and lets you change every setting with button presses. This page explains each part, how to use it, and gives examples.
+The panel is the control surface of lean-gate. It sits in a docked pane beside the chat, shows how the session is going, and lets you change every setting with button presses. This page explains each part, how to use it, and gives examples.
 
 Contents: [Project](#project) · [Ponytail](#ponytail) · [WordPress checks](#wordpress-checks) · [Built-in helpers](#built-in-helpers) · [Opening and closing](#opening-and-closing) · [The top row](#the-top-row) · [Rules](#rules) · [Rule builder](#rule-builder) · [Model routing](#model-routing) · [Workflow and limits](#workflow-and-limits) · [Project memory](#project-memory) · [Board](#board) · [Lessons and local rules](#lessons-and-local-rules) · [Review](#review) · [Packs](#packs) · [Recent violations](#recent-violations) · [Config files](#config-files)
 
@@ -9,7 +9,7 @@ Contents: [Project](#project) · [Ponytail](#ponytail) · [WordPress checks](#wo
 - The panel opens by itself at session start. `/lean-gate` opens it again.
 - **Close lean-gate panel** (the last button) closes it. While it is closed, an **Open lean-gate panel** button appears above the prompt.
 - Press **Details** in the top row to show the sections below it, **Compact** to hide them. Each section title (▾ open, ▸ closed) is a button that folds it. Folds are remembered for the session only.
-- A button that steps through choices (a level, a model, an effort, a cap) moves to the next choice on each press and writes it to `~/.claude/lean-project.json` at once.
+- A button that steps through choices (a level, a model, an effort, a cap) moves to the next choice on each press and writes it to `~/.claude/lean-gate.json` at once.
 
 ## The top row
 
@@ -51,7 +51,7 @@ The master level in the top row caps these. Four rules can only warn (marked bel
 
 | Rule | What it checks |
 | --- | --- |
-| `lean-project-first` | The lean-project skill is loaded before code is edited. |
+| `lean-gate-first` | The lean-gate skill is loaded before code is edited. |
 | `ponytail-active` | The separate ponytail plugin is on before code is edited. (This only reads ponytail's on/off state; the panel does not control ponytail.) |
 | `routing-line` (warn only) | A `routing:` line appears before the first Edit, Write or Agent call of a turn. |
 | `state-file-fresh` (warn only) | The state file is touched after code is edited. |
@@ -101,7 +101,7 @@ How the cap works: an agent counts toward every section whose model and effort m
 
 Example: set Coding to `sonnet`, `high`, `3` agents. Claude may run three `sonnet:high` agents at once; a fourth is refused until the next prompt.
 
-A project's own `.lean-project.json` can override routing for that project.
+A project's own `.lean-gate.json` can override routing for that project.
 
 ## Workflow and limits
 
@@ -116,43 +116,43 @@ Only the global config can set the workflow text, because a project file can arr
 
 ## Project memory
 
-Short dated notes kept per project, so a new session knows what was decided. Notes live in `~/.claude/lean-project/memory/<project>/`.
+Short dated notes kept per project, so a new session knows what was decided. Notes live in `~/.claude/lean-gate/memory/<project>/`.
 
 - The line shown is the index: note count, newest note and linked projects.
 - **Remember** asks Claude to add a note for what was decided in this session. **Recall** asks Claude to read the notes and say where the project stands. **Forget last** archives the newest note (never deleted).
 - **link to** names other projects with notes; a button links this project to that one, so recall also reads their newest notes.
-- **automatic: on/off**: when on, the session prompt tells Claude to record decisions, milestones and facts the next session needs by itself, with `lean-project memory add "<one line>" --tag decision|state|link|note`. This works by instruction, so it depends on Claude following it.
+- **automatic: on/off**: when on, the session prompt tells Claude to record decisions, milestones and facts the next session needs by itself, with `lean-gate memory add "<one line>" --tag decision|state|link|note`. This works by instruction, so it depends on Claude following it.
 
-Example note: `lean-project memory add "Chose per-section agent caps over one global cap" --tag decision`.
+Example note: `lean-gate memory add "Chose per-section agent caps over one global cap" --tag decision`.
 
 ## Board
 
-The shared task board is how parallel agents and sessions talk to each other. Agents cannot see each other, so the board is one append-only file (`BOARD.md` in the project's docs folder) read and written through `lean-project board`:
+The shared task board is how parallel agents and sessions talk to each other. Agents cannot see each other, so the board is one append-only file (`BOARD.md` in the project's docs folder) read and written through `lean-gate board`:
 
 ```
-lean-project board                      # columns (doing, blocked, todo, done) and the latest notes
-lean-project board T3                   # one card's full history
-lean-project board add T3 <title>       # the lead adds a card before delegating
-lean-project board move T3 doing        # todo | doing | blocked | done
-lean-project board note T3 <one line>   # a fact another task needs
-lean-project board files T3 <paths>     # the files a card changes; done runs a syntax and standards check
+lean-gate board                      # columns (doing, blocked, todo, done) and the latest notes
+lean-gate board T3                   # one card's full history
+lean-gate board add T3 <title>       # the lead adds a card before delegating
+lean-gate board move T3 doing        # todo | doing | blocked | done
+lean-gate board note T3 <one line>   # a fact another task needs
+lean-gate board files T3 <paths>     # the files a card changes; done runs a syntax and standards check
 ```
 
-The panel shows what `lean-project board` prints. **Refresh** reads it again; **Ask Claude to check it** has Claude report blocked cards and what each needs. The panel only reads the board: cards are created by the lead when work is delegated, so it says "no board here yet" until a project has one. See `skills/lean-project/BUILD.md`, "Board", for how agents use it.
+The panel shows what `lean-gate board` prints. **Refresh** reads it again; **Ask Claude to check it** has Claude report blocked cards and what each needs. The panel only reads the board: cards are created by the lead when work is delegated, so it says "no board here yet" until a project has one. See `skills/lean-gate/BUILD.md`, "Board", for how agents use it.
 
 ## Lessons and local rules
 
 A lesson is a note about what to do differently. The first sighting is logged; when the same lesson is recorded a second time it becomes a line under "Local rules" at the top of the lessons file, which every session reads first. Local rules outrank the defaults.
 
-- The panel shows what `lean-project lessons` prints.
+- The panel shows what `lean-gate lessons` prints.
 - **Add lesson** asks Claude to record one (it asks what it should say). **Review old** asks Claude to go through unpromoted lessons older than 14 days and rewrite each into a rule or drop it. Dropped lessons move to an archive, never deleted.
 - **automatic: on/off**: when on, Claude records a lesson by itself when you correct it or it repeats a mistake.
 
-Example: `lean-project lesson "Run the tests before saying done"`. Recording the same text again promotes it to a local rule.
+Example: `lean-gate lesson "Run the tests before saying done"`. Recording the same text again promotes it to a local rule.
 
 ## Review
 
-Code, performance and security reviews are a release gate, not a step on every task. `lean-project review-scope` lists the code changed since the last release tag and says whether a full review is due.
+Code, performance and security reviews are a release gate, not a step on every task. `lean-gate review-scope` lists the code changed since the last release tag and says whether a full review is due.
 
 - **Review** (top row, when due) shows the first lines of the `review-scope` report as a toast.
 - **Reviewed** marks the current commit as reviewed. The mark is kept outside the repo and is tied to that commit, so later code changes make a review due again and the `release-needs-review` rule refuses a tag.
@@ -168,7 +168,7 @@ Packs are sets of skills and plugins that stay off until a task needs them. Ever
 | `bricks` | The Bricks and BricksExtras skills. |
 | `ui-ux` | The UI/UX plugin. |
 
-**on** brings a pack back, **off** parks it. Nothing is deleted: skill folders move between `~/.claude/skills` and `~/.claude/skills-off`, and a plugin pack flips its switch in `settings.json`. Changes apply in the next session, because Claude Code reads skills and plugins at start. The line under the buttons is the output of `lean-project pack status`.
+**on** brings a pack back, **off** parks it. Nothing is deleted: skill folders move between `~/.claude/skills` and `~/.claude/skills-off`, and a plugin pack flips its switch in `settings.json`. Changes apply in the next session, because Claude Code reads skills and plugins at start. The line under the buttons is the output of `lean-gate pack status`.
 
 Example: before a WordPress task, press `wp on`, then start a new session.
 
@@ -192,12 +192,12 @@ Ponytail (the lazy senior dev rules, MIT, vendored at the version shown) is part
 
 - **mode** cycles off, lite, full, ultra by writing `~/.claude/.ponytail-active`.
 - **hooks** switches its three hooks on or off (the `helpers.ponytail` key).
-- **Update** fetches the latest release into `vendor/ponytail` (`lean-project vendor update ponytail`); review the diff and commit it.
+- **Update** fetches the latest release into `vendor/ponytail` (`lean-gate vendor update ponytail`); review the diff and commit it.
 - **Switch off standalone plugins** appears while the separate ponytail, wp-woo-performance-audit or lean-gate-local plugins are still enabled. Until then the hub stays quiet about ponytail so nothing loads twice.
 
 ## WordPress checks
 
-- **Performance audit** runs `lean-project audit perf` on the PHP changed since the last tag (the vendored wp-woo-performance-audit skill; its skills are also available to Claude).
+- **Performance audit** runs `lean-gate audit perf` on the PHP changed since the last tag (the vendored wp-woo-performance-audit skill; its skills are also available to Claude).
 - **Run PHPCS** and **Fix with PHPCBF** run PHP_CodeSniffer with the WordPress standard on the PHP files changed since the last tag plus uncommitted ones. **standard** cycles WordPress, WordPress-Extra, WordPress-Core and WordPress-Docs (`phpcs_standard`).
 - PHPCS needs PHP and Composer on the machine and the WPCS standard installed; the status line under the title says what is missing and the command to fix it.
 - The `phpcs-before-done` rule (warn only) logs a warning at the end of a turn that edited PHP without running PHPCS.
@@ -210,8 +210,8 @@ Four small scripts run on their own: startup notes, the context nudge, doc and t
 
 | File | Holds |
 | --- | --- |
-| `~/.claude/lean-project.json` | Everything you set in the panel. The panel writes it; you can also edit it by hand. |
-| `<project>/.lean-project.json` | Per-project tuning of `rules`, `routing`, `agent_caps` and limits. It cannot change `mode`, `workflow`, `custom_rules` or `demo_pattern`, since that file can arrive with a cloned repo. |
+| `~/.claude/lean-gate.json` | Everything you set in the panel. The panel writes it; you can also edit it by hand. |
+| `<project>/.lean-gate.json` | Per-project tuning of `rules`, `routing`, `agent_caps` and limits. It cannot change `mode`, `workflow`, `custom_rules` or `demo_pattern`, since that file can arrive with a cloned repo. |
 | `~/.claude/lean-violations.tsv` | The rule hit log, trimmed to its last 500 lines. |
 
 Keys: `helpers`, `phpcs_standard`, `mode`, `rules`, `custom_rules`, `routing`, `agent_caps`, `max_agents`, `delegate_after_lead_calls`, `context_limit`, `workflow`, `pr_repos`, `state_file`, `demo_pattern`, `auto_memory`, `auto_lessons`.

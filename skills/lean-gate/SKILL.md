@@ -1,9 +1,9 @@
 ---
-name: lean-project
+name: lean-gate
 description: Run a project with the fewest tokens per session. Plans new projects, grills fuzzy changes, trims docs and CLAUDE.md, maps large files, routes builds to Haiku, Sonnet or Opus on a shared board, and holds the WordPress, Bricks and REA guides (read on demand). Always on, for every project.
 ---
 
-# lean-project
+# lean-gate
 
 One goal: the fewest tokens a session spends to get oriented, stay oriented and get the work done, without losing information.
 
@@ -11,9 +11,9 @@ One goal: the fewest tokens a session spends to get oriented, stay oriented and 
 
 ## Review scope (release gate; mandatory)
 
-Code, performance and security reviews are a release gate, not a per-task step. Testing still runs on every change. At release, `lean-project review-scope` lists the code changed since the last release tag and says whether a full review is due. Review those files, run `lean-project audit security` and `lean-project audit perf` on that list, and report findings in them.
+Code, performance and security reviews are a release gate, not a per-task step. Testing still runs on every change. At release, `lean-gate review-scope` lists the code changed since the last release tag and says whether a full review is due. Review those files, run `lean-gate audit security` and `lean-gate audit perf` on that list, and report findings in them.
 
-A full review runs on every major release and every 5 to 10 minor ones; `review-scope` counts them. When it says one is due, run it and record it with `lean-project review-scope --full-done`. Never run a review on an in-progress build.
+A full review runs on every major release and every 5 to 10 minor ones; `review-scope` counts them. When it says one is due, run it and record it with `lean-gate review-scope --full-done`. Never run a review on an in-progress build.
 
 ## Pick the mode, read only its guide
 
@@ -28,9 +28,9 @@ A full review runs on every major release and every 5 to 10 minor ones; `review-
 | Write or edit website text (product pages, guides, blog, FAQ) | `SITE-COPY.md` (method), plus the project's voice notes |
 | Any task at all (routing, which model and which tool or plugin) | `ROUTING.md`, before starting |
 | Build or review WordPress, WooCommerce, Bricks or block-editor code (plugin, theme, companion script) | `WORDPRESS.md`: how to read the docs, check changelogs, best practices, the security checklist and fixes. Read it before changing that code, every time. |
-| Audit a WordPress or WooCommerce site or codebase for performance, HPOS or layout, onboard an inherited store, or triage a slow store | The `wp-woo-performance-audit` skill (its own public repo, installed in `~/.claude/skills`). Scope: at release, the files `review-scope` lists; the whole folder only for an audit the user asked for. Its scan is `lean-project audit perf`. |
+| Audit a WordPress or WooCommerce site or codebase for performance, HPOS or layout, onboard an inherited store, or triage a slow store | The `wp-woo-performance-audit` skill (its own public repo, installed in `~/.claude/skills`). Scope: at release, the files `review-scope` lists; the whole folder only for an audit the user asked for. Its scan is `lean-gate audit perf`. |
 | Build or change a Bricks or BricksExtras site, page, template, element, query or condition | `builder/INDEX.md`, then only the one `builder/<skill>/SKILL.md` the task needs |
-| Need a skill or plugin that is off (the wp-* skills, Bricks skills, the ui-ux plugin) | `lean-project pack status`; if it is off, `lean-project pack on <name>`, then a new session. Those packs are on demand, so nothing else loads them. |
+| Need a skill or plugin that is off (the wp-* skills, Bricks skills, the ui-ux plugin) | `lean-gate pack status`; if it is off, `lean-gate pack on <name>`, then a new session. Those packs are on demand, so nothing else loads them. |
 | Reverse-engineer a shipped app, package, firmware or browser target | `reverse/SKILL.md`, then only the reference file it names |
 | Check a WordPress plugin for WordPress.org submission, set up PHPStan, review WooCommerce code, check docs against code, or review tests | `reference/README.md`, then only the one file it points to |
 
@@ -64,11 +64,11 @@ The context-limit reminder, the new-session steps and the session-end draft are 
 
 ## After any mode: improve
 
-Record a lesson with `lean-project lesson` (usage in `TOOLS.md`) when lean-gate's automatic lessons is on or the person asks. Offer a plugin issue only if it helps every user, and post only on the user's yes.
+Record a lesson with `lean-gate lesson` (usage in `TOOLS.md`) when the panel's automatic lessons is on or the person asks. Offer a plugin issue only if it helps every user, and post only on the user's yes.
 
 ## Precedence
 
-lean-gate (the panel and `~/.claude/lean-project.json`) outranks this skill. Where `ROUTING.md`, `BUILD.md` or any guide here names a model, effort or agent count, the lean-gate routing and agent caps win; the tables here are only defaults for what lean-gate does not set. A rule lean-gate blocks is a stop, not a suggestion; a rule it sets to warn or off makes this skill's matching instruction advisory (routing line, tests, state file, review before a tag, em dashes, context limit). Delegated runner work (`lean-project delegate`) is also under lean-gate: free OpenCode models only, and the agent caps apply.
+The gate (the panel and `~/.claude/lean-gate.json`) outranks the guides in this skill. Where `ROUTING.md`, `BUILD.md` or any guide here names a model, effort or agent count, the gate's routing and agent caps win; the tables here are only defaults for what the gate does not set. A rule the gate blocks is a stop, not a suggestion; a rule it sets to warn or off makes this skill's matching instruction advisory (routing line, tests, state file, review before a tag, em dashes, context limit). Delegated runner work (`lean-gate delegate`) is also under the gate: free OpenCode models only, and the agent caps apply.
 
 The user's own rules (CLAUDE.md, memory) outrank this skill. Never delete content: replaced text moves verbatim to an archive file. Confirm before anything outward-facing (pushing, creating remotes, posting).
 

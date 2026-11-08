@@ -13,7 +13,7 @@ jobs:
           fetch-depth: 0
       - name: Syntax
         run: |
-          bash -n bin/lean-project
+          bash -n bin/lean-gate
           for f in scripts/*.sh; do bash -n "$f"; done
       - name: Selftest
-        run: bash bin/lean-project selftest
+        run: bash bin/lean-gate selftest

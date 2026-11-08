@@ -37,7 +37,7 @@ Unknowns become assumptions and decisions with defaults in the plan, so they nev
 ## 3. Write the plan
 
 - Keep it as short as the project allows. Stable IDs on everything (A1, D1, P1, R1) so a grep finds one line.
-- Every decision gets a default, so work can start before the user answers. Status is `open` or `decided`. Write `needs D<n>` in a decision's text when it waits on another; `lean-project frontier docs/PLAN.md` then lists what to ask next.
+- Every decision gets a default, so work can start before the user answers. Status is `open` or `decided`. Write `needs D<n>` in a decision's text when it waits on another; `lean-gate frontier docs/PLAN.md` then lists what to ask next.
 - **Phases are gates.** Each phase lists its scope and acceptance checks that a command or a person can verify. The next phase starts only when every check is ticked in the plan.
 - **Phase 0 verifies unknowns** (API behaviour, limits, data formats, access) when the project depends on anything external. Facts from unofficial sources are leads until checked.
 - Optional per phase: which parts go to which model (see `BUILD.md`).
@@ -48,18 +48,18 @@ If the folder is not a repository, offer `git init` with a `.gitignore` for the 
 
 ## 4b. Delegation choice
 
-Ask once with AskUserQuestion, with the default first: none (do all work here), llama (the local llama.cpp server, for example yuxinlu1 gemma-4-12B-coder Q4_K_M), or opencode (free OpenCode models, default `opencode/deepseek-v4.1-flash-free`). Save it with `lean-project delegate set runner <value>`, then `lean-project delegate check`. The same question is asked on a project's first session, and for adopted projects in step 1 of "Adopting a project". Never pick a paid model for opencode.
+Ask once with AskUserQuestion, with the default first: none (do all work here), llama (the local llama.cpp server, for example yuxinlu1 gemma-4-12B-coder Q4_K_M), or opencode (free OpenCode models, default `opencode/deepseek-v4.1-flash-free`). Save it with `lean-gate delegate set runner <value>`, then `lean-gate delegate check`. The same question is asked on a project's first session, and for adopted projects in step 1 of "Adopting a project". Never pick a paid model for opencode.
 
 ## 5. Finish
 
-Run `lean-project toc` on docs of 80+ lines and `lean-project cost <project>`. Report the session-start tokens (auto-loaded plus the state file), list the open decisions the user should answer, and record a lesson.
+Run `lean-gate toc` on docs of 80+ lines and `lean-gate cost <project>`. Report the session-start tokens (auto-loaded plus the state file), list the open decisions the user should answer, and record a lesson.
 
 ## Adopting a project
 
 For a project already under way: code, history and docs exist, but no phased plan. The plan is reconstructed, not invented, and existing files are never replaced.
 
 0. **Pre-fill the startup cards.** Steps 1 and 2 give the evidence; `STARTUP.md` turns it into recommended answers ("Adopting an existing project"). Ask only the blank ones.
-1. **Read what exists, cheaply:** the index and state file (whatever names the project uses), `git tag` and `git log --oneline` (a range, not the whole history), the changelog's recent window, and the code through the graph tool or `lean-project map <dir>`. A haiku subagent does any bulk reading and returns a summary.
+1. **Read what exists, cheaply:** the index and state file (whatever names the project uses), `git tag` and `git log --oneline` (a range, not the whole history), the changelog's recent window, and the code through the graph tool or `lean-gate map <dir>`. A haiku subagent does any bulk reading and returns a summary.
 2. **Keep the project's layout.** Its index, state file, doc names and docs folder stay (see "Docs folder" in TOOLS.md). Only missing pieces are added: the plan from `templates/PLAN.md`, a state file if there is none. An oversized or duplicated index or state file is a job for `DOCS.md`, run after this.
 3. **Write the plan from the evidence:**
    - Goal, architecture and sources: from the index, readme and code, one line each.

@@ -69,7 +69,7 @@ const EMPTY: LeanGateBand = {
   projNew: false,
   projHit: null,
 }
-const band = atom({ plugin: 'lean-project', key: 'band' } as const, EMPTY)
+const band = atom({ plugin: 'lean-gate', key: 'band' } as const, EMPTY)
 const PANE = 'lean-gate'
 
 // The route is "main" (no instruction), "free", or "<model>:<effort>", the same choices as Model routing.
@@ -102,7 +102,7 @@ const WARN_ONLY = new Set(['routing-line', 'state-file-fresh', 'tests-before-don
 // The details view lists rules by group, each with a one-line meaning.
 const RULE_GROUPS: readonly (readonly [string, readonly string[]])[] = [
   ['Agents and models', ['agent-needs-model-effort', 'no-haiku-coding', 'free-opencode-only', 'delegate-more', 'max-agents', 'review-edited-files-only', 'distinctive-session-names']],
-  ['Every session', ['lean-project-first', 'ponytail-active', 'routing-line', 'state-file-fresh', 'tests-before-done', 'no-em-dashes']],
+  ['Every session', ['lean-gate-first', 'ponytail-active', 'routing-line', 'state-file-fresh', 'tests-before-done', 'no-em-dashes']],
   ['Releases and git', ['release-needs-review', 'changelog-before-tag', 'push-after-tag', 'one-pr-per-fix', 'no-demo-files-public']],
   ['WordPress and docs', ['wp-skills-for-wp-code', 'docs-before-builder', 'phpcs-before-done']],
 ]
@@ -113,7 +113,7 @@ const RULE_INFO: Record<string, string> = {
   'delegate-more': 'Long runs of reads go to a subagent',
   'max-agents': 'Limit on subagents per turn',
   'review-edited-files-only': 'A review agent is scoped to files',
-  'lean-project-first': 'Load lean-project before editing code',
+  'lean-gate-first': 'Load lean-gate before editing code',
   'ponytail-active': 'Ponytail on before editing code',
   'routing-line': 'State the model routing before the first call',
   'state-file-fresh': 'Touch the state file after code edits',
@@ -239,10 +239,20 @@ const readText = async ($: EngineInterface, path: string) => {
   return r.kind === 'ok' ? r.text : undefined
 }
 
+// lean-project is the old name: its file is read while the new one is missing (the session start copies it over once).
+const readNewOrOld = async ($: EngineInterface, dir: string, name: string): Promise<Read> => {
+  const r = await readFile($, `${dir}/${name.replace('lean-project', 'lean-gate')}`)
+  return r.kind === 'missing' ? readFile($, `${dir}/${name}`) : r
+}
+const configText = async ($: EngineInterface, dir: string, name: string) => {
+  const r = await readNewOrOld($, dir, name)
+  return r.kind === 'ok' ? r.text : ''
+}
+
 // Global file, then the session project's file; a missing or bad file reads as defaults.
 async function loadConfig($: EngineInterface): Promise<Config> {
-  const global = parseJson((await readText($, `${await claudeDir($)}/lean-project.json`)) ?? '')
-  const project = parseJson((await readText($, `${norm(await $.session.cwd())}/.lean-project.json`)) ?? '')
+  const global = parseJson(await configText($, await claudeDir($), 'lean-project.json'))
+  const project = parseJson(await configText($, norm(await $.session.cwd()), '.lean-project.json'))
   return mergeConfig(global, projectLayer(project))
 }
 
@@ -250,8 +260,8 @@ async function loadConfig($: EngineInterface): Promise<Config> {
 // shortcut: the band shows the merged value, so a rule a project file overrides looks unchanged after a press; edit the project file then.
 function editGlobal($: EngineInterface, mem: Mem, edit: (json: Record<string, unknown>) => void): Promise<void> {
   return enqueue(mem, async () => {
-    const file = `${await claudeDir($)}/lean-project.json`
-    const r = await readFile($, file)
+    const file = `${await claudeDir($)}/lean-gate.json`
+    const r = await readNewOrOld($, await claudeDir($), 'lean-project.json')
     let json: Record<string, unknown> | undefined = {}
     if (r.kind === 'ok' && r.text.trim() !== '') json = parseStrict(r.text)
     if (r.kind === 'error' || json === undefined) return $.ui.toast('lean-gate: global config unreadable, not changed')
@@ -288,7 +298,7 @@ const CODE_GLOBS = ['*.php', '*.js', '*.jsx', '*.ts', '*.tsx', '*.py', '*.sh']
 // Git Bash when it is installed (plain `bash` on Windows may be WSL's), else whatever `bash` is on PATH.
 async function shell($: EngineInterface, cwd: string, command: string) {
   const bash = (await $.fs.exists(GIT_BASH).catch(() => false)) ? GIT_BASH : 'bash'
-  // The app does not put the plugin's bin folder on PATH for its own processes, so `lean-project` is found through the plugin root.
+  // The app does not put the plugin's bin folder on PATH for its own processes, so `lean-gate` is found through the plugin root.
   const pluginRoot = $.plugin.root
   const root = pluginRoot ? `export PATH="$(cygpath -u '${pluginRoot}' 2>/dev/null || echo '${norm(pluginRoot)}')/bin:$PATH"; ` : ''
   return $.process.run([bash, '-c', `${root}${command}`], { cwd, timeoutMs: OTHER_MS }).catch(() => undefined)
@@ -386,7 +396,7 @@ async function markReviewed($: EngineInterface, cwd: string): Promise<string> {
 // Project memory for the cwd: its one-line index and the other projects that have notes (to link to). Both come from the CLI.
 async function readMemory($: EngineInterface) {
   const cwd = norm(await $.session.cwd())
-  const [index, projects] = await Promise.all([shell($, cwd, 'lean-project memory index'), shell($, cwd, 'lean-project memory projects')])
+  const [index, projects] = await Promise.all([shell($, cwd, 'lean-gate memory index'), shell($, cwd, 'lean-gate memory projects')])
   const names = (projects?.stdout ?? '').split('\n').map(l => l.trim().split(/\s+/)[1]).filter((n): n is string => !!n && /^[a-z0-9._-]+$/.test(n))
   await patch($, { memory: cut((index?.stdout ?? '').trim(), 160), memoryProjects: names.slice(0, 12) })
 }
@@ -394,11 +404,11 @@ async function readMemory($: EngineInterface) {
 // The shared task board and the lessons, as the CLI prints them: a few trimmed lines each, shown in the details.
 const lines = (out: string, n: number) => out.split('\n').map(l => cut(l.trim(), 100)).filter(Boolean).slice(0, n)
 async function readBoard($: EngineInterface) {
-  const r = await shell($, norm(await $.session.cwd()), 'lean-project board')
+  const r = await shell($, norm(await $.session.cwd()), 'lean-gate board')
   await patch($, { board: r === undefined || r.exitCode ? ['no board here yet: cards appear when work is delegated'] : lines(r.stdout, 16) })
 }
 async function readLessons($: EngineInterface) {
-  const r = await shell($, norm(await $.session.cwd()), 'lean-project lessons')
+  const r = await shell($, norm(await $.session.cwd()), 'lean-gate lessons')
   await patch($, { lessons: lines(r?.stdout ?? '', 12) })
 }
 
@@ -406,7 +416,7 @@ async function readLessons($: EngineInterface) {
 // Ponytail mode (the flag file its hooks keep) and the status lines of the vendored tools and PHPCS.
 async function readTools($: EngineInterface) {
   const mode = ((await readText($, `${await claudeDir($)}/.ponytail-active`)) ?? 'off').trim() || 'off'
-  const r = await shell($, norm(await $.session.cwd()), 'lean-project vendor status; lean-project phpcs status')
+  const r = await shell($, norm(await $.session.cwd()), 'lean-gate vendor status; lean-gate phpcs status')
   await patch($, { ptMode: mode, tools: lines(r?.stdout ?? '', 8) })
 }
 const loadRegistry = async ($: EngineInterface) => parseRegistry((await readText($, `${await claudeDir($)}/lean-projects.json`)) ?? undefined)
@@ -546,7 +556,7 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
   if (isLead && (tool === 'Edit' || tool === 'Write')) {
     const path = norm(String(rec.file_path ?? ''))
     if (CODE_EDITED.test(path) && !mem.leanLoaded) {
-      const deny = await trip($, mem, cfg, 'lean-project-first', `code edit before the lean-project skill: ${base(path)}`, 'lean-gate: load the lean-project skill before editing code')
+      const deny = await trip($, mem, cfg, 'lean-gate-first', `code edit before the lean-gate skill: ${base(path)}`, 'lean-gate: load the lean-gate skill before editing code')
       if (deny !== undefined) return deny
     }
     if (CODE_EDITED.test(path) && effective(cfg, 'ponytail-active') !== 'off' && ((await readText($, `${await claudeDir($)}/.ponytail-active`))?.trim() ?? 'off') === 'off') {
@@ -586,7 +596,7 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
       }
     }
     if (reviewUnscoped(rec)) {
-      const deny = await trip($, mem, cfg, 'review-edited-files-only', cut(String(rec.description ?? 'review agent'), 60), 'lean-gate: scope the review to the edited files (list them or run lean-project review-scope)')
+      const deny = await trip($, mem, cfg, 'review-edited-files-only', cut(String(rec.description ?? 'review agent'), 60), 'lean-gate: scope the review to the edited files (list them or run lean-gate review-scope)')
       if (deny !== undefined) return deny
     }
     const msg = {
@@ -635,7 +645,7 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
         if (deny !== undefined) return deny
       } else if (state === 'silent') await trip($, mem, cfg, 'release-needs-review', `git did not answer for ${cut(rel.dir, 60)} (${rel.what})`, '', false)
       else if (state === 'due') {
-        const deny = await trip($, mem, cfg, 'release-needs-review', `${rel.what} in ${cut(rel.dir, 50)}`, 'lean-gate: review the changed code first (press Reviewed in the band after lean-project review-scope), then release')
+        const deny = await trip($, mem, cfg, 'release-needs-review', `${rel.what} in ${cut(rel.dir, 50)}`, 'lean-gate: review the changed code first (press Reviewed in the band after lean-gate review-scope), then release')
         if (deny !== undefined) return deny
       }
     }
@@ -804,10 +814,10 @@ export const register: Register = on => {
     const sections = [...result.sections]
     if (mode !== 'off') {
       const table = ROUTING_KEYS.map(k => `${k} ${routing[k]}${agent_caps[k] ? ` (max ${agent_caps[k]} agents)` : ''}`).join('; ')
-      sections.push({ id: 'lean-gate:precedence', text: `lean-gate is on (${mode}) and takes precedence over lean-project: where ROUTING.md, BUILD.md or any lean-project guide names a model, effort or agent count, use the lean-gate routing instead: ${table}. lean-project only fills gaps lean-gate does not cover. Every Agent call needs model and effort; a rule that blocks is a stop, not a suggestion.`, scope: 'session' as const })
+      sections.push({ id: 'lean-gate:precedence', text: `lean-gate is on (${mode}) and its panel settings outrank the lean-gate skill guides: where ROUTING.md, BUILD.md or any guide names a model, effort or agent count, use this routing instead: ${table}. The guides only fill gaps the panel does not set. Every Agent call needs model and effort; a rule that blocks is a stop, not a suggestion.`, scope: 'session' as const })
     }
-    if (auto_memory) sections.push({ id: 'lean-gate:auto-memory', text: 'Project memory is automatic: when you decide something, finish a milestone or learn a fact the next session needs, record it yourself with lean-project memory add "<one line>" --tag decision|state|link|note. One line each, no progress chatter.', scope: 'session' as const })
-    if (auto_lessons) sections.push({ id: 'lean-gate:auto-lessons', text: 'Lessons are automatic: when the person corrects you, or you repeat a mistake, record it yourself with lean-project lesson "<what to do differently>". The second sighting of the same text becomes a local rule.', scope: 'session' as const })
+    if (auto_memory) sections.push({ id: 'lean-gate:auto-memory', text: 'Project memory is automatic: when you decide something, finish a milestone or learn a fact the next session needs, record it yourself with lean-gate memory add "<one line>" --tag decision|state|link|note. One line each, no progress chatter.', scope: 'session' as const })
+    if (auto_lessons) sections.push({ id: 'lean-gate:auto-lessons', text: 'Lessons are automatic: when the person corrects you, or you repeat a mistake, record it yourself with lean-gate lesson "<what to do differently>". The second sighting of the same text becomes a local rule.', scope: 'session' as const })
     if (workflow !== '') sections.push({ id: 'lean-gate:workflow', text: `Workflow for this project: ${workflow}`, scope: 'session' as const })
     if (route !== 'main') sections.push({ id: 'lean-gate:route', text: `Routing for this task: ${routeText(route)}`, scope: 'session' as const })
     return sections.length === result.sections.length ? result : { sections }
@@ -854,7 +864,7 @@ export const register: Register = on => {
       const opening = !b.details
       await patch($, { details: opening })
       if (opening) {
-        await patch($, { packs: cut(((await shell($, await here(), 'lean-project pack status'))?.stdout ?? '').trim().split('\n').slice(0, 2).join(' | '), 100) })
+        await patch($, { packs: cut(((await shell($, await here(), 'lean-gate pack status'))?.stdout ?? '').trim().split('\n').slice(0, 2).join(' | '), 100) })
         await patch($, { dueRepos: await dueChildren($, await here()) })
         await readMemory($)
         await readBoard($)
@@ -863,8 +873,8 @@ export const register: Register = on => {
       }
     }
     const review = async () => {
-      const r = await shell($, await here(), 'lean-project review-scope')
-      $.ui.toast(r === undefined ? 'lean-project not found' : (r.stdout || r.stderr).trim().split('\n').slice(0, 2).join('\n') || 'review-scope printed nothing')
+      const r = await shell($, await here(), 'lean-gate review-scope')
+      $.ui.toast(r === undefined ? 'lean-gate not found' : (r.stdout || r.stderr).trim().split('\n').slice(0, 2).join('\n') || 'review-scope printed nothing')
     }
     const reviewed = async () => {
       $.ui.toast(await markReviewed($, await here()))
@@ -876,7 +886,7 @@ export const register: Register = on => {
       await patch($, { dueRepos: await dueChildren($, cwd) })
     }
     const setPack = async (name: string, state: string) => {
-      const r = await shell($, await here(), `lean-project pack ${state} ${name}`)
+      const r = await shell($, await here(), `lean-gate pack ${state} ${name}`)
       $.ui.toast(`${name} ${state}: takes effect next session${r?.exitCode ? ` (${cut((r.stderr || r.stdout).trim(), 60)})` : ''}`)
     }
     const [rModel = 'main', rEffort = 'medium'] = b.route.split(':')
@@ -990,12 +1000,12 @@ export const register: Register = on => {
         const { [id]: _gone, ...rest } = (j.rules ?? {}) as Record<string, unknown>
         j.rules = rest
       })
-    const askRule = ask('Add a custom rule to the custom_rules list in ~/.claude/lean-project.json (fields: id, tool such as Bash or Edit|Write, match as a regex over the command or new file text, message, level warn or block). Ask me what it should catch first.', 'Ask Claude: write a custom lean-gate rule')
+    const askRule = ask('Add a custom rule to the custom_rules list in ~/.claude/lean-gate.json (fields: id, tool such as Bash or Edit|Write, match as a regex over the command or new file text, message, level warn or block). Ask me what it should catch first.', 'Ask Claude: write a custom lean-gate rule')
 
     // Project memory: the CLI keeps the notes; the band shows the index line and runs the small actions, then re-reads it.
     const memShell = async (command: string) => {
       const r = await shell($, await here(), command)
-      $.ui.toast(cut((r?.stdout || r?.stderr || 'lean-project not found').trim().split('\n')[0] ?? '', 100))
+      $.ui.toast(cut((r?.stdout || r?.stderr || 'lean-gate not found').trim().split('\n')[0] ?? '', 100))
       await readMemory($)
     }
     // Project buttons: the registry is a file in ~/.claude; start, adopt and the walk test are asks that follow STRUCTURE.md.
@@ -1014,12 +1024,12 @@ export const register: Register = on => {
       $.ui.toast(n > 0 ? `registered ${n} project folder${n === 1 ? '' : 's'}` : 'no new project folders found here')
       await detectProject($)
     }
-    const startProject = ask('Start a new project in this folder: follow STRUCTURE.md in the lean-project skill (the setup cards, then the stage scaffold with AGENTS.md as the entry). Ask me what it is for first.', 'Ask Claude: start a project')
+    const startProject = ask('Start a new project in this folder: follow STRUCTURE.md in the lean-gate skill (the setup cards, then the stage scaffold with AGENTS.md as the entry). Ask me what it is for first.', 'Ask Claude: start a project')
     const adoptProject = ask('Adopt this folder as a hub project: audit it, show me a migration map and wait for my approval before changing anything (STRUCTURE.md, adopting). Keep my existing CLAUDE.md and state file.', 'Ask Claude: adopt this folder')
     const walkTest = ask('Run the walk test on this project (STRUCTURE.md): from the files alone, orient, say what the next step is and report the status. List anything you could not find.', 'Ask Claude: walk test')
     const attachHit = ask(`Read the entry file (AGENTS.md, else CLAUDE.md) and the state file of ${b.projHit?.name ?? 'the project'} at ${b.projHit?.path ?? ''}, and use them for this chat. Do not edit anything there.`, 'Ask Claude: read that project')
     const switchHit = ask(`Change this session\x27s working directory to ${b.projHit?.path ?? ''} with the change_directory tool, then read its entry file and state file.`, 'Ask Claude: switch folder')
-    // Ponytail, the performance audit and PHPCS: each button runs the matching lean-project command and toasts its first line.
+    // Ponytail, the performance audit and PHPCS: each button runs the matching lean-gate command and toasts its first line.
     const PT_MODES = ['off', 'lite', 'full', 'ultra']
     const stepPonytail = async () => {
       const cur = ((await readText($, `${await claudeDir($)}/.ponytail-active`)) ?? 'off').trim()
@@ -1042,12 +1052,12 @@ export const register: Register = on => {
         j.helpers = { ...(j.helpers as object), [key]: stored === false }
       })
     const toggleAuto = (key: 'auto_memory' | 'auto_lessons') => editGlobal($, mem, j => (j[key] = j[key] !== true))
-    const askBoard = ask('Run lean-project board and tell me in a few lines which cards are blocked or waiting on another card, and what each needs.', 'Ask Claude: check the board')
-    const addLesson = ask('Record a lesson with lean-project lesson "<what to do differently>" for what went wrong or was corrected in this session. Ask me what it should say first.', 'Ask Claude: record a lesson')
-    const reviewLessons = ask('Run lean-project lessons review, then rewrite each old lesson into a rule (record it again) or drop it with lean-project lessons drop.', 'Ask Claude: review old lessons')
-    const remember = ask('Add a project memory note for what we decided or did in this session: lean-project memory add "<one line>" --tag decision|state|link|note.', 'Ask Claude: add a project memory note')
-    const recall = ask('Run lean-project memory recall and tell me in a few lines where this project stands.', 'Ask Claude: recall project memory')
-    const forgetLast = () => memShell(String.raw`n=$(lean-project memory list | tail -n 1 | cut -d" " -f1); case "$n" in ''|*[!0-9]*) echo "memory: nothing to forget" ;; *) lean-project memory forget "$n" ;; esac`)
+    const askBoard = ask('Run lean-gate board and tell me in a few lines which cards are blocked or waiting on another card, and what each needs.', 'Ask Claude: check the board')
+    const addLesson = ask('Record a lesson with lean-gate lesson "<what to do differently>" for what went wrong or was corrected in this session. Ask me what it should say first.', 'Ask Claude: record a lesson')
+    const reviewLessons = ask('Run lean-gate lessons review, then rewrite each old lesson into a rule (record it again) or drop it with lean-gate lessons drop.', 'Ask Claude: review old lessons')
+    const remember = ask('Add a project memory note for what we decided or did in this session: lean-gate memory add "<one line>" --tag decision|state|link|note.', 'Ask Claude: add a project memory note')
+    const recall = ask('Run lean-gate memory recall and tell me in a few lines where this project stands.', 'Ask Claude: recall project memory')
+    const forgetLast = () => memShell(String.raw`n=$(lean-gate memory list | tail -n 1 | cut -d" " -f1); case "$n" in ''|*[!0-9]*) echo "memory: nothing to forget" ;; *) lean-gate memory forget "$n" ;; esac`)
 
     // Model routing and the workflow limits: each button steps through a short list and writes the global config.
     const cycle = <T,>(list: readonly T[], cur: T): T => list[(list.indexOf(cur) + 1) % list.length] as T
@@ -1065,7 +1075,7 @@ export const register: Register = on => {
     const setMaxAgents = (n: number) => editGlobal($, mem, j => (j.max_agents = n))
     const setCap = (key: string, n: number) => editGlobal($, mem, j => (j.agent_caps = { ...(j.agent_caps as object), [key]: n }))
     const setNum = (key: string, n: number) => editGlobal($, mem, j => (j[key] = n))
-    const editWorkflow = ask('Set the "workflow" text in ~/.claude/lean-project.json (or this project\'s .lean-project.json): a few short lines saying where each kind of work happens, how many agents and at what effort, and the order of steps. Ask me what it should say first.', 'Ask Claude: write the workflow text')
+    const editWorkflow = ask('Set the "workflow" text in ~/.claude/lean-gate.json (or this project\'s .lean-gate.json): a few short lines saying where each kind of work happens, how many agents and at what effort, and the order of steps. Ask me what it should say first.', 'Ask Claude: write the workflow text')
     const lastHit = recent[0]
     const onceRule = lastHit === undefined ? undefined : lastHit.rule
     const setOnce = (kind: 'allow' | 'block') => {
@@ -1132,7 +1142,7 @@ export const register: Register = on => {
               </Box>,
             ])
           }),
-          note(<Text dimColor>Haiku is not offered for coding and is refused there. An agent counts toward every section with its model and effort. A project's own .lean-project.json overrides these.</Text>)
+          note(<Text dimColor>Haiku is not offered for coding and is refused there. An agent counts toward every section with its model and effort. A project's own .lean-gate.json overrides these.</Text>)
         )}
         {section(
           'workflow', 'Workflow and limits',
@@ -1165,7 +1175,7 @@ export const register: Register = on => {
           b.memoryProjects.length > 0 && (
             <Box flexDirection="row" gap={1} flexWrap="wrap">
               <Text dimColor>link to</Text>
-              {b.memoryProjects.map(n => gb(`mem-link-${n}`, n, () => memShell(`lean-project memory link ${n}`)))}
+              {b.memoryProjects.map(n => gb(`mem-link-${n}`, n, () => memShell(`lean-gate memory link ${n}`)))}
             </Box>
           )
         )}
@@ -1203,8 +1213,8 @@ export const register: Register = on => {
           <Box flexDirection="row" gap={1} flexWrap="wrap">
             {gb('pt-mode', `mode: ${b.ptMode || 'off'}`, stepPonytail)}
             {gb('hk-ponytail', `hooks: ${cfg.helpers.ponytail ? 'on' : 'off'}`, () => toggleHelper('ponytail'))}
-            {gb('pt-update', 'Update', runTool('ponytail', 'lean-project vendor update ponytail', () => readTools($)))}
-            {b.tools.some(l => l.startsWith('standalone')) && gb('pt-retire', 'Switch off standalone plugins', runTool('hub', 'lean-project vendor retire', () => readTools($)))}
+            {gb('pt-update', 'Update', runTool('ponytail', 'lean-gate vendor update ponytail', () => readTools($)))}
+            {b.tools.some(l => l.startsWith('standalone')) && gb('pt-retire', 'Switch off standalone plugins', runTool('hub', 'lean-gate vendor retire', () => readTools($)))}
           </Box>,
           note(<Text dimColor>mode cycles off, lite, full, ultra (the lazy-senior-dev rules); hooks switches its startup and prompt hooks</Text>)
         )}
@@ -1212,9 +1222,9 @@ export const register: Register = on => {
           'wpdev', 'WordPress checks (performance audit, PHPCS)',
           note(<Text dimColor wrap="truncate-end">{b.tools.find(l => l.startsWith('phpcs')) ?? 'phpcs: not read yet'}</Text>),
           <Box flexDirection="row" gap={1} flexWrap="wrap">
-            {gb('audit-run', 'Performance audit', runTool('audit', 'lean-project audit perf'))}
-            {gb('phpcs-run', 'Run PHPCS', runTool('phpcs', 'lean-project phpcs'))}
-            {gb('phpcs-fix', 'Fix with PHPCBF', runTool('phpcbf', 'lean-project phpcs fix'))}
+            {gb('audit-run', 'Performance audit', runTool('audit', 'lean-gate audit perf'))}
+            {gb('phpcs-run', 'Run PHPCS', runTool('phpcs', 'lean-gate phpcs'))}
+            {gb('phpcs-fix', 'Fix with PHPCBF', runTool('phpcbf', 'lean-gate phpcs fix'))}
             {gb('phpcs-std', `standard: ${cfg.phpcs_standard}`, stepStandard)}
             {gb('phpcs-status', 'Refresh', () => readTools($))}
           </Box>,

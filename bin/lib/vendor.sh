@@ -1,7 +1,7 @@
-# Vendored tools and the standalone plugins they replace. Sourced by bin/lean-project.
-#   lean-project vendor status            versions of the vendored tools and which standalone plugins are still enabled
-#   lean-project vendor update ponytail|icm   fetch the latest from its repo into vendor/ (review the diff, then commit)
-#   lean-project vendor retire            switch off the standalone plugins the hub contains (next session)
+# Vendored tools and the standalone plugins they replace. Sourced by bin/lean-gate.
+#   lean-gate vendor status            versions of the vendored tools and which standalone plugins are still enabled
+#   lean-gate vendor update ponytail|icm   fetch the latest from its repo into vendor/ (review the diff, then commit)
+#   lean-gate vendor retire            switch off the standalone plugins the hub contains (next session)
 
 vendor_root() { cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd; }
 

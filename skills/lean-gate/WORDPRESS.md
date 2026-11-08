@@ -1,8 +1,8 @@
 # WordPress, WooCommerce, Bricks and block editor work
 
-The wp-* skills are on demand. Before plugin work, run `lean-project pack status`; if they are off, `lean-project pack on wp` and start a new session to load them.
+The wp-* skills are on demand. Before plugin work, run `lean-gate pack status`; if they are off, `lean-gate pack on wp` and start a new session to load them.
 
-Read this before changing code in a WordPress plugin, theme, WooCommerce extension, Bricks element or block. It applies to companion plugins and scripts too. Routing: the session hook points here for any WordPress project; the audit at release is `lean-project audit security` on the `lean-project review-scope` list.
+Read this before changing code in a WordPress plugin, theme, WooCommerce extension, Bricks element or block. It applies to companion plugins and scripts too. Routing: the session hook points here for any WordPress project; the audit at release is `lean-gate audit security` on the `lean-gate review-scope` list.
 
 Contents table below: open only the section you need.
 
@@ -15,9 +15,9 @@ Contents table below: open only the section you need.
 - 104-126: 5. Fixes
 - 127-135: 6. Before calling it done
 - 136-152: WordPress, Page Builder, and Ecosystem Extensions
-  - 140-144: 1. Git-Predictive Dependency Mapping (`lean-project map predict`)
-  - 145-149: 2. Phase-Gate Defensive Shield (`lean-project check gate`)
-  - 150-152: 3. Context Waste Hound (`lean-project audit waste`)
+  - 140-144: 1. Git-Predictive Dependency Mapping (`lean-gate map predict`)
+  - 145-149: 2. Phase-Gate Defensive Shield (`lean-gate check gate`)
+  - 150-152: 3. Context Waste Hound (`lean-gate audit waste`)
 <!-- /toc -->
 
 ## Contents
@@ -86,7 +86,7 @@ Verify before you write. Never code from memory for a version you have not check
 
 ## 4. Security checklist
 
-Run through this for every change. At release, `lean-project audit security` on the `review-scope` list flags most of the items below as a starting point; reading the code is still required.
+Run through this for every change. At release, `lean-gate audit security` on the `review-scope` list flags most of the items below as a starting point; reading the code is still required.
 
 - **Input:** every value from `$_GET`, `$_POST`, `$_REQUEST`, `$_COOKIE`, `$_FILES`, `$_SERVER`, REST params and AJAX data is untrusted. Sanitize on the way in (`sanitize_text_field`, `absint`, `sanitize_key`, `wp_unslash` first for superglobals).
 - **Output:** escape on the way out for the context: `esc_html`, `esc_attr`, `esc_url`, `esc_js`, `wp_kses_post` for trusted HTML, `esc_textarea`.
@@ -124,31 +124,31 @@ Each row is an unsafe pattern and the replacement. Apply the fix at the source, 
 | `echo '<script>var k = "' . $key . '";</script>';` | `wp_localize_script( 'handle', 'myData', [ 'key' => $key ] );` |
 | `$order = get_post_meta( $order_id, 'x', true );` | `$order = wc_get_order( $order_id ); $order->get_meta( 'x' );` |
 
-After each fix, re-run `lean-project audit security` on the affected files and confirm the line no longer appears, then read the surrounding code once more. The tool is a heuristic: it finds lines to check, and a clean run does not prove the code is safe.
+After each fix, re-run `lean-gate audit security` on the affected files and confirm the line no longer appears, then read the surrounding code once more. The tool is a heuristic: it finds lines to check, and a clean run does not prove the code is safe.
 
 ## 6. Before calling it done
 
 - The plan or card records the versions checked and the docs used (section 1), with URLs or file references.
 - The changelog check (section 2) is written down: minimum WordPress, PHP, WooCommerce and Bricks versions.
-- At release: `lean-project audit security` has been run on the `review-scope` list, and every finding was either fixed or explained.
-- For WordPress or WooCommerce performance or HPOS risk, `lean-project audit perf` has been run on the same list; CRITICAL hits are fixed or explained before the card is `done`. Deeper audits go to the `wp-woo-performance-audit` skill.
-- `php -l` and `lean-project check gate <card>` pass for the changed PHP files.
+- At release: `lean-gate audit security` has been run on the `review-scope` list, and every finding was either fixed or explained.
+- For WordPress or WooCommerce performance or HPOS risk, `lean-gate audit perf` has been run on the same list; CRITICAL hits are fixed or explained before the card is `done`. Deeper audits go to the `wp-woo-performance-audit` skill.
+- `php -l` and `lean-gate check gate <card>` pass for the changed PHP files.
 - For Bricks, WooCommerce checkout or block changes, the change has been tested in the real builder or site, not only in a mock (see the project's own testing rules).
 
 ## WordPress, Page Builder, and Ecosystem Extensions
 
 For WordPress, WooCommerce, Bricks Builder, or Block Editor code, three operations apply. None needs setup: `map predict` and `audit waste` run on demand, and the gate runs when a card moves to `done` (`LEAN_GATE_SKIP=1` turns it off for one command):
 
-### 1. Git-Predictive Dependency Mapping (`lean-project map predict`)
+### 1. Git-Predictive Dependency Mapping (`lean-gate map predict`)
 * Before prompting the user or splitting a phase into tasks, the engine executes a Git history analysis.
 * It scans the last 10 local commits to check which files historically change together (e.g., a Bricks query element causing structural adjustments inside `class-woocommerce-companion.php`).
 * It automatically reads the file maps of *both* associated files in a single pass, preventing broken hooks or silent template failures.
 
-### 2. Phase-Gate Defensive Shield (`lean-project check gate`)
+### 2. Phase-Gate Defensive Shield (`lean-gate check gate`)
 * When a subagent updates a card to `done` on the append-only `BOARD.md`, the engine intercepts the task closure before it reaches the lead context.
 * It executes localized terminal validation checks (`php -l` and `wpcs` rulesets).
 * If a syntax or escaping check fails, the tool rolls the card status back to `todo`, writes the raw validation error output directly to the card note, and forces the subagent to repair the bug locally.
 
-### 3. Context Waste Hound (`lean-project audit waste`)
+### 3. Context Waste Hound (`lean-gate audit waste`)
 * Scans files for token-wasting code clutter (such as massive boilerplate comments, redundant hook declarations, or dangling `error_log()` entries).
 * Dry run by default. With `--apply` (git repositories only), comment blocks move verbatim into `docs/ARCHIVE.md` and leave a one-line pointer, which lowers the baseline token overhead per session. Debug logs and repeated hooks are reported, never removed.

@@ -37,7 +37,7 @@ For a project that already exists, do the read-only discovery in `NEW-PROJECT.md
 
 16. **Distribution:** WordPress.org, a private zip, or a paid add-on. This sets the review rules.
 17. **Compatibility:** minimum WordPress, PHP and WooCommerce versions.
-18. **Security and review:** run `WORDPRESS.md` checks; run the release review that `lean-project review-scope` asks for (rules in SKILL.md "Review scope").
+18. **Security and review:** run `WORDPRESS.md` checks; run the release review that `lean-gate review-scope` asks for (rules in SKILL.md "Review scope").
 19. **Release:** version scheme, changelog location, tag and release process.
 
 ## Round 4, anything else

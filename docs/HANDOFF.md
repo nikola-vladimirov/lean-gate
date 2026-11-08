@@ -1,6 +1,18 @@
-# lean-project hub: handoff
+# lean-gate hub: handoff
 
-Updated 2026-11-07. Branch `hub`, beta `v1.0.0-beta.1` (pushed, installed). `main` is 0.31.6, untouched.
+Updated 2026-11-08. Branch `hub`. Installed: beta `v1.0.0-beta.1` (still named lean-project). Working tree: `1.0.0-beta.2`, the rename to lean-gate, uncommitted. `main` is 0.31.6, untouched.
+
+## Rename to lean-gate (phase 1 of the improvement plan, 2026-11-08)
+
+Done, not committed: plugin and marketplace `lean-gate`; CLI `bin/lean-gate` (`bin/lean-project` is a silent alias); skill `skills/lean-gate`; rule `lean-gate-first` (old id read through `RENAMED_RULES` in `hooks/gate.ts`); config `~/.claude/lean-gate.json` and `.lean-gate.json` (old files read while the new ones are missing, `readNewOrOld` in `hooks/register.tsx`, `gate_project_file` in `scripts/gate-on.sh`). `gate_migrate` in `scripts/gate-on.sh` copies (never moves) the old global config, `~/.claude/lean-project/memory` and the plugin data (lessons, session drafts, last full review) once, from every hook and the CLI. Kept on purpose: `lean-violations.tsv`, `lean-projects.json`, `lean-review/`, per-project `.lean-project` and `.lean-project-setup`, the GitHub repo name. Fixed on the way: Bash-run lessons went to the `lean-project-inline` data folder (glob sort); its two stray lessons were merged into the main file (backups `*.bak-2026-11-08`).
+
+Checks: 66 tests, selftest (with migration cases), `plugin validate` pass; tsc errors only the old ones in `mod.test.tsx`.
+
+Do not run the repo's `bin/lean-gate` before installing beta.2: it migrates at once while the installed beta.1 still writes the old files.
+
+Install (ask first, outward): commit, push `hub`; in `~/.claude/settings.json` rename the marketplace key to `lean-gate`, `enabledPlugins` to `lean-gate@lean-gate`, `pluginConfigs` to `lean-gate@lean-gate` (keeps `backup_docs: true`); restart. Optional: rename the GitHub repo (GitHub redirects). Then update the workspace `CLAUDE.md` and memory files that say lean-project.
+
+Next phases of the plan: 2 noise reduction (routing-line, lean-gate-first cause, once-per-session warnings, skip scratch folders), 3 panel check and register.tsx split, 4 `lean-gate stats`, 5 release 1.0.0.
 
 ## Where it stands
 

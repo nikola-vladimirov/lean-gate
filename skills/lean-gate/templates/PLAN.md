@@ -13,7 +13,7 @@
 
 ## 3. Decisions
 
-Every decision has a default so work can start; the user can change it any time (log it in section 8). Status is `open` or `decided`. Write `needs D<n>` in the decision text when it waits on another decision; `lean-project frontier docs/PLAN.md` reads this.
+Every decision has a default so work can start; the user can change it any time (log it in section 8). Status is `open` or `decided`. Write `needs D<n>` in the decision text when it waits on another decision; `lean-gate frontier docs/PLAN.md` reads this.
 
 | # | Decision | Default | Status |
 |---|---|---|---|

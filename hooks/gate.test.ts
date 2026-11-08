@@ -19,6 +19,13 @@ test('config: project beats global, rules merge per key, bad JSON falls back to 
   expect(parseStrict('[]')).toBeUndefined()
 })
 
+test('config: the old rule id lean-project-first still sets lean-gate-first, unless the new id is also there', () => {
+  expect(mergeConfig({ rules: { 'lean-project-first': 'block' } }).rules['lean-gate-first']).toBe('block')
+  expect(mergeConfig({ rules: { 'lean-project-first': 'block', 'lean-gate-first': 'off' } }).rules['lean-gate-first']).toBe('off')
+  expect(mergeConfig({ rules: { 'lean-gate-first': 'off', 'lean-project-first': 'block' } }).rules['lean-gate-first']).toBe('off')
+  expect(mergeConfig({ rules: { 'lean-project-first': 'block' } }).rules['lean-project-first']).toBeUndefined()
+})
+
 test('effective action: off wins, warn mode caps at warn, block mode uses the rule', () => {
   const c = mergeConfig({ rules: { 'routing-line': 'off' } })
   expect(effective(c, 'no-haiku-coding')).toBe('warn')
@@ -188,7 +195,7 @@ test('project registry: folder match picks the deepest project, a name in a prom
   expect(parseRegistry('{ nope')).toEqual([])
 })
 
-test('isPhpcsCommand: phpcs, phpcbf, composer scripts and lean-project phpcs count; mentions do not', () => {
-  for (const c of ['vendor/bin/phpcs src', 'phpcbf a.php', 'composer run lint', 'composer phpcs', 'lean-project phpcs', 'php vendor/bin/phpcs']) expect(isPhpcsCommand(c)).toBe(true)
+test('isPhpcsCommand: phpcs, phpcbf, composer scripts and lean-gate or lean-project phpcs count; mentions do not', () => {
+  for (const c of ['vendor/bin/phpcs src', 'phpcbf a.php', 'composer run lint', 'composer phpcs', 'lean-project phpcs', 'lean-gate phpcs', 'php vendor/bin/phpcs']) expect(isPhpcsCommand(c)).toBe(true)
   for (const c of ['cat phpcs.xml', 'git commit -m "run phpcs"', 'composer install', 'lean-project board']) expect(isPhpcsCommand(c)).toBe(false)
 })

@@ -10,7 +10,7 @@ Every decision branches into the decisions that hang off it. The **frontier** is
 
 ## Rounds
 
-With a plan in the docs folder, `lean-project frontier docs/PLAN.md` prints the round's questions (open decisions whose prerequisites are settled) and what waits on them. Write `needs D<n>` into a decision's text when it cannot be asked until another decision is settled, so the frontier tracks it.
+With a plan in the docs folder, `lean-gate frontier docs/PLAN.md` prints the round's questions (open decisions whose prerequisites are settled) and what waits on them. Write `needs D<n>` into a decision's text when it cannot be asked until another decision is settled, so the frontier tracks it.
 
 1. Ask the whole frontier with `AskUserQuestion`: one card per question, up to 4 cards per call (send several calls if the frontier is bigger). The user never has to type a long answer.
 2. Each card gets 2 to 4 proposed answers. The first one is your recommendation, labelled "(Recommended)". The card's built-in "Other" field is the custom answer. Word each option so picking it settles the decision.
@@ -44,7 +44,7 @@ If `AskUserQuestion` is not available (no interactive session), fall back to the
 
 ## With docs: the project's own words
 
-Applies when there is code or existing docs to align against, and to any project whose domain has words of its own. Read only what the questions need (graph tool, `lean-project map`, ranges), never the whole tree.
+Applies when there is code or existing docs to align against, and to any project whose domain has words of its own. Read only what the questions need (graph tool, `lean-gate map`, ranges), never the whole tree.
 
 - **Check claims against the code.** When the user says how something works, look. On a contradiction, ask: "The code cancels whole orders, but you said partial cancellation is possible. Which is right?"
 - **Challenge terms.** A word that clashes with the glossary gets called out at once: "The glossary defines cancellation as X, you seem to mean Y." A vague or overloaded word ("account": customer or user?) gets a precise term proposed.

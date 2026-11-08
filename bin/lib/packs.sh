@@ -1,8 +1,8 @@
-# On-demand packs: skill folders and plugins that stay off until a task needs them. Sourced by bin/lean-project.
+# On-demand packs: skill folders and plugins that stay off until a task needs them. Sourced by bin/lean-gate.
 # Skill packs move between the active folder and a store folder (nothing is deleted); a plugin pack flips its
 # enabledPlugins switch. Changes apply in the NEXT session, because Claude Code reads skills and plugins at start.
-#   lean-project pack status
-#   lean-project pack on|off <bricks|wp|ui-ux>
+#   lean-gate pack status
+#   lean-gate pack on|off <bricks|wp|ui-ux>
 # Env overrides (tests and other machines): LEAN_SKILLS, LEAN_SKILLS_OFF, LEAN_SETTINGS.
 
 pack_dirs() {

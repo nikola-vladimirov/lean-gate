@@ -11,28 +11,28 @@ For building a project phase by phase from its plan. The main session is the lea
 
 ## Board: how tasks talk to each other
 
-Subagents cannot see each other, and their replies reach only the lead. The board is the shared channel: one append-only file, `BOARD.md` in the docs folder (`TOOLS.md`, "Docs folder"), read and written only through `lean-project board`, so parallel writers never overwrite each other and readers get a compact view instead of the raw log.
+Subagents cannot see each other, and their replies reach only the lead. The board is the shared channel: one append-only file, `BOARD.md` in the docs folder (`TOOLS.md`, "Docs folder"), read and written only through `lean-gate board`, so parallel writers never overwrite each other and readers get a compact view instead of the raw log.
 
 ```
-lean-project board                      # columns (doing, blocked, todo, done) and the latest 10 notes
-lean-project board T3                   # one card's full history
-lean-project board add T3 <title>       # lead, before delegating
-lean-project board move T3 doing        # todo | doing | blocked | done, optional reason after blocked
-lean-project board note T3 <one line>   # a fact another task needs
-lean-project board files T3 <paths>     # the files the card changes; the gate checks them on done
+lean-gate board                      # columns (doing, blocked, todo, done) and the latest 10 notes
+lean-gate board T3                   # one card's full history
+lean-gate board add T3 <title>       # lead, before delegating
+lean-gate board move T3 doing        # todo | doing | blocked | done, optional reason after blocked
+lean-gate board note T3 <one line>   # a fact another task needs
+lean-gate board files T3 <paths>     # the files the card changes; the gate checks them on done
 ```
 
 Every call is prefixed with `LEAN_BOARD=<absolute path to BOARD.md> LEAN_AS=<agent name>`. The absolute path matters: a worktree has its own copy of the docs folder, and a note written there reaches no one.
 
 - **Agents:** read the board at start; move the card to `doing`; post a note the moment you learn something a sibling task depends on (a contract, a format, a gotcha, a file you had to touch outside your set); `blocked <reason>` and stop when you need another card's output; `done` before replying. Read another card (`board <id>`) when your task depends on it.
-- **Lead:** check `lean-project board` instead of waiting on replies; unblock blocked cards (answer with a note, or rerun the task once its dependency is done). Notes are leads, not proof: verify before relying on them.
-- **The gate runs on `done`.** Record a card's files with `board files`. Moving the card to `done` runs `lean-project check gate <ID>`: `php -l` on its PHP files, and `phpcs` with the WordPress standard when installed (or the project's own `phpcs.xml`). A failure moves the card back to `todo` with the tool output on the card; the agent fixes the code and moves it again. A missing tool is reported in the gate line, not treated as a failure. `LEAN_GATE_SKIP=1` skips the gate for one command.
+- **Lead:** check `lean-gate board` instead of waiting on replies; unblock blocked cards (answer with a note, or rerun the task once its dependency is done). Notes are leads, not proof: verify before relying on them.
+- **The gate runs on `done`.** Record a card's files with `board files`. Moving the card to `done` runs `lean-gate check gate <ID>`: `php -l` on its PHP files, and `phpcs` with the WordPress standard when installed (or the project's own `phpcs.xml`). A failure moves the card back to `todo` with the tool output on the card; the agent fixes the code and moves it again. A missing tool is reported in the gate line, not treated as a failure. `LEAN_GATE_SKIP=1` skips the gate for one command.
 - **Notes are facts, not progress.** One line each. "Started", "looking at X", "almost done" cost every reader and say nothing the column does not.
 - **Separate sessions** (`start_session`) use the same file and the same absolute path.
 
 ## Routing
 
-lean-gate outranks this table: use its model, effort and agent caps per section; the rows below are defaults where lean-gate sets nothing.
+The gate (the panel settings) outranks this table: use its model, effort and agent caps per section; the rows below are defaults where the gate sets nothing.
 
 | Work | Model | Effort | How |
 |---|---|---|---|
@@ -53,12 +53,12 @@ Pass both with the Agent tool's `model` (`haiku`, `sonnet`, `opus`) and `effort`
 
 ## How to delegate
 
-- **Always set `model` and `effort` on every Agent call, from lean-gate's Model routing (this table only where lean-gate sets nothing).** An Agent call without `model` runs on the lead's active model, which is the cost this table exists to avoid. Explore and general-purpose agents inherit the same way, so pass `model` on them too. Never write a delegated call with the parameter left out, and never leave the choice to the default.
+- **Always set `model` and `effort` on every Agent call, from the gate's Model routing (this table only where the gate sets nothing).** An Agent call without `model` runs on the lead's active model, which is the cost this table exists to avoid. Explore and general-purpose agents inherit the same way, so pass `model` on them too. Never write a delegated call with the parameter left out, and never leave the choice to the default.
 - **Read-only tasks:** Agent with `model` and `run_in_background: true`; run independent ones in parallel, at most about 5 at a time.
 - **Writing tasks:** one at a time in the same checkout by default. Parallel writers only on disjoint files and only with `isolation: "worktree"` (needs git); the lead merges.
 - **A large independent piece** (hours of work): propose a separate session (`start_session`, `model` set, own worktree). Start it only when the user asked for separate or parallel work.
 - **Workflow tool:** only when the user says "use a workflow".
-- **Runner:** when the project's `.lean-project` runner is `llama` or `opencode`, bulk reading, code sweeps, fixtures and lint loops go to `lean-project delegate run <brief> <output>` instead of an Agent call. The lead reads the output file and verifies it. Security, architecture and review stay on Claude. When the runner is `none`, use the Agent calls above.
+- **Runner:** when the project's `.lean-project` runner is `llama` or `opencode`, bulk reading, code sweeps, fixtures and lint loops go to `lean-gate delegate run <brief> <output>` instead of an Agent call. The lead reads the output file and verifies it. Security, architecture and review stay on Claude. When the runner is `none`, use the Agent calls above.
 - **Too small to delegate:** anything that takes fewer tool calls than writing its brief. Do it here.
 
 ## Brief (every delegated task)
@@ -71,8 +71,8 @@ Read only: <file:start-end>, <file:start-end>. Rules that apply: <IDs>.
 Change only: <files>. Touch nothing else.
 Done when: <command passes / observable check>.
 Constraints: <user rules from memory: no em dashes, prefixes, text domain, no live writes, ...>.
-Board (only when the phase has 2+ delegated tasks): card <ID>. Prefix every call with LEAN_BOARD=<abs path> LEAN_AS=<name>. Run `lean-project board` first, move <ID> to doing, note facts siblings need, blocked <reason> if stuck on another card, done before replying.
-If the project has a code graph tool, query it before exploring; map files over 300 lines (lean-project map) and read ranges.
+Board (only when the phase has 2+ delegated tasks): card <ID>. Prefix every call with LEAN_BOARD=<abs path> LEAN_AS=<name>. Run `lean-gate board` first, move <ID> to doing, note facts siblings need, blocked <reason> if stuck on another card, done before replying.
+If the project has a code graph tool, query it before exploring; map files over 300 lines (lean-gate map) and read ranges.
 Return in under 15 lines: files changed, check result, open questions. No code dumps.
 ```
 
@@ -87,13 +87,13 @@ Return in under 15 lines: files changed, check result, open questions. No code d
 ## Phase gate
 
 1. An Opus reviewer (or the lead, if it did not write the code) checks the phase's acceptance criteria and ticks them off in the plan.
-2. Tests run on every change, with the stack's testing skills when installed. Security and code review run at release, on the list `lean-project review-scope` gives, not at each phase (SKILL.md, "Review scope").
+2. Tests run on every change, with the stack's testing skills when installed. Security and code review run at release, on the list `lean-gate review-scope` gives, not at each phase (SKILL.md, "Review scope").
 3. Board: move notes that stay true (contracts, formats, gotchas) into the plan or rules doc, then append the board verbatim to the archive file under a dated heading and remove `BOARD.md`. The next phase starts with an empty board.
 4. Update the state file, refresh the code graph if the project has one, and end the session. The next phase starts fresh from the state file.
 
 ## Cost guards
 
 - Subagent replies stay under 15 lines; never open their transcripts.
-- Read the board through `lean-project board`, never the raw file.
+- Read the board through `lean-gate board`, never the raw file.
 - Parallel only for independent tasks.
 - The lead reads diffs and check output, not whole files a subagent wrote.

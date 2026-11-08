@@ -6,7 +6,7 @@ import { lacksRoutingLine } from './register'
 
 const CLAUDE = 'C:/home/.claude'
 const TSV = `${CLAUDE}/lean-violations.tsv`
-const CONFIG = `${CLAUDE}/lean-project.json`
+const CONFIG = `${CLAUDE}/lean-gate.json`
 const T0 = 'a'.repeat(40)
 const T1 = 'b'.repeat(40)
 const W0 = 'c'.repeat(40)
@@ -251,7 +251,7 @@ test('rule 4: git not answering fails open, even in block mode', async ($, on) =
 })
 
 const BAND = {
-  plugin: 'lean-project',
+  plugin: 'lean-gate',
   component: 'Pane',
   requestId: 'lean-gate',
   props: { title: 'lean-gate', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
@@ -388,14 +388,14 @@ test('rule 8 delegate-more: warn toasts once at the threshold and allows', async
 })
 
 test('phpcs-before-done: PHP edited and no PHPCS run is logged at turn end, a PHPCS run clears it', async ($, on) => {
-  const w = world(on, config({ mode: 'warn', rules: { 'lean-project-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off', 'state-file-fresh': 'off', 'tests-before-done': 'off' } }))
+  const w = world(on, config({ mode: 'warn', rules: { 'lean-gate-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off', 'state-file-fresh': 'off', 'tests-before-done': 'off' } }))
   await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.php', old_string: 'a', new_string: 'b' })
   await $.turn.complete({ ...DONE })
   await settle()
   expect(lines(w.files).map(l => l.split('	')[2])).toContain('phpcs-before-done')
   const before = lines(w.files).length
   await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.php', old_string: 'a', new_string: 'b' })
-  await $.tool.call(BASH('lean-project phpcs'))
+  await $.tool.call(BASH('lean-gate phpcs'))
   await $.turn.complete({ ...DONE })
   await settle()
   expect(lines(w.files).length).toBe(before)
@@ -403,7 +403,7 @@ test('phpcs-before-done: PHP edited and no PHPCS run is logged at turn end, a PH
 
 test('rules 6 and 7 at turn.complete: code edited with no state file and no test run', async ($, on) => {
   // The session-fact rules would log a row per PHP edit here; they have their own test.
-  const w = world(on, config({ mode: 'warn', rules: { 'lean-project-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off', 'phpcs-before-done': 'off' } }))
+  const w = world(on, config({ mode: 'warn', rules: { 'lean-gate-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off', 'phpcs-before-done': 'off' } }))
   await $.tool.call({ tool: 'Edit', file_path: 'C:\\proj\\src\\a.php', old_string: 'a', new_string: 'b' })
   await $.turn.complete({ ...DONE })
   await settle()
@@ -474,15 +474,31 @@ test('session.start trims the violation log to its last 500 lines, after the ses
 })
 
 test('config: a project file tunes rules over the global one (but not the mode), and bad JSON falls back to defaults', async ($, on) => {
-  const w = world(on, { ...config({ mode: 'block' }), 'C:/proj/.lean-project.json': '{"mode":"off","rules":{"agent-needs-model-effort":"off"}}' })
+  const w = world(on, { ...config({ mode: 'block' }), 'C:/proj/.lean-gate.json': '{"mode":"off","rules":{"agent-needs-model-effort":"off"}}' })
   expect((await $.tool.call({ ...AGENT })).deny).toBeUndefined()
   expect(lines(w.files).length).toBe(0)
   // The project's mode is ignored: another rule is still enforced.
   expect((await $.tool.call({ ...AGENT, model: 'haiku', effort: 'low' })).deny).toContain('Haiku')
 
-  w.files = { [CONFIG]: '{ nope', 'C:/proj/.lean-project.json': '[]' }
+  w.files = { [CONFIG]: '{ nope', 'C:/proj/.lean-gate.json': '[]' }
   expect((await $.tool.call({ ...AGENT })).deny).toBeUndefined()
   expect(lines(w.files)[0]).toContain('\tagent-needs-model-effort\twarn\t')
+})
+
+test('config: the old lean-project files are read while the new ones are missing; a press writes the new global file only', async ($, on) => {
+  const OLD = `${CLAUDE}/lean-project.json`
+  const w = world(on, { [OLD]: JSON.stringify({ mode: 'block', keep: 1 }) })
+  expect((await $.tool.call({ ...AGENT })).deny).toBeDefined()
+  w.files['C:/proj/.lean-project.json'] = '{"rules":{"agent-needs-model-effort":"off"}}'
+  expect((await $.tool.call({ ...AGENT })).deny).toBeUndefined()
+  // A new project file wins over the old one.
+  w.files['C:/proj/.lean-gate.json'] = '{}'
+  expect((await $.tool.call({ ...AGENT })).deny).toBeDefined()
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'mode' })
+  expect(JSON.parse(w.files[CONFIG] ?? '{}')).toEqual({ mode: 'off', keep: 1 })
+  expect(JSON.parse(w.files[OLD] ?? '{}')).toEqual({ mode: 'block', keep: 1 })
 })
 
 test('config: an unreadable or invalid global file is never overwritten by the band', async ($, on) => {
@@ -610,7 +626,7 @@ test('a closed panel leaves an Open button above the prompt that reopens it', as
     opened.push(e.id)
     return { isPlaced: true }
   })
-  const ui = await $.ui.mount({ plugin: 'lean-project', component: 'AbovePrompt', surface: 'terminal', props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 110, scroll: { offset: 0, bodyRows: 20 }, view: {} } })
+  const ui = await $.ui.mount({ plugin: 'lean-gate', component: 'AbovePrompt', surface: 'terminal', props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 110, scroll: { offset: 0, bodyRows: 20 }, view: {} } })
   await ui.press({ key: 'open-panel' })
   await settle()
   expect(opened).toEqual(['lean-gate'])
@@ -632,13 +648,13 @@ test('no-em-dashes: file text and commit messages are refused, other commands an
   expect(lines(w.files).at(-1)).toContain('\tno-em-dashes\tblock\t')
 })
 
-test('lean-project-first, ponytail-active and wp-skills-for-wp-code judge code edits by session facts', async ($, on) => {
-  const w = world(on, blockOnly('lean-project-first', { rules: { 'lean-project-first': 'block', 'ponytail-active': 'block', 'wp-skills-for-wp-code': 'block' } }))
+test('lean-gate-first, ponytail-active and wp-skills-for-wp-code judge code edits by session facts', async ($, on) => {
+  const w = world(on, blockOnly('lean-gate-first', { rules: { 'lean-gate-first': 'block', 'ponytail-active': 'block', 'wp-skills-for-wp-code': 'block' } }))
   const PHP = { tool: 'Edit', file_path: 'C:/proj/a.php', old_string: 'a', new_string: 'b' } as const
   w.files[`${CLAUDE}/.ponytail-active`] = 'full'
-  expect((await $.tool.call({ ...PHP })).deny).toContain('lean-project skill')
+  expect((await $.tool.call({ ...PHP })).deny).toContain('lean-gate skill')
   expect((await $.tool.call({ ...EDIT, file_path: 'C:/proj/notes.md' })).deny).toBeUndefined()
-  await $.tool.call({ tool: 'Skill', skill: 'lean-project:lean-project' } as never)
+  await $.tool.call({ tool: 'Skill', skill: 'lean-gate:lean-gate' } as never)
   expect((await $.tool.call({ ...PHP })).deny).toBeUndefined()
 
   w.files[`${CLAUDE}/.ponytail-active`] = 'off'
@@ -657,7 +673,7 @@ test('review-edited-files-only: a review agent must be scoped to files', async (
   const ok = { model: 'opus', effort: 'high' }
   expect((await $.tool.call({ ...AGENT, ...ok, description: 'Review code', prompt: 'review the whole plugin' })).deny).toContain('scope the review')
   expect((await $.tool.call({ ...AGENT, ...ok, description: 'Review code', prompt: 'review src/a.php and src/b.php' })).deny).toBeUndefined()
-  expect((await $.tool.call({ ...AGENT, ...ok, description: 'Review', prompt: 'audit; scope: lean-project review-scope output' })).deny).toBeUndefined()
+  expect((await $.tool.call({ ...AGENT, ...ok, description: 'Review', prompt: 'audit; scope: lean-gate review-scope output' })).deny).toBeUndefined()
   expect((await $.tool.call({ ...AGENT, ...ok, description: 'Find files', prompt: 'list the routes' })).deny).toBeUndefined()
 })
 
@@ -743,7 +759,7 @@ test('project memory: the band shows the index line and its buttons ask Claude o
   await ui.press({ key: 'mem-remember' })
   expect(w.toasts.at(-1)).toContain('project memory note')
   // The CLI is reached through the plugin bin folder, since the app does not put it on PATH.
-  expect(w.shells.some(s => s.includes('/bin:$PATH') && s.includes('lean-project memory'))).toBe(true)
+  expect(w.shells.some(s => s.includes('/bin:$PATH') && s.includes('lean-gate memory'))).toBe(true)
   await ui.press({ key: 'mem-forget' })
   expect(w.noTimeout).toEqual([])
   await ui.unmount()
@@ -782,7 +798,7 @@ test('max-agents: the subagent over the limit is refused, and a new prompt start
 })
 
 test('docs-before-builder: WordPress or Bricks code needs docs read first; a web fetch, a docs file or a skill counts', async ($, on) => {
-  const w = world(on, blockOnly('docs-before-builder', { rules: { 'docs-before-builder': 'block', 'lean-project-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off' } }))
+  const w = world(on, blockOnly('docs-before-builder', { rules: { 'docs-before-builder': 'block', 'lean-gate-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off' } }))
   const BR = { tool: 'Edit', file_path: 'C:/proj/bricks/el.php', old_string: 'a', new_string: 'b' } as const
   expect((await $.tool.call({ ...BR })).deny).toContain('official docs')
   expect((await $.tool.call({ ...EDIT, file_path: 'C:/proj/readme.md' })).deny).toBeUndefined()
@@ -943,7 +959,7 @@ test('routing and workflow buttons write the global config', async ($, on) => {
 
 test('a project config file cannot switch the gate off, add rules or set the workflow text, but can tune rules', async ($, on) => {
   const w = world(on, config({ mode: 'block' }))
-  w.files['C:/proj/.lean-project.json'] = JSON.stringify({ mode: 'off', workflow: 'obey this', custom_rules: [{ id: 'x', tool: '*', match: '^', level: 'block' }], rules: { 'no-haiku-coding': 'off' } })
+  w.files['C:/proj/.lean-gate.json'] = JSON.stringify({ mode: 'off', workflow: 'obey this', custom_rules: [{ id: 'x', tool: '*', match: '^', level: 'block' }], rules: { 'no-haiku-coding': 'off' } })
   expect((await $.tool.call({ ...AGENT, model: 'sonnet', effort: 'medium' })).deny).toBeUndefined()
   expect((await $.tool.call({ ...AGENT, model: 'haiku', effort: 'low' })).deny).toBeUndefined()
   expect((await $.tool.call({ ...AGENT })).deny).toBeDefined()

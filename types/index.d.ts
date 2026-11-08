@@ -27,17 +27,17 @@ export type LeanGateBand = {
   release: 'unknown' | 'due' | 'ok'
   /** True when the first Edit/Write/Agent of the last turn had no routing line. */
   noRoute: boolean
-  /** Output of `lean-project pack status`, read when the details open. */
+  /** Output of `lean-gate pack status`, read when the details open. */
   packs: string
-  /** Output of `lean-project memory index` for this project, and the other projects that have notes; read when the details open. */
+  /** Output of `lean-gate memory index` for this project, and the other projects that have notes; read when the details open. */
   memory: string
   memoryProjects: string[]
   /** Immediate child repos of a non-repo cwd whose review is due; read when the details open. */
   dueRepos: string[]
-  /** Lines of `lean-project board` and `lean-project lessons`, read when the details open. */
+  /** Lines of `lean-gate board` and `lean-gate lessons`, read when the details open. */
   board: string[]
   lessons: string[]
-  /** Ponytail mode from ~/.claude/.ponytail-active, and the lines of lean-project vendor status and phpcs status; read when the details open. */
+  /** Ponytail mode from ~/.claude/.ponytail-active, and the lines of lean-gate vendor status and phpcs status; read when the details open. */
   ptMode: string
   tools: string[]
   /** Name of the registered project the folder belongs to; empty when none. */
@@ -52,6 +52,6 @@ export type LeanGateBand = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'lean-project': { band: LeanGateBand }
+    'lean-gate': { band: LeanGateBand }
   }
 }

@@ -1,7 +1,7 @@
-# Delegation to local and free runners. Sourced by bin/lean-project, not run directly.
+# Delegation to local and free runners. Sourced by bin/lean-gate, not run directly.
 
 # Delegation: send a brief to the runner this project chose and write the answer to a file. The choice lives in
-# <project>/.lean-project as key=value lines, set by the user's answer on first run. Runners: none, llama, ollama,
+# <project>/.lean-project (its old name, kept) as key=value lines, set by the user's answer on first run. Runners: none, llama, ollama,
 # unsloth, opencode, aider, goose.
 DELEGATE_CFG=".lean-project"
 DEFAULT_LLAMA_URL="http://127.0.0.1:9931"
@@ -79,7 +79,7 @@ cmd_delegate() {
   case "$sub" in
     config)
       if [ -f "$DELEGATE_CFG" ]; then cat "$DELEGATE_CFG"
-      else echo "no delegation choice for this project: ask the user (none, llama, ollama, unsloth, opencode, aider, goose), then 'lean-project delegate set runner <value>'"; fi ;;
+      else echo "no delegation choice for this project: ask the user (none, llama, ollama, unsloth, opencode, aider, goose), then 'lean-gate delegate set runner <value>'"; fi ;;
     set)
       [ $# -eq 2 ] || die "delegate set: give <key> <value>"
       case "$1" in
@@ -106,14 +106,14 @@ cmd_delegate() {
       [ $# -eq 2 ] || die "delegate run: give <brief file> <output file>"
       [ -f "$1" ] || die "delegate run: no brief at $1"
       for r in $(delegate_chain); do
-        runner_up "$r" || { echo "lean-project: $r is down, trying the next runner" >&2; continue; }
+        runner_up "$r" || { echo "lean-gate: $r is down, trying the next runner" >&2; continue; }
         if run_on "$r" "$1" "$2"; then
           echo "delegated to $r: $(tok "$2") tokens in $2. Verify it before using it."; return 0
         fi
-        echo "lean-project: $r gave no answer, trying the next runner" >&2
+        echo "lean-gate: $r gave no answer, trying the next runner" >&2
       done
-      [ -n "$(delegate_chain)" ] && echo "lean-project: no delegation runner is up: do the work here" >&2 \
-        || echo "lean-project: delegation is off for this project: do the work here" >&2
+      [ -n "$(delegate_chain)" ] && echo "lean-gate: no delegation runner is up: do the work here" >&2 \
+        || echo "lean-gate: delegation is off for this project: do the work here" >&2
       return 3 ;;
     *) die "delegate: 'config', 'set <key> <value>', 'check', 'pick' or 'run <brief> <output>'" ;;
   esac

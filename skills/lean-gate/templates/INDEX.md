@@ -14,7 +14,7 @@ docs/PLAN.md       goal, decisions D#, phases with gates, risks
 ## Reading
 
 - Session start: this file and `docs/HANDOFF.md` only.
-- Files over ~300 lines: `lean-project map <file>`, then read only the range. Docs with a contents table: read the table, then the range.
+- Files over ~300 lines: `lean-gate map <file>`, then read only the range. Docs with a contents table: read the table, then the range.
 - Look up IDs (`D3`, `P2`, `R5`) with grep instead of reading whole docs.
 - By task: <task> → <doc, section>; <task> → <doc, section>.
 - Bulk reading (external docs, references, logs): a cheap subagent writes the answers into <doc> with the source.
@@ -23,7 +23,7 @@ docs/PLAN.md       goal, decisions D#, phases with gates, risks
 
 - `docs/HANDOFF.md`: now, in progress, next; update it at the end of each work session.
 - Scope and decision changes: the PLAN decision log, with a date. Replaced text: verbatim to `docs/ARCHIVE.md`.
-- After editing a doc that has a contents table: `lean-project toc <file>`.
+- After editing a doc that has a contents table: `lean-gate toc <file>`.
 
 ## Ground rules
 

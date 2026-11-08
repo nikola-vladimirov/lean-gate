@@ -1,6 +1,6 @@
 # The hub
 
-One plugin, one panel, one config for how Claude works on your projects. lean-gate is the controller: every other part (the lean-project skills, ponytail, the WordPress performance audit, PHPCS, the ICM project structure) is a module the gate switches and obeys. Where two parts disagree, the gate wins.
+One plugin, one panel, one config for how Claude works on your projects. lean-gate is one plugin with a gate at its center: the token-saving guides (the lean-gate skill), ponytail, the WordPress performance audit, PHPCS and the ICM project structure are modules the gate switches and obeys. Where two parts disagree, the gate wins.
 
 Contents: [What is in it](#what-is-in-it) · [Install and migrate](#install-and-migrate) · [One-click settings](#one-click-settings) · [Starting and adopting a project](#starting-and-adopting-a-project) · [Project detection](#project-detection) · [The project layout](#the-project-layout) · [Keeping vendored tools current](#keeping-vendored-tools-current) · [Examples](#examples)
 
@@ -9,25 +9,25 @@ Contents: [What is in it](#what-is-in-it) · [Install and migrate](#install-and-
 | Module | What it does | Where it lives | Control |
 | --- | --- | --- | --- |
 | Gate | Rules that warn or block (models, agents, releases, em dashes, session names, PHPCS), the master mode, routing and agent caps | `hooks/` | Panel: Rules, Model routing, Workflow and limits |
-| lean-project | Token-lean sessions: docs, state files, file maps, memory, board, lessons, review gate, packs | `skills/lean-project`, `bin/` | Panel: Memory, Board, Lessons, Review, Packs |
+| Guides | Token-lean sessions: docs, state files, file maps, memory, board, lessons, review gate, packs | `skills/lean-gate`, `bin/` | Panel: Memory, Board, Lessons, Review, Packs |
 | Project | Registry, detection, start, adopt, walk test | `~/.claude/lean-projects.json`, `STRUCTURE.md` | Panel: Project |
-| ICM | The folder-as-architecture method and its link, index and graph checks (vendored `RinDig/icm-architect`, MIT) | `vendor/icm` | `lean-project icm`, the `icm-architect` skill |
+| ICM | The folder-as-architecture method and its link, index and graph checks (vendored `RinDig/icm-architect`, MIT) | `vendor/icm` | `lean-gate icm`, the `icm-architect` skill |
 | Ponytail | The simplest-change rules (vendored `DietrichGebert/ponytail`, MIT) | `vendor/ponytail` | Panel: Ponytail |
 | WordPress checks | Performance and HPOS audit (your `wp-woo-performance-audit`) and PHPCS with the WordPress standard | `vendor/wp-audit`, `bin/lib/phpcs.sh` | Panel: WordPress checks |
 | Helpers | Startup notes, context nudge, doc and test hints, session drafts | `scripts/` | Panel: Built-in helpers |
 
-The panel reference, with every button explained, is [LEAN-GATE.md](LEAN-GATE.md). The layout standard is [STRUCTURE.md](../skills/lean-project/STRUCTURE.md).
+The panel reference, with every button explained, is [LEAN-GATE.md](LEAN-GATE.md). The layout standard is [STRUCTURE.md](../skills/lean-gate/STRUCTURE.md).
 
 ## Install and migrate
 
-1. Install or update the plugin: `claude plugin update lean-project`, then restart.
-2. The hub carries its own ponytail and performance audit. If the standalone plugins are still enabled, the hub stays quiet about them so nothing loads twice. Press **Switch off standalone plugins** in the Ponytail section (or run `lean-project vendor retire`) once, then restart. It also switches off the old `lean-gate-local` plugin.
+1. Install or update the plugin: `claude plugin update lean-gate`, then restart.
+2. The hub carries its own ponytail and performance audit. If the standalone plugins are still enabled, the hub stays quiet about them so nothing loads twice. Press **Switch off standalone plugins** in the Ponytail section (or run `lean-gate vendor retire`) once, then restart. It also switches off the old `lean-gate-local` plugin.
 3. Open the panel (`/lean-gate`, or the **Open** button above the prompt). Set **mode** in the top row to `block` for enforcement, or leave it on `warn` to try it first (warn caps every rule to a warning).
 4. In your workspace folder, press **Register folders here** in the Project section. Every child folder with `.git`, `AGENTS.md`, `CLAUDE.md`, `composer.json` or `package.json` is registered (archives, backups and `*-reference` folders are skipped).
 
 ## One-click settings
 
-Everything is a button; nothing needs a text editor. A press writes `~/.claude/lean-project.json`.
+Everything is a button; nothing needs a text editor. A press writes `~/.claude/lean-gate.json`.
 
 | Want to | Press |
 | --- | --- |
@@ -50,7 +50,7 @@ The top row shows **Set up project** while the folder is not registered. It adop
 
 - **Start project:** Claude runs the setup cards (`STARTUP.md`), asks what the project is for, and scaffolds the smallest layout that carries it (see below). Loose ideas go through the grill (`GRILL.md`) first.
 - **Adopt this folder:** Claude audits the folder, classifies every file, and shows a migration map. Nothing is renamed, moved or deleted until you approve it, and replaced text moves verbatim to an archive file. An existing `CLAUDE.md` and state file stay; `AGENTS.md` is added beside them.
-- Both end with **Walk test**: Claude must orient, name the next step and report status from the files alone. `lean-project icm links` checks that every link in the project resolves.
+- Both end with **Walk test**: Claude must orient, name the next step and report status from the files alone. `lean-gate icm links` checks that every link in the project resolves.
 
 ## Project detection
 
@@ -63,7 +63,7 @@ The hub knows your projects from `~/.claude/lean-projects.json` (name, path, ali
 
 ## The project layout
 
-Every hub project follows one standard, a merge of ICM and the lean-project files:
+Every hub project follows one standard, a merge of ICM and the lean-gate files:
 
 ```
 AGENTS.md          entry: what this is, the map, where to start (every agent reads it)
@@ -80,12 +80,12 @@ docs/              reference read on demand (board, lessons, plans)
 
 | Command | Does |
 | --- | --- |
-| `lean-project vendor status` | The vendored versions, and which standalone plugins are still enabled |
-| `lean-project vendor update ponytail` | Fetch the latest ponytail release into `vendor/ponytail` |
-| `lean-project vendor update icm` | Fetch the latest icm-architect into `vendor/icm` |
-| `lean-project vendor retire` | Switch off the standalone plugins the hub contains |
+| `lean-gate vendor status` | The vendored versions, and which standalone plugins are still enabled |
+| `lean-gate vendor update ponytail` | Fetch the latest ponytail release into `vendor/ponytail` |
+| `lean-gate vendor update icm` | Fetch the latest icm-architect into `vendor/icm` |
+| `lean-gate vendor retire` | Switch off the standalone plugins the hub contains |
 
-An update changes files in the plugin folder. Review `git diff`, run the tests (`claude plugin test .`, `bash bin/lean-project selftest`), then commit and release. The Ponytail section's **Update** button runs the first of these.
+An update changes files in the plugin folder. Review `git diff`, run the tests (`claude plugin test .`, `bash bin/lean-gate selftest`), then commit and release. The Ponytail section's **Update** button runs the first of these.
 
 ## Examples
 

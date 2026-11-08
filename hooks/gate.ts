@@ -13,7 +13,7 @@ export const RULES = [
   'tests-before-done',
   'delegate-more',
   'no-em-dashes',
-  'lean-project-first',
+  'lean-gate-first',
   'ponytail-active',
   'wp-skills-for-wp-code',
   'no-demo-files-public',
@@ -27,6 +27,8 @@ export const RULES = [
   'phpcs-before-done',
 ] as const
 export type Rule = (typeof RULES)[number]
+// Old rule ids from before the rename to lean-gate, still read from config files.
+export const RENAMED_RULES: Record<string, Rule> = { 'lean-project-first': 'lean-gate-first' }
 
 // A rule the person builds in the band: which tools it watches ("Edit|Write", "*" = all), a regex over the call's text, a message.
 // The shell helpers lean-gate switches: startup notes, the context nudge, doc and test guard hints, session drafts.
@@ -79,7 +81,7 @@ export const DEFAULTS: Config = {
   demo_pattern: '(^|/)(demos?|examples?|samples?|screenshots?|scratch|backups?|fixtures)/|\\.(zip|sql|log|env)$',
   rules: {
     'no-em-dashes': 'warn',
-    'lean-project-first': 'warn',
+    'lean-gate-first': 'warn',
     'ponytail-active': 'warn',
     'wp-skills-for-wp-code': 'warn',
     'no-demo-files-public': 'warn',
@@ -170,7 +172,13 @@ export function mergeConfig(...layers: Record<string, unknown>[]): Config {
       c.custom = [...c.custom.filter(x => x.id !== cr.id), cr]
       c.rules[cr.id] = cr.level
     }
-    for (const [k, v] of Object.entries(obj(l.rules))) if (((RULES as readonly string[]).includes(k) || c.custom.some(x => x.id === k)) && isLevel(v)) c.rules[k] = v
+    const rules = obj(l.rules)
+    for (const [raw, v] of Object.entries(rules)) {
+      // An old rule id still sets its new one, unless the same layer also names the new id.
+      const k = RENAMED_RULES[raw] ?? raw
+      if (k !== raw && k in rules) continue
+      if (((RULES as readonly string[]).includes(k) || c.custom.some(x => x.id === k)) && isLevel(v)) c.rules[k] = v
+    }
     for (const k of ROUTING_KEYS) {
       const v = obj(l.routing)[k]
       if (typeof v === 'string') c.routing[k] = v
@@ -232,8 +240,8 @@ export const hasEmDash = (tool: string, input: Record<string, unknown>) => {
   return ['Edit', 'Write', 'Bash'].includes(tool) && callText(tool, input).includes(String.fromCharCode(0x2014))
 }
 
-// lean-project-first and wp-skills-for-wp-code: a skill call names the skill in `skill`.
-export const isLeanSkill = (name: string) => /lean-project/i.test(name)
+// lean-gate-first and wp-skills-for-wp-code: a skill call names the skill in `skill` (lean-project is the old name).
+export const isLeanSkill = (name: string) => /lean-(gate|project)/i.test(name)
 export const isWpSkill = (name: string) => /^wp-|wordpress|woocommerce/i.test(name.split(':').pop() ?? name)
 
 // wp-skills-for-wp-code: a PHP file that is WordPress code, by its path or by what is being written.
@@ -603,14 +611,14 @@ const INTERPRETERS = new Set(['php', 'node', 'bash', 'sh', 'python', 'python3', 
 const TEST_PATH = /(^|[\\/])tests?[\\/][^ ]*\.(php|js|mjs|sh)$/i
 const TEST_SCRIPT = /(test|check|harness)[^/\\]*\.php$/i
 
-// PHP_CodeSniffer or its fixer, run directly, through composer scripts or through lean-project phpcs.
+// PHP_CodeSniffer or its fixer, run directly, through composer scripts or through lean-gate phpcs.
 export function isPhpcsCommand(command: string): boolean {
   return allSegments(command).some(seg => {
     const t = exe(seg)
     const n = progName(t[0]?.v ?? '')
     const a = t.slice(1).map(x => x.v)
     if (n === 'phpcs' || n === 'phpcbf') return true
-    if (n === 'lean-project') return a[0] === 'phpcs'
+    if (n === 'lean-gate' || n === 'lean-project') return a[0] === 'phpcs'
     if (n === 'composer') return a[0] === 'run' && /^(lint|phpcs|cs)/.test(a[1] ?? '') || a[0] === 'lint' || a[0] === 'phpcs'
     return INTERPRETERS.has(n) && a.some(x => /(^|\/)phpc(s|bf)(\.phar)?$/.test(x))
   })

@@ -1,16 +1,16 @@
 # Project memory: what happened in a project, kept small and linked to other projects, so a project last touched a year ago
-# comes back for one line at session start and a few notes on demand. Sourced by bin/lean-project.
-#   lean-project memory add "<text>" [--tag decision|state|link|note] [--project P]
-#   lean-project memory list [--project P]       numbered notes
-#   lean-project memory recall [--project P]     the notes, plus the newest three of each linked project (capped)
-#   lean-project memory forget <n> [--project P] move note n to notes-archive.md (never deleted)
-#   lean-project memory link|unlink <other> [--project P]
-#   lean-project memory index [--project P]      the one-line summary the session start prints; nothing when there is no memory
-#   lean-project memory projects                 every project with notes and its note count
-# Store: $LEAN_MEMORY, else ~/.claude/lean-project/memory/<project>/{notes.md,notes-archive.md,links}.
+# comes back for one line at session start and a few notes on demand. Sourced by bin/lean-gate.
+#   lean-gate memory add "<text>" [--tag decision|state|link|note] [--project P]
+#   lean-gate memory list [--project P]       numbered notes
+#   lean-gate memory recall [--project P]     the notes, plus the newest three of each linked project (capped)
+#   lean-gate memory forget <n> [--project P] move note n to notes-archive.md (never deleted)
+#   lean-gate memory link|unlink <other> [--project P]
+#   lean-gate memory index [--project P]      the one-line summary the session start prints; nothing when there is no memory
+#   lean-gate memory projects                 every project with notes and its note count
+# Store: $LEAN_MEMORY, else ~/.claude/lean-gate/memory/<project>/{notes.md,notes-archive.md,links}.
 # The project is the git top-level folder's name (else the working folder's), lowercased; --project overrides it.
 
-mem_root() { echo "${LEAN_MEMORY:-$HOME/.claude/lean-project/memory}"; }
+mem_root() { echo "${LEAN_MEMORY:-$HOME/.claude/lean-gate/memory}"; }
 
 mem_key() { # $1 optional name
   local n="${1:-}"
@@ -72,7 +72,7 @@ cmd_memory() {
       n=$(mem_key "$(printf '%s' "$MEM_ARGS" | head -n 1)")
       [ -n "$n" ] && [ "$n" != "$key" ] || die "memory $sub: give another project's name"
       # A link needs both projects to exist (a mistyped name must not create a folder).
-      [ "$sub" = unlink ] || [ -d "$(mem_root)/$n" ] || die "memory link: no memory for $n (lean-project memory projects)"
+      [ "$sub" = unlink ] || [ -d "$(mem_root)/$n" ] || die "memory link: no memory for $n (lean-gate memory projects)"
       mkdir -p "$d"
       for pair in "$key:$n" "$n:$key"; do
         f="$(mem_root)/${pair%%:*}/links"; [ -d "$(dirname "$f")" ] || continue

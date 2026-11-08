@@ -1,7 +1,7 @@
-# ICM workspace checks from the vendored icm-architect scripts (MIT, standard-library Python 3). Sourced by bin/lean-project.
-#   lean-project icm links [root]     every relative link and input path that does not resolve; exit 1 if any (part of the walk test)
-#   lean-project icm index <folder>   write _index.md in the folder
-#   lean-project icm viz [root]       draw the workspace as one interactive graph
+# ICM workspace checks from the vendored icm-architect scripts (MIT, standard-library Python 3). Sourced by bin/lean-gate.
+#   lean-gate icm links [root]     every relative link and input path that does not resolve; exit 1 if any (part of the walk test)
+#   lean-gate icm index <folder>   write _index.md in the folder
+#   lean-gate icm viz [root]       draw the workspace as one interactive graph
 icm_dir() { cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd; }
 
 cmd_icm() {
