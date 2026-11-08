@@ -1,6 +1,6 @@
 # lean-gate hub: handoff
 
-Updated 2026-11-08. Branch `hub`, beta `1.0.0-beta.2` (the rename to lean-gate): committed, pushed, installed as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`). `main` is 0.31.6, untouched.
+Updated 2026-11-08. Branch `hub`. Installed: `1.0.0-beta.2` as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`). Committed, not pushed: `1.0.0-beta.3` (the migration race fix). `main` is 0.31.6, untouched.
 
 ## Rename to lean-gate (phase 1 of the improvement plan, 2026-11-08)
 
@@ -10,7 +10,7 @@ Checks: 66 tests, selftest (with migration cases), `plugin validate` pass; tsc e
 
 Install notes: `claude plugin marketplace remove lean-project` deleted the old plugin data folder; it was restored from `~/.claude/plugins/data/lean-project-lean-project.bak-2026-11-08` so the first lean-gate session copies the lessons. Settings backup: `settings.json.pre-lean-gate.bak`.
 
-Still to do after the first restart: check that `~/.claude/lean-gate.json`, `~/.claude/lean-gate/memory` and `plugins/data/lean-gate-lean-gate/LESSONS.md` exist; update the workspace `CLAUDE.md` and memory files that say lean-project; optional GitHub repo rename (GitHub redirects).
+After the first restart (2026-11-08): the copy ran (config, memory, lessons, session drafts all there), but two hooks ran it at once and nested the memory folder (`lean-gate/memory/memory`, an exact duplicate, removed). beta.3 adds a mkdir lock (`gate_migrate`) and a selftest that runs four copies at once; it fails on beta.2's code every time. Workspace `CLAUDE.md`, project CLAUDE.md files and the workspace memory now say lean-gate (`lean-project-plugin.md` became `lean-gate-plugin.md`). Still open: push beta.3 and `claude plugin update lean-gate@lean-gate`; optional GitHub repo rename (GitHub redirects); the setup nag counter (`setup-nag-*` in the data folder) was not copied, so the nag shows up to three times again per project.
 
 Next phases of the plan: 2 noise reduction (routing-line, lean-gate-first cause, once-per-session warnings, skip scratch folders), 3 panel check and register.tsx split, 4 `lean-gate stats`, 5 release 1.0.0.
 
