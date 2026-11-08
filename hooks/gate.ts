@@ -148,11 +148,13 @@ const obj = (v: unknown): Record<string, unknown> => (typeof v === 'object' && v
 // (the shape of (a+)+ and (a|aa)*, which can hang a regex engine for minutes). The match text is also capped at MATCH_CHARS.
 // shortcut: a heuristic, not a proof; other exponential shapes are possible, so the global config stays the only place patterns come from.
 export const MATCH_CHARS = 4000
-const NESTED_QUANTIFIER = /\((?:[^()\\]|\\.)*(?:[+*]|\{\d+,\d*\})(?:[^()\\]|\\.)*\)(?:[+*]|\{\d+,\d*\})/
-const QUANTIFIED_ALT = /\((?:[^()\\]|\\.)*\|(?:[^()\\]|\\.)*\)(?:[+*]|\{\d+,\d*\})/
+const NESTED_QUANTIFIER = /\((?:[^()\\]|\\.)*(?:[+*]|\{\d+,\d*\})(?:[^()\\]|\\.)*\)(?:[+*]|\{\d+(?:,\d*)?\})/
+const QUANTIFIED_ALT = /\((?:[^()\\]|\\.)*\|(?:[^()\\]|\\.)*\)(?:[+*]|\{\d+(?:,\d*)?\})/
 const BACKREF = /\\[1-9]|\\k</
+// Three or more unbounded wildcards backtrack polynomially on a long line with no match.
+const MANY_WILDCARDS = (s: string) => (s.match(/(?<!\\)\.[*+]/g) ?? []).length >= 3
 export const regexOk = (s: string) => {
-  if (s.length > 300 || NESTED_QUANTIFIER.test(s) || QUANTIFIED_ALT.test(s) || BACKREF.test(s)) return false
+  if (s.length > 300 || NESTED_QUANTIFIER.test(s) || QUANTIFIED_ALT.test(s) || BACKREF.test(s) || MANY_WILDCARDS(s)) return false
   try {
     new RegExp(s, 'i')
     return true
@@ -215,9 +217,15 @@ export function mergeConfig(...layers: Record<string, unknown>[]): Config {
 
 // A project's own config file can ship inside a cloned repo, so it may tune rules, routing and limits but cannot switch the whole
 // gate off, add rules, set the demo pattern or put text into the session prompt: those come from the global file only.
+// Rules it turns down are allowed but never silent: loweredRules names them for the session start and the panel.
 export function projectLayer(l: Record<string, unknown>): Record<string, unknown> {
   const { mode: _m, workflow: _w, custom_rules: _c, demo_pattern: _d, ...rest } = l
   return rest
+}
+
+// The rules whose level the project file sets below the global one (block to warn, or anything to off).
+export function loweredRules(global: Config, merged: Config): string[] {
+  return Object.keys(global.rules).filter(r => LEVELS.indexOf(merged.rules[r] ?? 'off') < LEVELS.indexOf(global.rules[r] ?? 'off'))
 }
 
 // off if the mode or the rule is off; warn if the mode is warn; else the rule's own value.
@@ -229,15 +237,24 @@ export function effective(c: Config, rule: string): Level {
 
 // ---- Rules added from your recurring reminders. Pure checks; register.tsx supplies the session facts.
 
+// The command a shell tool runs, or undefined for any other tool. Bash and PowerShell are both shells to every rule; PowerShell's
+// backtick escapes are dropped, since the command parser reads a backtick as bash command substitution.
+export function shellCommand(tool: string, input: Record<string, unknown>): string | undefined {
+  if (tool !== 'Bash' && tool !== 'PowerShell') return undefined
+  const c = typeof input.command === 'string' ? input.command : ''
+  // A backtick before a line break continues the line; before anything else it escapes that character.
+  return tool === 'PowerShell' ? c.replace(/`\r?\n/g, ' ').replace(/`(.)/g, '$1') : c
+}
+
 // What a tool call says, as text a rule can read: the command, the new file text, the agent's prompt, else the input as JSON.
 export function callText(tool: string, input: Record<string, unknown>): string {
   const s = (k: string) => (typeof input[k] === 'string' ? (input[k] as string) : '')
-  const text = tool === 'Bash' ? s('command') : tool === 'Edit' ? s('new_string') : tool === 'Write' ? s('content') : tool === 'Agent' ? `${s('description')}\n${s('prompt')}` : JSON.stringify(input)
+  const text = shellCommand(tool, input) ?? (tool === 'Edit' ? s('new_string') : tool === 'Write' ? s('content') : tool === 'Agent' ? `${s('description')}\n${s('prompt')}` : JSON.stringify(input))
   return text.slice(0, 20000)
 }
 
-// A custom rule's tool field: "Edit|Write", or "*" for any tool.
-export const toolMatches = (spec: string, tool: string) => spec === '*' || spec.split('|').some(t => t.trim() === tool)
+// A custom rule's tool field: "Edit|Write", or "*" for any tool. "Bash" covers PowerShell too: both are the shell.
+export const toolMatches = (spec: string, tool: string) => spec === '*' || spec.split('|').some(t => t.trim() === tool || (t.trim() === 'Bash' && tool === 'PowerShell'))
 
 export function customHit(r: CustomRule, tool: string, input: Record<string, unknown>): boolean {
   if (!toolMatches(r.tool, tool)) return false
@@ -248,10 +265,11 @@ export function customHit(r: CustomRule, tool: string, input: Record<string, unk
   }
 }
 
-// no-em-dashes: file text or a commit message. A Bash command counts only when it commits.
+// no-em-dashes: file text or a commit message. A shell command counts only when it commits.
 export const hasEmDash = (tool: string, input: Record<string, unknown>) => {
-  if (tool === 'Bash' && !/\bgit\b[^|;&]*\bcommit\b/.test(callText(tool, input))) return false
-  return ['Edit', 'Write', 'Bash'].includes(tool) && callText(tool, input).includes(String.fromCharCode(0x2014))
+  const shell = shellCommand(tool, input)
+  if (shell !== undefined && !/\bgit\b[^|;&]*\bcommit\b/.test(shell)) return false
+  return (shell !== undefined || tool === 'Edit' || tool === 'Write') && callText(tool, input).includes(String.fromCharCode(0x2014))
 }
 
 // lean-gate-first and wp-skills-for-wp-code: a skill call names the skill in `skill` (lean-project is the old name).
@@ -408,7 +426,7 @@ export function segments(cmd: string): Tok[][] {
         cut()
         i = heredoc === undefined ? i + 1 : afterHeredoc(cmd, i + 1, heredoc)
         heredoc = undefined
-      } else if (c === '<' && next === '<' && cmd[i + 2] !== '<') {
+      } else if (c === '<' && next === '<' && cmd[i + 2] !== '<' && cmd[i - 1] !== '<') {
         word()
         const m = /^<<-?\s*(['"]?)\\?([\w.-]+)\1/.exec(cmd.slice(i))
         heredoc = m?.[2]
@@ -531,10 +549,13 @@ export function resolveDir(dir: string, p: string, home = ''): string {
 const TAG_READONLY = /^(-l|--list|-d|--delete|-v|--verify|--contains|--no-contains|--merged|--no-merged|--points-at|-n\d*)$/
 const TAG_VALUE = /^(-m|-F|-u|--message|--file|--local-user|--cleanup|--format|--sort)$|^-[a-zA-Z]*m$/
 const PUSH_VALUE = /^(-o|--push-option|--repo|--receive-pack|--exec)$/
-// A refspec that names a tag: refs/tags/..., a version number, anything built from a variable, or the word `tag`.
-const TAGLIKE = /refs\/tags\/|\$|^tag$|^\+?v?\d+(\.\d+)*([-+.][\w.]+)?(:.*)?$/
+// A refspec that names a tag: refs/tags/..., anything built from a variable, or the word `tag`. A version-shaped name (v1.2.0, but
+// also a branch called 1.x or v2) is a tag only if the repo has that tag; `check` carries the name for the caller to ask git.
+const TAGLIKE = /refs\/tags\/|\$|^tag$/
+const VERSIONLIKE = /^\+?v?\d+(\.\d+)*([-+.][\w.]+)?(:.*)?$/
+export type Release = { dir: string; what: string; check?: string }
 
-function gitRelease(a: Tok[], dir: string, home: string): { dir: string; what: string } | undefined {
+function gitRelease(a: Tok[], dir: string, home: string): Release | undefined {
   let d = dir
   let i = 0
   for (; i < a.length; i++) {
@@ -565,15 +586,22 @@ function gitRelease(a: Tok[], dir: string, home: string): { dir: string; what: s
       else if (PUSH_VALUE.test(v)) k++
       else if (!v.startsWith('-')) pos.push(v)
     }
-    return all || pos.slice(1).some(r => TAGLIKE.test(r)) ? { dir: d, what: 'git push of tags' } : undefined
+    const refs = pos.slice(1)
+    if (all || refs.some(r => TAGLIKE.test(r))) return { dir: d, what: 'git push of tags' }
+    const v = refs.find(r => VERSIONLIKE.test(r))
+    return v === undefined ? undefined : { dir: d, what: 'git push of tags', check: v.replace(/^\+/, '').split(':')[0] }
   }
   return undefined
 }
 
 // The first release action in the command and the directory it runs in, or undefined.
+export const releaseAction = (command: string, cwd: string, home = ''): Release | undefined => releaseActions(command, cwd, home)[0]
+
+// Every release action in the command, in order (a tag and its push can share one command).
 // shortcut: cd, pushd and -C are followed inside one command only; a cd made by an earlier Bash call is not visible, so the
 // session cwd is used (upgrade if the engine exposes the Bash tool's working directory).
-export function releaseAction(command: string, cwd: string, home = ''): { dir: string; what: string } | undefined {
+export function releaseActions(command: string, cwd: string, home = ''): Release[] {
+  const found: Release[] = []
   let dir = norm(cwd)
   for (const seg of allSegments(command)) {
     const t = exe(seg)
@@ -584,7 +612,7 @@ export function releaseAction(command: string, cwd: string, home = ''): { dir: s
       if (p !== undefined) dir = resolveDir(dir, p.v, home)
     } else if (n === 'git') {
       const r = gitRelease(a, dir, home)
-      if (r) return r
+      if (r) found.push(r)
     } else if (n === 'gh') {
       const pos: string[] = []
       for (let k = 0; k < a.length; k++) {
@@ -592,15 +620,15 @@ export function releaseAction(command: string, cwd: string, home = ''): { dir: s
         if (v === '-R' || v === '--repo') k++
         else if (!v.startsWith('-')) pos.push(v)
       }
-      if (pos[0] === 'release' && ['create', 'upload', 'edit', 'delete'].includes(pos[1] ?? '')) return { dir, what: `gh release ${pos[1]}` }
+      if (pos[0] === 'release' && ['create', 'upload', 'edit', 'delete'].includes(pos[1] ?? '')) found.push({ dir, what: `gh release ${pos[1]}` })
     } else if (n === 'php') {
-      if (!a.some(x => x.v === '-l') && a.some(x => baseName(x.v) === 'zip.php')) return { dir, what: 'zip.php' }
+      if (!a.some(x => x.v === '-l') && a.some(x => baseName(x.v) === 'zip.php')) found.push({ dir, what: 'zip.php' })
     } else if (['node', 'bash', 'sh'].includes(n)) {
       const script = a.find(x => !x.v.startsWith('-'))
-      if (script !== undefined && baseName(script.v) === 'zip.php') return { dir, what: 'zip.php' }
+      if (script !== undefined && baseName(script.v) === 'zip.php') found.push({ dir, what: 'zip.php' })
     }
   }
-  return undefined
+  return found
 }
 
 export async function sha1Hex(text: string): Promise<string> {
@@ -620,7 +648,9 @@ export const STATE_FILE = /(HANDOFF|STATE)[^/\\]*\.md$/i
 export const isStateFile = (path: string, configured: string) => (configured !== '' ? norm(path).endsWith(norm(configured)) : STATE_FILE.test(path))
 
 // ---- Rule 7: a test command is a test runner, or an interpreter running a test script. Lint and typecheck are not tests.
-const TEST_NAMES = new Set(['phpunit', 'pytest', 'vitest', 'jest'])
+const TEST_NAMES = new Set(['phpunit', 'pytest', 'vitest', 'jest', 'pest', 'mocha', 'ava'])
+// Tools whose `test` subcommand runs the tests: bun test, go test, cargo test, make test.
+const TEST_SUBCOMMAND = new Set(['bun', 'deno', 'go', 'cargo', 'dotnet', 'make'])
 const INTERPRETERS = new Set(['php', 'node', 'bash', 'sh', 'python', 'python3', 'py'])
 const TEST_PATH = /(^|[\\/])tests?[\\/][^ ]*\.(php|js|mjs|sh)$/i
 const TEST_SCRIPT = /(test|check|harness)[^/\\]*\.php$/i
@@ -644,6 +674,7 @@ export function isTestCommand(command: string): boolean {
     const n = progName(t[0]?.v ?? '')
     const a = t.slice(1).map(x => x.v)
     if (TEST_NAMES.has(n)) return true
+    if (TEST_SUBCOMMAND.has(n)) return a[0] === 'test'
     if (['npm', 'pnpm', 'yarn', 'composer'].includes(n)) return a[0] === 'test' || (a[0] === 'run' && (a[1] ?? '').startsWith('test')) || (n === 'npm' && (a[0] ?? '') === 'run-script' && (a[1] ?? '').startsWith('test'))
     if (n === 'claude') return a[0] === 'plugin' && a[1] === 'test'
     if (!INTERPRETERS.has(n)) return false

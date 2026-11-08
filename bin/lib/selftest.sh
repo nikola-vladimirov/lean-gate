@@ -3,6 +3,8 @@
 cmd_selftest() {
   local tmp f fail=0
   tmp=$(mktemp -d) || die "selftest: no temp dir"
+  # Expanded now: $tmp is local and gone when a die mid-test reaches the EXIT trap
+  trap "rm -rf '$tmp'" EXIT
   f="$tmp/doc.md"
   { echo "# T"; echo "intro"; i=0; while [ $i -lt 90 ]; do echo x; i=$((i + 1)); done
     printf '%s\n' '## A' a '### A1' a1 '```' '## not a heading' '```' '## B' b; } > "$f"
@@ -40,6 +42,11 @@ cmd_selftest() {
     cmd_board move T9 done > /dev/null 2>&1 || { echo "FAIL gate blocked a clean file"; fail=1; }
     cmd_board T9 | head -n 1 | grep -q '\[done\]' || { echo "FAIL clean card not done"; fail=1; }
   fi
+  # gate: a path with a space stays one path, from the card's list and from arguments
+  mkdir -p "$tmp/sp ace"; : > "$tmp/sp ace/a.txt"; : > "$tmp/b c.txt"
+  cmd_board add T7 Spaced > /dev/null; cmd_board files T7 "$tmp/sp ace/a.txt" "$tmp/b c.txt" > /dev/null
+  cmd_board move T7 done > /dev/null 2>&1 || { echo "FAIL gate split a card's path with a space"; fail=1; }
+  check_gate T7 "$tmp/sp ace/a.txt" > /dev/null 2>&1 || { echo "FAIL gate split an argument path with a space"; fail=1; }
   # memory: notes, a numbered list, forget (archived), links both ways, a one-line index, nothing printed when empty
   export LEAN_MEMORY="$tmp/mem"
   [ -z "$(cmd_memory index --project alpha)" ] || { echo "FAIL memory index not empty for a new project"; fail=1; }
@@ -78,6 +85,13 @@ cmd_selftest() {
   grep -q '^- Haiku passes fixture work at low effort$' "$LESSONS_FILE" || { echo "FAIL repeated lesson not promoted"; fail=1; }
   grep -q '^- [0-9].*Haiku passes' "$LESSONS_FILE" && { echo "FAIL promoted entries not moved out"; fail=1; }
   grep -q 'Haiku passes' "$tmp/lessons/LESSONS-ARCHIVE.md" || { echo "FAIL promoted entries not archived"; fail=1; }
+  # a promoted lesson keeps its backslashes; a trailing --mode ends the parse instead of looping
+  cmd_lesson 'Root is E:\Claude Sessions\new' > /dev/null; cmd_lesson 'Root is E:\Claude Sessions\new' > /dev/null
+  grep -qF -- '- Root is E:\Claude Sessions\new' "$LESSONS_FILE" || { echo "FAIL promoted lesson lost its backslashes"; fail=1; }
+  (cmd_lesson "trailing flag" --mode > /dev/null) & lp=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 $lp 2>/dev/null || break; sleep 0.2; done
+  kill $lp 2>/dev/null && { echo "FAIL lesson looped on a trailing --mode"; fail=1; }
+  wait $lp 2>/dev/null
   # review lists an old unpromoted lesson, not a fresh one; drop moves it to the archive, marked superseded
   printf -- '- 2026-01-01 | - | build | Old unpromoted lesson\n' >> "$LESSONS_FILE"
   printf -- '- %s | - | build | Fresh unpromoted lesson\n' "$(date +%F)" >> "$LESSONS_FILE"
@@ -94,6 +108,11 @@ cmd_selftest() {
   # board: a retried post is written once
   bd="$tmp/bd.md"; LEAN_BOARD="$bd" board_append add T9 "retry test" > /dev/null; LEAN_BOARD="$bd" board_append add T9 "retry test" > /dev/null
   [ "$(grep -c 'retry test' "$bd")" = 1 ] || { echo "FAIL board kept a retried post twice"; fail=1; }
+  # board: a move back to an earlier status and a shorter note after a longer one are kept
+  for x in doing 'blocked x' doing; do LEAN_BOARD="$bd" board_append move T8 "$x"; done
+  [ "$(grep -c '| move | T8 | doing$' "$bd")" = 2 ] || { echo "FAIL board dropped a repeated move"; fail=1; }
+  LEAN_BOARD="$bd" board_append note T8 "dates are ISO"; LEAN_BOARD="$bd" board_append note T8 "dates"
+  grep -q '| note | T8 | dates$' "$bd" || { echo "FAIL board dropped a shorter note"; fail=1; }
   # review scope: a repo with one tag and one new file lists that file; a full review is due with no record
   rs="$tmp/rs"; mkdir -p "$rs"; self="$(cd "$(dirname "$0")" && pwd)/lean-gate"
   (cd "$rs" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base && git tag v1.0.0 && echo x > new.php)
@@ -102,6 +121,13 @@ cmd_selftest() {
   echo "$rsout" | grep -q 'Full review due: yes: no full review recorded' || { echo "FAIL review-scope did not ask for a first full review"; fail=1; }
   (cd "$rs" && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope --full-done > /dev/null)
   (cd "$rs" && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope) | grep -q 'Full review due: no: 0 release' || { echo "FAIL review-scope after a full review"; fail=1; }
+  # review scope: a beta sorts before its release, so v1.0.0 counts as one release after v1.0.0-beta.2
+  rb="$tmp/rb"; mkdir -p "$rb"
+  (cd "$rb" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m a && git tag v1.0.0-beta.1 \
+    && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m b && git tag v1.0.0-beta.2 \
+    && CLAUDE_PLUGIN_DATA="$tmp/rbd" bash "$self" review-scope --full-done > /dev/null \
+    && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m c && git tag v1.0.0)
+  (cd "$rb" && CLAUDE_PLUGIN_DATA="$tmp/rbd" bash "$self" review-scope) | grep -q 'Full review due: no: 1 release' || { echo "FAIL review-scope sorted a beta after its release"; fail=1; }
   # sessions: --here lists only this project's drafts, and the list says where each one is
   ss="$tmp/ss"; mkdir -p "$ss/alpha" "$ss/data/sessions"
   printf 'Project: alpha\n' > "$ss/data/sessions/2026-11-01-aaaa.md"
@@ -112,6 +138,13 @@ cmd_selftest() {
   echo "$here" | grep -q 'bbbb' && { echo "FAIL sessions --here listed another project"; fail=1; }
   all=$(cd "$ss/alpha" && CLAUDE_PLUGIN_DATA="$ss/data" bash "$self" sessions 5)
   echo "$all" | grep -q 'bbbb' || { echo "FAIL sessions missed a draft"; fail=1; }
+  # sessions: the newest is by the date in the name, not the file time
+  printf 'Project: alpha\n' > "$ss/data/sessions/2026-11-03-cccc.md"; touch -t 202001010000 "$ss/data/sessions/2026-11-03-cccc.md"
+  [ "$(cd "$ss/alpha" && CLAUDE_PLUGIN_DATA="$ss/data" bash "$self" sessions 1 --here | cut -f1,2)" = "2026-11-03	alpha" ] || { echo "FAIL sessions newest draft by name"; fail=1; }
+  # data folder: with no CLAUDE_PLUGIN_DATA (the Bash tool, the panel) the installed plugin's folder is used, not a temp one
+  dh="$tmp/dh"; mkdir -p "$dh/.claude/plugins/data/lean-gate-lean-gate/sessions" "$dh/alpha"
+  printf 'Project: alpha\n' > "$dh/.claude/plugins/data/lean-gate-lean-gate/sessions/2026-11-04-dddd.md"
+  (cd "$dh/alpha" && unset CLAUDE_PLUGIN_DATA CLAUDE_PLUGIN_OPTION_SESSION_DRAFTS_DIR && HOME="$dh" bash "$self" sessions 5 --here) | grep -q 'dddd' || { echo "FAIL data folder lookup without CLAUDE_PLUGIN_DATA"; fail=1; }
   # setup nag: printed in three sessions per project, then stops
   sn="$tmp/nag"; mkdir -p "$sn/proj/docs"
   for i in 1 2 3 4; do
@@ -154,10 +187,13 @@ cmd_selftest() {
   ls "$tmp/hook/out2/sessions" 2>/dev/null | grep -q . || { echo "FAIL no session draft for two user messages"; fail=1; }
   # audit waste: dry run changes nothing; --apply archives the comment block and leaves a pointer
   git init -q "$tmp/w"
-  { echo '<?php'; i=1; while [ $i -le 9 ]; do echo "// note $i"; i=$((i + 1)); done
+  { echo '<?php'; echo 'namespace X;'; i=1; while [ $i -le 9 ]; do echo "// note $i"; i=$((i + 1)); done
     echo 'echo 1;'; echo 'error_log("x");'; echo 'add_action("init", "f");'; echo 'add_action("init", "f");'; } > "$tmp/w/a.php"
+  # a header block (line 1 or 2) is never moved: a script may print it as its usage
+  { echo '#!/usr/bin/env bash'; i=1; while [ $i -le 9 ]; do echo "# usage $i"; i=$((i + 1)); done; echo 'true'; } > "$tmp/w/u.sh"
   rep=$(cmd_waste "$tmp/w")
-  echo "$rep" | grep -q 'a.php:2-10' || { echo "FAIL waste missed the comment block"; fail=1; }
+  echo "$rep" | grep -q 'a.php:3-11' || { echo "FAIL waste missed the comment block"; fail=1; }
+  echo "$rep" | grep -q 'u.sh:' && { echo "FAIL waste listed a file header"; fail=1; }
   echo "$rep" | grep -q 'error_log' || { echo "FAIL waste missed the debug log"; fail=1; }
   echo "$rep" | grep -q 'repeated hook 2x' || { echo "FAIL waste missed the repeated hook"; fail=1; }
   [ "$(grep -c '// note' "$tmp/w/a.php")" = 9 ] || { echo "FAIL waste dry run changed the file"; fail=1; }
@@ -165,6 +201,7 @@ cmd_selftest() {
   grep -q 'note 9' "$tmp/w/docs/ARCHIVE.md" || { echo "FAIL waste did not archive the block"; fail=1; }
   grep -q 'archived to docs/ARCHIVE.md' "$tmp/w/a.php" || { echo "FAIL waste left no pointer"; fail=1; }
   grep -q 'error_log' "$tmp/w/a.php" || { echo "FAIL waste removed a debug log"; fail=1; }
+  grep -q 'usage 9' "$tmp/w/u.sh" || { echo "FAIL waste moved a file header"; fail=1; }
   # predict: a file's partners are the files committed with it
   if command -v git >/dev/null 2>&1; then
     git init -q "$tmp/p"
@@ -234,6 +271,11 @@ cmd_selftest() {
   [ ! -e "$mg/.claude/lean-gate/memory" ] || { echo "FAIL migrate ran while locked"; fail=1; }
   rmdir "$mg/.claude/.lean-gate-migrating"; migrate "$mg/.claude/plugins/data/lean-gate-lean-gate"
   [ -f "$mg/.claude/lean-gate/memory/p/notes.md" ] || { echo "FAIL migrate after the lock"; fail=1; }
+  # an old folder with no LESSONS.md is copied once: .migrated, not LESSONS.md, marks it done
+  m2="$tmp/m2"; nd="$m2/.claude/plugins/data/lean-gate-lean-gate"; mkdir -p "$m2/.claude/plugins/data/lean-project-lean-project/sessions"
+  touch "$m2/.claude/plugins/data/lean-project-lean-project/sessions/s.md"
+  for _ in 1 2; do (HOME="$m2" CLAUDE_PLUGIN_DATA="$nd" . "$(dirname "$LIB")/../scripts/gate-on.sh"); rm -rf "$nd/sessions"; done
+  [ -f "$nd/.migrated" ] && [ ! -e "$nd/sessions" ] || { echo "FAIL migrate copied again with no LESSONS.md"; fail=1; }
   # phpcs: a global Composer install is found when PATH has no phpcs
   pc="$tmp/pc"; mkdir -p "$pc/AppData/Roaming/Composer/vendor/bin"; printf '#!/bin/sh\n' > "$pc/AppData/Roaming/Composer/vendor/bin/phpcs"; chmod +x "$pc/AppData/Roaming/Composer/vendor/bin/phpcs"
   [ "$(HOME="$pc"; COMPOSER_HOME=""; PATH="/usr/bin:/bin"; phpcs_path; command -v phpcs)" = "$pc/AppData/Roaming/Composer/vendor/bin/phpcs" ] || { echo "FAIL phpcs global Composer lookup"; fail=1; }

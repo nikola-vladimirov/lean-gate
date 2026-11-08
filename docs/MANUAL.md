@@ -5,7 +5,7 @@ Contents table below: open only the section you need.
 <!-- toc -->
 - 39-53: How to keep this manual current
 - 54-88: Install, update and the rename
-- 89-361: The panel
+- 89-363: The panel
   - 93-103: Opening, closing, folding
   - 104-117: Explain
   - 118-138: The top row
@@ -21,20 +21,20 @@ Contents table below: open only the section you need.
   - 278-290: Lessons and local rules
   - 291-299: Review
   - 300-310: Ponytail
-  - 311-324: WordPress checks
-  - 325-341: Packs
-  - 342-352: Rule stats (7 days)
-  - 353-361: Recent violations
-- 362-424: Rules
-  - 412-424: Custom rules
-- 425-491: Configuration
-  - 473-491: Files
-- 492-519: CLI reference
-- 520-547: Hooks and helpers
-- 548-577: Skills and vendored tools
+  - 311-326: WordPress checks
+  - 327-343: Packs
+  - 344-354: Rule stats (7 days)
+  - 355-363: Recent violations
+- 364-428: Rules
+  - 416-428: Custom rules
+- 429-495: Configuration
+  - 477-495: Files
+- 496-523: CLI reference
+- 524-551: Hooks and helpers
+- 552-581: Skills and vendored tools
 <!-- /toc -->
 
-This is the one place that documents every function of lean-gate: the panel, the rules, the settings, the command line, the hooks and the bundled tools. Version 1.0.0-beta.8. Short pages for special topics: [HUB.md](HUB.md) (the hub, project registry and layout), [../README.md](../README.md) (features, delegation, install).
+This is the one place that documents every function of lean-gate: the panel, the rules, the settings, the command line, the hooks and the bundled tools. Version 1.0.0. Short pages for special topics: [HUB.md](HUB.md) (the hub, project registry and layout), [../README.md](../README.md) (features, delegation, install).
 
 ## How to keep this manual current
 
@@ -229,12 +229,12 @@ Presses save to the global file, or to this project's `.lean-gate.json` while th
 | `set-quiet` | quiet warnings: on or off | `quiet`. On: warnings are counted and listed under Recent violations without a pop-up. Blocks still show. |
 | `set-panel` | panel at start: compact | `panel_start`. How the panel opens at session start: details, compact or closed (the Open button above the prompt still shows). |
 | `set-statefile` | state file: HANDOFF or STATE | `state_file`. Steps: any file named HANDOFF or STATE, `docs/PLAN.md`, `AGENTS.md`. The gate watches this file for `state-file-fresh` and the stale marker. Saved in this project's file. |
-| `set-pr` | PR only for repo: on or off | Adds or removes this repo's folder name in `pr_repos`. On: a push to main or master is refused by `one-pr-per-fix`. Needs a git repo. |
+| `set-pr` | PR only for repo: on or off | Adds or removes this repo's folder name in `pr_repos` of the file presses save to (its own list, so a project list never replaces the global one). On: a push to main or master is refused by `one-pr-per-fix`. Needs a git repo. |
 | `set-demo` | public push blocks: folders and files | `demo_pattern`. Two presets: folders and files (demo folders, also zip, sql, log and env files), or folders only (demo, example, sample, screenshot, scratch, backup and fixture folders). Shows "custom pattern" when you set another by hand. Global only. |
-| `set-reset` | Reset to defaults | Copies the global file to `lean-gate.json.reset-bak`, then writes `{}` so every value is its default. Project files, memory and lessons are untouched. |
+| `set-reset` | Reset to defaults | Copies the global file to `lean-gate.json.reset-bak`, then writes `{}` so every value is its default. A second press (the file is already empty) keeps the backup, and an unreadable file is not reset. Project files, memory and lessons are untouched. |
 | `set-undo` | Undo reset | Shown while `lean-gate.json.reset-bak` exists. Puts the saved settings back. |
 | `set-export` | Export | Writes your global settings to `lean-gate-settings.json` in the current folder. |
-| `set-import` | Import | Shown while `lean-gate-settings.json` exists in the current folder. Replaces the global settings with it; the old file is saved as `lean-gate.json.import-bak`. A file that is not a JSON object is refused and nothing changes. |
+| `set-import` | Import | Shown while `lean-gate-settings.json` exists in the current folder. Replaces the global settings with it; the old file is saved as `lean-gate.json.import-bak` (not when it is empty or the same as the import, so a second press keeps the real backup). A file that is not a JSON object is refused and nothing changes. |
 
 Example: move your setup to a second machine. Press `set-export` on the first, copy `lean-gate-settings.json` into any folder on the second, open the panel there and press `set-import`.
 
@@ -320,6 +320,8 @@ The audit and PHPCS check the PHP files changed since the last tag (PHPCS also t
 | `phpcs-std` | standard: WordPress | `phpcs_standard`. Cycles WordPress, WordPress-Extra, WordPress-Core, WordPress-Docs. |
 | `phpcs-status` | Refresh | Reads the PHPCS and vendored-tool status again. |
 
+The tool buttons here and in Ponytail (`audit-run`, `phpcs-run`, `phpcs-fix`, `pt-update`) wait up to three minutes and toast the last line of output; no answer toasts "timed out or failed to start", never "done".
+
 The `phpcs-before-done` rule (warn only) logs a warning at the end of a turn that edited WordPress PHP without running PHPCS. PHP that is not WordPress (a Laravel app, a PHP library) is not judged. WordPress PHP is a file under `wp-content/`, an edit with WordPress calls in it (`add_action`, `wp_*`, `esc_*`, `WC_*`, a plugin header), or any PHP once a WordPress skill is loaded in the session.
 
 ### Packs
@@ -365,6 +367,8 @@ Each rule has a level: block (the tool call is refused and Claude sees the messa
 
 Each hit is written to `~/.claude/lean-violations.tsv` (time, folder, rule, action, detail). The `quiet` setting hides the pop-up, never the log.
 
+Shells: Bash and PowerShell are both checked as shell commands by every rule (PowerShell backtick escapes are read as plain characters, a backtick at a line end as a space).
+
 Project-only judging: `lean-gate-first`, `state-file-fresh`, `tests-before-done` and `phpcs-before-done` judge project folders only. A project is a registered folder, or a folder with `AGENTS.md`, `CLAUDE.md`, `.git`, `README.md`, `package.json` or `composer.json`. A scratch chat folder is skipped unless `scope` is everywhere.
 
 Once per session: `state-file-fresh`, `tests-before-done` and `phpcs-before-done` warn once, then stay quiet until a turn fixes the problem (touches the state file, runs tests, runs PHPCS), which re-arms them. `/clear` re-arms them too. Set `reminders` to every turn to warn each turn. They fire only for a turn that edited code files (`.php .js .jsx .ts .tsx .py .sh .css .scss`).
@@ -388,16 +392,16 @@ Once per session: `state-file-fresh`, `tests-before-done` and `phpcs-before-done
 | `lean-gate-first` | warn | The lean-gate skill (or its old name lean-project) is loaded before code is edited. A load earlier in the transcript counts, so a plugin update or resume does not ask again. After a compaction, one more load may be asked for. Project folders only. |
 | `ponytail-active` | warn | Ponytail is on (not `off` in `~/.claude/.ponytail-active`) before code is edited. |
 | `state-file-fresh` | warn, warn only | The state file is touched in a turn that edited code. Project folders only, once per session. |
-| `tests-before-done` | warn, warn only | A test command ran in a turn that edited code. A test command is a test runner (phpunit, pytest, vitest, jest), `npm`, `pnpm`, `yarn` or `composer test`, `node --test`, `php artisan test`, `claude plugin test`, or an interpreter running a script in a `tests/` folder or named test, check or harness. Lint and typecheck are not tests. The result also feeds the top row `tests` item. |
+| `tests-before-done` | warn, warn only | A test command ran in a turn that edited code. A test command is a test runner (phpunit, pytest, vitest, jest, pest, mocha, ava), `bun`, `deno`, `go`, `cargo`, `dotnet` or `make test`, `npm`, `pnpm`, `yarn` or `composer test`, `node --test`, `php artisan test`, `claude plugin test`, or an interpreter running a script in a `tests/` folder or named test, check or harness. Lint and typecheck are not tests. The result also feeds the top row `tests` item. |
 | `no-em-dashes` | warn | No em dash in text written with Edit or Write, or in a `git commit` command (its message). |
 
 **Releases and git**
 
 | Rule | Default | What it checks |
 | --- | --- | --- |
-| `release-needs-review` | block | A release action is refused while a review is due. Release actions: `git tag <name>` (not list, delete or verify), a `git push` that sends tags (`--tags`, `--follow-tags`, `--mirror` or a tag-like refspec), `gh release create`, `upload`, `edit` or `delete`, and the `zip.php` build script. If the repo is unknown the block asks for `git -C <dir>` or `cd <dir> &&` in the same command (warn mode allows and logs it). If git does not answer it fails open with a warning. |
+| `release-needs-review` | block | A release action is refused while a review is due. Release actions: `git tag <name>` (not list, delete or verify), a `git push` that sends tags (`--tags`, `--follow-tags`, `--mirror`, `refs/tags/...`, or a version-shaped name such as `v1.2.0` that the repo has as a tag: a branch called `1.x` or `v2` is not a release), `gh release create`, `upload`, `edit` or `delete`, and the `zip.php` build script. If the repo is unknown the block asks for `git -C <dir>` or `cd <dir> &&` in the same command (warn mode allows and logs it). If git does not answer it fails open with a warning. After Reviewed, committing the reviewed code together with non-code files (the changelog a tag asks for, notes) keeps the review clear: only code has to match. |
 | `changelog-before-tag` | warn | Before a tag, a release or `zip.php`: a changelog, changes, history or readme file changed since the last tag. |
-| `push-after-tag` | warn, warn only | A tag made in a turn is also pushed (with tags) in that turn. |
+| `push-after-tag` | warn, warn only | A tag made in a turn is also pushed (with tags) in that turn. A tag and its push in one command (`git tag v1 && git push origin v1`) count as pushed. |
 | `one-pr-per-fix` | warn | A `git push` from main or master in a repo listed in `pr_repos` (the repo's folder name, switched by `set-pr`). Push a branch and open one PR per fix. |
 | `no-demo-files-public` | warn | A `git push` to a public repo (needs the `gh` CLI to learn visibility; silent without it) does not carry paths that match `demo_pattern`: demo, example, sample, screenshot, scratch, backup or fixture folders, or zip, sql, log or env files. The first five are listed. |
 
@@ -418,13 +422,13 @@ Your own rules sit in `custom_rules` (global file only) and appear under Your ru
 ```
 
 - `id`: 1 to 40 letters, digits, `_` or `-`; not a built-in rule id.
-- `tool`: the tool names to watch, `"Bash"`, `"Edit|Write"`, or `"*"` for all.
-- `match`: a case-insensitive regular expression over the call's text (the command for Bash, the new text for Edit or Write, the description and prompt for Agent, else the input as JSON). At most 300 characters. Patterns that could hang the client (nested quantifiers, backreferences) are refused. Only the first 4000 characters of the text are tested.
+- `tool`: the tool names to watch, `"Bash"`, `"Edit|Write"`, or `"*"` for all. `"Bash"` also covers PowerShell.
+- `match`: a case-insensitive regular expression over the call's text (the command for Bash, the new text for Edit or Write, the description and prompt for Agent, else the input as JSON). At most 300 characters. Patterns that could hang the client (nested quantifiers, backreferences, three or more unbounded `.*` or `.+`) are refused. Only the first 4000 characters of the text are tested.
 - `message`: shown on a block (up to 200 characters). `level`: warn (default) or block.
 
 ## Configuration
 
-Order: defaults, then the global file, then the project file. `rules`, `routing`, `agent_caps`, `helpers` and `reminders` merge per key. A wrong-typed value is ignored. A project's `.lean-gate.json` may arrive with a cloned repo, so it cannot set `mode`, `workflow`, `custom_rules` or `demo_pattern`; those come from the global file only.
+Order: defaults, then the global file, then the project file. `rules`, `routing`, `agent_caps`, `helpers` and `reminders` merge per key. A wrong-typed value is ignored. A project's `.lean-gate.json` may arrive with a cloned repo, so it cannot set `mode`, `workflow`, `custom_rules` or `demo_pattern`; those come from the global file only. It may turn rules down (that is how `set-target` saves per project), but never silently: session start shows a toast naming the rules it lowers, the top row shows `project lowers n`, and the Project section lists them with their level here.
 
 | Key | Meaning | Default | Allowed | Where | Example |
 | --- | --- | --- | --- | --- | --- |
@@ -484,7 +488,7 @@ A complete example:
 | `~/.claude/lean-review/` | The review marks, one small file per repo, kept outside the repo so they never ship in a zip. |
 | `~/.claude/lean-gate/memory/<project>/` | Project memory: `notes.md`, `notes-archive.md`, `links`. The `LEAN_MEMORY` variable moves the root. |
 | `~/.claude/.ponytail-active` | Ponytail's level: off, lite, full or ultra. |
-| Plugin data folder (`~/.claude/plugins/data/lean-gate-*`) | `LESSONS.md` and `LESSONS-ARCHIVE.md`, the session drafts in `sessions/`, `last-full-review`, `gain.tsv`, and the marks the hooks keep (`nudge-*`, `guard-*`, `setup-nag-*`). Survives plugin updates. Never leaves your machine. |
+| Plugin data folder (`~/.claude/plugins/data/lean-gate-*`) | `LESSONS.md` and `LESSONS-ARCHIVE.md`, the session drafts in `sessions/`, `last-full-review`, `gain.tsv`, `.migrated` (the copy from the old lean-project folder is done), and the marks the hooks keep (`nudge-*`, `guard-*`, `setup-nag-*`). Survives plugin updates. Never leaves your machine. |
 | `<project>/.lean-project` | The delegation choice, `key=value` lines (see the `delegate` command). |
 | `<project>/.lean-project-setup` | A date and "new" or "adopted": proof the setup cards were run. The session-start hook reminds in up to three sessions until it exists. |
 | `<project>/docs/BOARD.md` | The shared board (`LEAN_BOARD` overrides the path). |
@@ -499,18 +503,18 @@ The `lean-gate` command is on Claude's PATH while the plugin is enabled. You can
 | `toc` | `toc <file>... [--force]` | Build or refresh the contents table between `<!-- toc -->` markers. Files under 80 lines are skipped unless `--force`. Example: `lean-gate toc docs/MANUAL.md`. |
 | `cost` | `cost [dir]` | Tokens auto-loaded every session, the startup baseline from recent sessions, every doc with flags (`NEEDS TOC`, `STALE TOC`, `STATE FILE OVER 60 LINES`), and lines duplicated across files. |
 | `selftest` | `selftest` | Checks the tool on this machine, including that this manual names every rule, config key, command and panel button. |
-| `sessions` | `sessions [n] [--here]` | The newest session drafts: date, project, path. `--here` keeps this project's only. |
-| `review-scope` | `review-scope [--full-done]` | The code changed since the last release tag, and whether a full review is due (a new major version, or 5 or more minor releases since the last full one). `--full-done` records one. Needs a release tag. |
-| `board` | `board`, `board <id>`, `board add <id> <title>`, `board move <id> todo, doing, blocked or done [why]`, `board note <id> <text>`, `board files <id> <paths>` | The shared task board. No argument: columns and the latest notes. With an id: that card's history. `add` makes a card, `move` changes its status (a reason after blocked shows on the card), `note` posts a one-line fact, `files` records the files a card changes; `move ... done` runs `check gate` on them. Posts are idempotent. `LEAN_BOARD` is the board file, `LEAN_AS` the writer's name (default `lead`). |
-| `check` | `check gate <id> [files...]` | Run the done gate by hand: `php -l` and, when installed, `phpcs` with the WordPress standard (or the project's `phpcs.xml`). A failure sends the card back to todo with the output on the card. |
+| `sessions` | `sessions [n] [--here]` | The newest session drafts: date, project, path. `--here` keeps this project's only. Newest by the date in the draft's name; one pass over all drafts, so it stays fast as they pile up. |
+| `review-scope` | `review-scope [--full-done]` | The code changed since the last release tag, and whether a full review is due (a new major version, or 5 or more minor releases since the last full one). `--full-done` records one. Pre-release tags (`v1.0.0-beta.2`) sort before their release, and the record lives in the plugin data folder, also when run from the Bash tool or the panel. Needs a release tag. |
+| `board` | `board`, `board <id>`, `board add <id> <title>`, `board move <id> todo, doing, blocked or done [why]`, `board note <id> <text>`, `board files <id> <paths>` | The shared task board. No argument: columns and the latest notes. With an id: that card's history. `add` makes a card, `move` changes its status (a reason after blocked shows on the card), `note` posts a one-line fact, `files` records the files a card changes (paths with spaces work); `move ... done` runs `check gate` on them. A repeat of the same writer's newest line for that card (same verb, same text) is skipped, so a retry does not post twice; a status that comes back (doing, blocked, doing) is written. `LEAN_BOARD` is the board file, `LEAN_AS` the writer's name (default `lead`). |
+| `check` | `check gate <id> [files...]` | Run the done gate by hand: `php -l` and, when installed, `phpcs` with the `phpcs_standard` setting (or the project's `phpcs.xml`). PHP and PHPCS are found as `lean-gate phpcs` finds them (Laragon, the global Composer bin, `./vendor/bin`). A failure sends the card back to todo with the output on the card. |
 | `handoff` | `handoff [docs/PLAN.md]` | Prints a draft of the state file: branch, next open tasks, cards in flight. Writes nothing. |
-| `audit` | `audit waste [dir] [--apply]`, `audit security [dir or files...]`, `audit perf [dir or files...]` | `waste`: comment blocks of 8 or more lines, debug `error_log()` calls and repeated hooks; dry run unless `--apply`, which moves comment blocks verbatim into `docs/ARCHIVE.md` (git repos only). `security`: read-only scan of PHP and JS for WordPress anti-patterns (unescaped output, SQL without `prepare`, missing nonce or capability checks). `perf`: performance and HPOS scan of WordPress and WooCommerce code. Pass the files `review-scope` lists at release. |
+| `audit` | `audit waste [dir] [--apply]`, `audit security [dir or files...]`, `audit perf [dir or files...]` | `waste`: comment blocks of 8 or more lines (never a block that starts on line 1 or 2: a file header, which some scripts print as their usage), debug `error_log()` calls and repeated hooks; dry run unless `--apply`, which moves comment blocks verbatim into `docs/ARCHIVE.md` (git repos only). `security`: read-only scan of PHP and JS for WordPress anti-patterns (unescaped output, SQL without `prepare`, missing nonce or capability checks). `perf`: performance and HPOS scan of WordPress and WooCommerce code. Pass the files `review-scope` lists at release. |
 | `frontier` | `frontier [docs/PLAN.md]` | The decisions to ask now (status open, every prerequisite decided) and what waits on them. |
 | `lesson` | `lesson "<text>" [--mode M] [--project P]` | Records a lesson. The second sighting of the same text becomes a line under "Local rules" and its entries move to `LESSONS-ARCHIVE.md`. |
-| `lessons` | `lessons`, `lessons review [days]`, `lessons drop "<text>"`, `lessons export <file> [--force]` | No argument: the local rules and where the lessons file is. `review`: unpromoted lessons older than `days` (default 14). `drop`: move the entries with that text to the archive, marked superseded (never deleted). `export`: write the lessons as a markdown note with frontmatter, for example into a vault; an existing note is kept without `--force`. |
+| `lessons` | `lessons`, `lessons review [days]`, `lessons drop "<text>"`, `lessons export <file> [--force]` | No argument: the local rules and where the lessons file is. `review`: unpromoted lessons older than `days` (default 14), a whole number. `drop`: move the entries with that text to the archive, marked superseded (never deleted). `export`: write the lessons as a markdown note with frontmatter, for example into a vault; an existing note is kept without `--force`. |
 | `delegate` | `delegate config`, `delegate set <key> <value>`, `delegate check`, `delegate pick`, `delegate run <brief> <output>` | Sends bulk work to the runner this project chose. `config` shows the choice. `set` saves a key in `.lean-project`: `runner` (none, llama, ollama, unsloth, opencode, aider, goose), `fallback`, `llama_url`, `llama_model`, `ollama_url`, `ollama_model`, `unsloth_url`, `unsloth_model`, `aider_model`, `opencode_cli`, `opencode_model` (must be an `opencode/*-free` model), `opencode_auto` (0 or 1). `check` says whether the runner is up. `pick` prints the runner in use now (first one up in the fallback order, else none). `run` writes the answer to a file; exit status 3 means no runner is up, so Claude does the work. Example: `lean-gate delegate run brief.md answer.md`. |
 | `pack` | `pack status`, `pack on <name>`, `pack off <name>` | Skill packs and plugins that stay off until needed (names: bricks, wp, ui-ux). Takes effect in the next session. |
-| `vendor` | `vendor status`, `vendor update ponytail`, `vendor update icm`, `vendor retire` | `status`: vendored versions and which standalone plugins are still enabled. `update`: fetch the latest ponytail (needs `gh`) or icm-architect into `vendor/`; review the diff, run the tests, commit. `retire`: switch off the standalone plugins the hub contains (the old `settings.json` is kept as `settings.json.bak`). |
+| `vendor` | `vendor status`, `vendor update ponytail`, `vendor update icm`, `vendor retire` | `status`: vendored versions and which standalone plugins are still enabled. `update`: fetch the latest ponytail (needs `gh`) or icm-architect into `vendor/`; review the diff, run the tests, commit. `retire`: switch off the standalone plugins the hub contains (the old `settings.json` is kept as `settings.json.bak`; a later run keeps the first backup). |
 | `phpcs` | `phpcs status`, `phpcs [files...]`, `phpcs fix [files...]` | PHP_CodeSniffer with the WordPress standard. `status`: version and whether the standard is installed. Without files: PHP changed since the last tag plus uncommitted ones. `fix` uses PHPCBF. Finds Laragon PHP and a global Composer install when they are not on the PATH. It reads `phpcs_standard` from the global file only. |
 | `icm` | `icm links [root]`, `icm index <folder>`, `icm viz [root]` | The ICM checks on a hub project (needs Python 3). `links`: every relative link and input path that does not resolve; exit 1 if any. `index`: write `_index.md` in the folder. `viz`: draw the workspace as one interactive graph. |
 | `memory` | `memory add "<text>" [--tag decision, state, link or note] [--project P]`, `memory list`, `memory recall`, `memory forget <n>`, `memory link <other>`, `memory unlink <other>`, `memory index`, `memory projects` | Per-project memory. `add` writes a dated note. `list` numbers the notes. `recall` prints the notes plus the newest three of each linked project. `forget` moves note n to `notes-archive.md`. `link` and `unlink` tie projects together (both need notes). `index` is the one line session start prints. `projects` lists every project with its note count. The project is the git top-level folder name, lowercased. |

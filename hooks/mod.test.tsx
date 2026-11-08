@@ -10,7 +10,7 @@ const T0 = 'a'.repeat(40)
 const T1 = 'b'.repeat(40)
 const W0 = 'c'.repeat(40)
 
-type Repo = { head: string; tree: string; workTree?: string; changed: string[]; dirty: string; untracked: string[]; branch?: string }
+type Repo = { head: string; tree: string; workTree?: string; codeTree?: string; changed: string[]; dirty: string; untracked: string[]; branch?: string }
 
 const slash = (p: string) => p.replaceAll('\\', '/')
 const markerFile = async (repo: string) => `${CLAUDE}/lean-review/${await repoKey(repo)}.json`
@@ -41,6 +41,8 @@ function world(on: On, files: Record<string, string>) {
     ghPublic: false,
     // `git describe --tags` answers this tag ('' = no tag yet); `git diff --name-only <tag>` lists repo.changed.
     lastTag: '',
+    // The tags `git rev-parse -q --verify refs/tags/<name>` finds; undefined = every name is a tag.
+    tags: undefined as string[] | undefined,
   }
   mock.env(on, { HOME: 'C:/home' })
   mock.clock(on, { now: 1_700_000_000_000 })
@@ -86,11 +88,14 @@ function world(on: On, files: Record<string, string>) {
     const [, sub, a, b, c] = e.argv
     if (repo === undefined || top === undefined) return done(128)
     if (sub === 'describe') return ctx.lastTag === '' ? done(128) : done(0, `${ctx.lastTag}\n`)
+    if (sub === 'rev-parse' && a === '-q') return done(ctx.tags === undefined || ctx.tags.includes((c ?? '').replace('refs/tags/', '')) ? 0 : 1)
     if (sub === 'rev-parse' && a === '--abbrev-ref') return done(0, `${repo.branch ?? 'main'}\n`)
     if (sub === 'diff' && a === '--name-only' && b !== undefined && b === ctx.lastTag) return done(0, repo.changed.join('\n'))
     if (sub === 'rev-parse') return done(0, `${a === '--show-toplevel' ? top : a === 'HEAD^{tree}' ? repo.tree : repo.head}\n`)
     // Real git refuses an option-shaped revision here; the mock does too.
     if (sub === 'diff' && a === '--name-only') return /^[0-9a-f]{7,64}$/.test(b ?? '') && c === 'HEAD' ? done(0, repo.changed.join('\n')) : done(129)
+    // `git diff --quiet <tree> HEAD -- <code>`: the same code when <tree> is HEAD's tree or one whose code matches it (codeTree).
+    if (sub === 'diff' && a === '--quiet') return done(b === repo.tree || b === repo.codeTree ? 0 : 1)
     if (sub === 'diff') return done(0, repo.dirty)
     if (sub === 'ls-files') return done(0, repo.untracked.join('\n'))
     if (sub === 'write-tree') return done(0, `${repo.workTree ?? repo.tree}\n`)
@@ -299,6 +304,9 @@ test('Reviewed with uncommitted code clears the review; committing the same cont
   // Committed something else.
   w.repos['C:/proj'] = { ...clean('ddddddd4', T1), changed: ['src/a.php', 'new.js'] }
   expect((await $.tool.call(BASH('git tag v1'))).deny).toBeDefined()
+  // Committed the reviewed code plus a changelog: the tree differs, the code does not.
+  w.repos['C:/proj'] = { ...clean('eeeeeee5', T1), codeTree: W0, changed: ['src/a.php', 'new.js', 'CHANGELOG.md'] }
+  expect((await $.tool.call(BASH('git tag v1'))).deny).toBeUndefined()
   await ui.unmount()
 })
 
@@ -1140,4 +1148,55 @@ test('Panel look: routing rows show their choice folded, stats draw bars, info i
   const app = await $.ui.mount({ ...BAND, surface: 'desktop' })
   expect(await app.find({ type: 'Svg' })).toBeDefined()
   await app.unmount()
+})
+
+test('review fixes: PowerShell releases are gated, a branch named 1.x is not a tag, a tag and its push in one command count as pushed', async ($, on) => {
+  // No review is marked, so release-needs-review refuses releases: a PowerShell tag like a Bash one.
+  const w = world(on, config({ mode: 'block', rules: { 'release-needs-review': 'block' } }))
+  w.repos['C:/proj'] = clean('aaaaaaa1')
+  w.tags = ['v1.0.0']
+  expect((await $.tool.call({ tool: 'PowerShell', command: 'git tag v2.0.0' })).deny).toBeDefined()
+  expect((await $.tool.call(BASH('git push -u origin 1.x'))).deny).toBeUndefined()
+  expect((await $.tool.call(BASH('git push origin v1.0.0'))).deny).toBeDefined()
+  // One command that tags and pushes: no push-after-tag warning at turn end.
+  w.files[CONFIG] = config({ mode: 'warn', rules: REL_OFF })[CONFIG] ?? ''
+  w.tags = undefined
+  await $.tool.call(BASH('git tag v1.0.1 && git push origin v1.0.1'))
+  await $.turn.complete({ ...DONE })
+  await settle()
+  expect(lines(w.files).some(l => l.includes('\tpush-after-tag\t'))).toBe(false)
+})
+
+test('review fixes: a second Reset keeps the real backup, a broken registry is never rewritten, PR only keeps the global list', async ($, on) => {
+  const w = world(on, config({ mode: 'block', pr_repos: ['a', 'b'] }))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'details' })
+  await ui.press({ key: 'set-reset' })
+  await ui.press({ key: 'set-reset' })
+  await settle()
+  expect(JSON.parse(w.files[`${CONFIG}.reset-bak`] ?? '{}').pr_repos).toEqual(['a', 'b'])
+  // The registry has a typo: Register this folder must leave it alone.
+  const REG = `${CLAUDE}/lean-projects.json`
+  w.files[REG] = '[{"name":"x","path":"C:/x"},]'
+  await ui.press({ key: 'proj-add' })
+  await settle()
+  expect(w.files[REG]).toBe('[{"name":"x","path":"C:/x"},]')
+  // PR only, saving to global, toggles the global file's own list.
+  w.files[CONFIG] = JSON.stringify({ mode: 'block', pr_repos: ['a', 'b'] })
+  w.files['C:/proj/.lean-gate.json'] = JSON.stringify({ pr_repos: ['c'] })
+  w.repos['C:/proj'] = clean('aaaaaaa1')
+  await ui.press({ key: 'set-pr' })
+  await settle()
+  expect(JSON.parse(w.files[CONFIG] ?? '{}').pr_repos).toEqual(['a', 'b', 'proj'])
+  await ui.unmount()
+})
+
+test('a project file that turns rules down is shown at session start and in the panel', async ($, on) => {
+  const w = world(on, { ...config({ mode: 'block' }), 'C:/proj/.lean-gate.json': '{"rules":{"no-haiku-coding":"off"}}' })
+  await $.session.start({ cwd: 'C:/proj', surface: 'terminal', isInteractive: true })
+  await settle()
+  expect(w.toasts.some(t => t.includes('turns down: no-haiku-coding'))).toBe(true)
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /project lowers 1/ })).toBeDefined()
+  await ui.unmount()
 })

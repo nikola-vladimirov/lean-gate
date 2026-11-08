@@ -36,7 +36,6 @@ mem_args() {
   done
 }
 
-mem_dir() { echo "$(mem_root)/$(mem_key "$1")"; }
 mem_count() { local n; n=$(grep -c '^- ' "$1/notes.md" 2>/dev/null); echo "${n:-0}"; }
 mem_cut() { printf '%s' "$1" | awk -v n="$2" '{ print (length($0) > n ? substr($0, 1, n - 1) "…" : $0) }'; }
 
@@ -67,7 +66,8 @@ cmd_memory() {
       case "$n" in ''|*[!0-9]*) die "memory forget: give the note number (memory list)" ;; esac
       [ -f "$d/notes.md" ] && [ "$n" -ge 1 ] && [ "$n" -le "$(wc -l < "$d/notes.md")" ] || die "memory forget: no note $n for $key"
       sed -n "${n}p" "$d/notes.md" >> "$d/notes-archive.md"
-      sed -i "${n}d" "$d/notes.md" && echo "memory: note $n moved to notes-archive.md" ;;
+      # A temp file, not sed -i: BSD sed reads the next argument as a backup suffix
+      sed "${n}d" "$d/notes.md" > "$d/notes.md.tmp" && mv "$d/notes.md.tmp" "$d/notes.md" && echo "memory: note $n moved to notes-archive.md" ;;
     link|unlink)
       n=$(mem_key "$(printf '%s' "$MEM_ARGS" | head -n 1)")
       [ -n "$n" ] && [ "$n" != "$key" ] || die "memory $sub: give another project's name"

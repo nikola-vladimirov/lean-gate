@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { isPhpcsCommand, statRules, statsView, DEFAULTS, parseRegistry, projectAt, projectMentioned, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
+import { isPhpcsCommand, loweredRules, callText, hasEmDash, releaseActions, shellCommand, toolMatches, statRules, statsView, DEFAULTS, parseRegistry, projectAt, projectMentioned, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
 
 test('config: project beats global, rules merge per key, bad JSON falls back to defaults', () => {
   const global = parseJson('{"mode":"block","rules":{"tests-before-done":"block"},"context_limit":200000}')
@@ -205,4 +205,33 @@ test('statRules and statsView: rule rows in order, groups cut to n rows, nothing
   expect(statRules(out)).toEqual([['a-rule', 4, 0], ['b-rule', 1, 1], ['c-rule', 1, 0]])
   expect(statsView(out, 2)).toEqual(['rule hits in the last 7 days: 6 (log)', 'by rule:', '4  a-rule  (4 warn)', '1  b-rule  (1 block)', 'by project:', '5  one', '1  two'])
   expect(statRules(['no rule hits logged yet (x)'])).toEqual([])
+})
+
+test('review fixes: PowerShell is a shell, version-shaped pushes need a tag check, every release action is found', () => {
+  expect(shellCommand('PowerShell', { command: 'git tag v1; git push origin `\n v1; echo `$x' })).toBe('git tag v1; git push origin   v1; echo $x')
+  expect(shellCommand('Read', { file_path: 'x' })).toBeUndefined()
+  expect(callText('PowerShell', { command: 'git status' })).toBe('git status')
+  expect(toolMatches('Bash', 'PowerShell')).toBe(true)
+  expect(toolMatches('Edit|Write', 'PowerShell')).toBe(false)
+  expect(hasEmDash('PowerShell', { command: `git commit -m "a ${String.fromCharCode(0x2014)} b"` })).toBe(true)
+  expect(releaseActions('git push -u origin 1.x', 'C:/p')).toEqual([{ dir: 'C:/p', what: 'git push of tags', check: '1.x' }])
+  expect(releaseActions('git push origin refs/tags/v1', 'C:/p')[0]?.check).toBeUndefined()
+  expect(releaseActions('git tag v1.0.0 && git push origin v1.0.0', 'C:/p').map(r => r.what)).toEqual(['git tag v1.0.0', 'git push of tags'])
+})
+
+test('review fixes: here-strings are not heredocs, more test runners count, many wildcards are refused', () => {
+  expect(releaseActions('cat <<< done\ngit tag v2.0.0', 'C:/p').map(r => r.what)).toEqual(['git tag v2.0.0'])
+  for (const c of ['vendor/bin/pest', 'bun test', 'go test ./...', 'cargo test', 'make test', 'npx mocha']) expect(isTestCommand(c)).toBe(true)
+  for (const c of ['go build', 'make', 'cargo build']) expect(isTestCommand(c)).toBe(false)
+  expect(regexOk('(.*,){10}x')).toBe(false)
+  expect(regexOk('password.*=.*".*x')).toBe(false)
+  expect(regexOk('\bsudo\b')).toBe(true)
+})
+
+test('loweredRules: a project file that turns a rule down is named, one that raises or keeps it is not', () => {
+  const global = mergeConfig({ rules: { 'no-haiku-coding': 'block', 'tests-before-done': 'warn' } })
+  const merged = mergeConfig({ rules: { 'no-haiku-coding': 'block', 'tests-before-done': 'warn' } }, { rules: { 'no-haiku-coding': 'off', 'tests-before-done': 'block', 'free-opencode-only': 'warn' } })
+  expect(loweredRules(global, merged)).toEqual(expect.arrayContaining(['no-haiku-coding']))
+  expect(loweredRules(global, merged)).not.toContain('tests-before-done')
+  expect(loweredRules(global, global)).toEqual([])
 })

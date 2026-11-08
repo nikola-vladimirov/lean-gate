@@ -70,7 +70,8 @@ run_on() {
       goose run -i "$brief" > "$out" 2>/dev/null || return 1 ;;
     *) return 1 ;;
   esac
-  [ -s "$out" ]
+  # A failed runner still leaves a newline in the file, so look for real text
+  grep -q '[^[:space:]]' "$out" 2>/dev/null
 }
 
 cmd_delegate() {
@@ -90,7 +91,8 @@ cmd_delegate() {
         opencode_auto) case "$2" in 0|1) ;; *) die "delegate set: opencode_auto is 0 or 1" ;; esac ;;
         *) die "delegate set: unknown key $1 (runner, fallback, llama_url, llama_model, ollama_url, ollama_model, unsloth_url, unsloth_model, aider_model, opencode_cli, opencode_model, opencode_auto)" ;;
       esac
-      touch "$DELEGATE_CFG"; sed -i "/^$1=/d" "$DELEGATE_CFG"; echo "$1=$2" >> "$DELEGATE_CFG"
+      # A temp file, not sed -i: BSD sed reads the next argument as a backup suffix
+      touch "$DELEGATE_CFG"; sed "/^$1=/d" "$DELEGATE_CFG" > "$DELEGATE_CFG.tmp" && mv "$DELEGATE_CFG.tmp" "$DELEGATE_CFG"; echo "$1=$2" >> "$DELEGATE_CFG"
       echo "saved $1=$2 in $DELEGATE_CFG" ;;
     check)
       runner=$(cfg_get runner); runner=${runner:-none}

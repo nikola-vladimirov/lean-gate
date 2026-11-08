@@ -24,7 +24,7 @@ phpcs_find() { # $1 phpcs|phpcbf
 phpcs_standard() {
   local s="" f
   for f in "$(gate_project_file "$PWD")" "$HOME/.claude/lean-gate.json"; do
-    s=$(tr -d '\n' < "$f" 2>/dev/null | sed -n 's/.*"phpcs_standard"[[:space:]]*:[[:space:]]*"\([A-Za-z-]*\)".*/\1/p' | head -n 1)
+    s=$(tr -d '\n' 2>/dev/null < "$f" | sed -n 's/.*"phpcs_standard"[[:space:]]*:[[:space:]]*"\([A-Za-z-]*\)".*/\1/p' | head -n 1)
     [ -n "$s" ] && break
   done
   echo "${s:-WordPress}"

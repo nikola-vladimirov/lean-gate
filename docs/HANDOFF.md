@@ -1,6 +1,6 @@
 # lean-gate hub: handoff
 
-Updated 2026-11-08 (beta.8). Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). Branch `hub`, `1.0.0-beta.8` pushed and installed (2026-11-08) as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`). `main` is 0.31.6, untouched. The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). To return to stable: in `~/.claude/settings.json` remove the marketplace `ref`, then `claude plugin update`.
+Updated 2026-11-08 (1.0.0, see the release section). Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). Branch `hub`, `1.0.0-beta.8` pushed and installed (2026-11-08) as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`). `main` is 0.31.6, untouched. The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). To return to stable: in `~/.claude/settings.json` remove the marketplace `ref`, then `claude plugin update`.
 
 Guides: `docs/HUB.md` (start here), `docs/MANUAL.md` (every button, rule, setting and command; update it with every feature or fix, `lean-gate selftest` checks it), `skills/lean-gate/STRUCTURE.md` (project layout).
 
@@ -59,9 +59,19 @@ Grilled with the user. API limits: Text takes any colour and background; a Butto
 - Not seen on screen: the panel cannot be screenshotted from a session. Theme keys other than success, warning and error (`suggestion`, `permission`, `claude`, `inactive`) are unverified on the desktop; a key it does not know draws in the default colour.
 - Tests: 74 (new: panel look), selftest, validate.
 
-## Next phases of the plan
+## 1.0.0: release (phase 5, 2026-11-08)
 
-5. Release 1.0.0: full review (`review-scope` says one is due; never on a beta), merge `hub` into `main`, tag, push, reset the marketplace ref.
+The user said it is not a beta anymore. Full review by two Opus reviewers (hooks TypeScript; CLI and hook scripts), 30 findings, all fixed; the shell fixes by a coding agent, checked here. Version history moved from the README to `CHANGELOG.md` (verbatim).
+- Highest: PowerShell bypassed every shell rule (now `shellCommand` in `hooks/gate.ts`); session start would have hit its 10 s timeout as drafts piled up (`cmd_sessions` one pass).
+- User call on repo-shipped `.lean-gate.json` lowering rules: keep it, but never silent (`loweredRules`: toast at session start, `project lowers n` pill, a line in Project).
+- Not seen on real macOS: the BSD sed and date fixes were checked by reading and in Git Bash only.
+- Checks: 80 tests, selftest (13 new checks, each failing on the old code), validate, tsc (old `mod.test.tsx` errors only).
+
+Release steps: commit on `hub`, fast-forward `main` to `hub` (main is an ancestor), the user presses Reviewed in the panel (the gate blocks the tag otherwise), tag `v1.0.0`, `lean-gate review-scope --full-done`, push `main`, `hub` and the tag (needs the user's OK), then remove the marketplace `ref` in `~/.claude/settings.json` and `claude plugin update lean-gate`.
+
+## Next
+
+Nothing planned after 1.0.0. Ideas: stats over a longer window; a real macOS run of the selftest.
 
 ## Commands
 

@@ -22,15 +22,16 @@ cmd_vendor() {
     update)
       if [ "${2:-}" = icm ]; then
         local t2; t2=$(mktemp -d)
-        git clone -q --depth 1 https://github.com/RinDig/icm-architect.git "$t2/icm" || die "vendor update: clone failed"
+        git clone -q --depth 1 https://github.com/RinDig/icm-architect.git "$t2/icm" || { rm -rf "$t2"; die "vendor update: clone failed"; }
         local x; for x in SKILL.md references assets scripts; do rm -rf "$root/vendor/icm/skills/icm-architect/$x"; cp -r "$t2/icm/$x" "$root/vendor/icm/skills/icm-architect/"; done
         cp "$t2/icm/LICENSE" "$root/vendor/icm/LICENSE"; echo "$(git -C "$t2/icm" rev-parse --short HEAD) https://github.com/RinDig/icm-architect" > "$root/vendor/icm/VERSION"
         rm -rf "$t2"; echo "icm-architect updated: review with git diff, run the tests, then commit"; return 0
       fi
       [ "${2:-}" = ponytail ] || die "vendor update: ponytail or icm"
-      local tag tmp; tmp=$(mktemp -d)
+      local tag tmp
       tag=$(gh api repos/DietrichGebert/ponytail/releases/latest --jq .tag_name 2>/dev/null) || die "vendor update: could not read the latest ponytail tag"
-      git clone -q --depth 1 --branch "$tag" https://github.com/DietrichGebert/ponytail.git "$tmp/pt" || die "vendor update: clone failed"
+      tmp=$(mktemp -d)
+      git clone -q --depth 1 --branch "$tag" https://github.com/DietrichGebert/ponytail.git "$tmp/pt" || { rm -rf "$tmp"; die "vendor update: clone failed"; }
       local f
       for f in activate config instructions map mode-tracker runtime subagent; do cp "$tmp/pt/hooks/ponytail-$f.js" "$root/vendor/ponytail/hooks/"; done
       rm -rf "$root/vendor/ponytail/skills" && cp -r "$tmp/pt/skills" "$root/vendor/ponytail/skills"
@@ -41,7 +42,8 @@ cmd_vendor() {
     retire)
       local s="${LEAN_SETTINGS:-$HOME/.claude/settings.json}"
       [ -f "$s" ] || die "vendor retire: no settings file"
-      cp "$s" "$s.bak"
+      # Keep the first backup: a second run would back up the already retired file
+      [ -e "$s.bak" ] || cp "$s" "$s.bak"
       node -e '
         const fs = require("fs"), f = process.argv[1], j = JSON.parse(fs.readFileSync(f, "utf8"));
         j.enabledPlugins = j.enabledPlugins || {};

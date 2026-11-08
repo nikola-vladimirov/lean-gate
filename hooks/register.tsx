@@ -24,6 +24,8 @@ import {
   effective,
   hasEmDash,
   isGitPush,
+  shellCommand,
+  releaseActions,
   isLeanSkill,
   isStateFile,
   isTestCommand,
@@ -35,6 +37,7 @@ import {
   nextLevel,
   norm,
   projectLayer,
+  loweredRules,
   opencodeProblem,
   parseJson,
   parseStrict,
@@ -44,7 +47,7 @@ import {
   statRules,
   statsView,
 } from './gate'
-import type { Config, Level, Project, RoutingKey } from './gate'
+import type { Config, Level, Project, Release, RoutingKey } from './gate'
 import { DEMO_PRESETS, GROUP_COLOR, GROUP_HELP, HELPER_LABEL, LEVEL_COLOR, MODEL_COLOR, PACKS, PRESETS, REMINDER_LABEL, REMINDER_RULES, ROUTING_HELP, ROUTING_LABEL, RULE_GROUPS, RULE_INFO, SECTION_COLOR, STATE_FILES, TOP_LEGEND, explainFor } from './text'
 
 const EMPTY: LeanGateBand = {
@@ -95,6 +98,7 @@ const WARN_ONLY = new Set(['state-file-fresh', 'tests-before-done', 'phpcs-befor
 const DELEGATE = new Set(['Read', 'Grep', 'Glob'])
 const TOOL_MS = 3000
 const OTHER_MS = 5000
+const TOOL_RUN_MS = 180000
 const GIT_BASH = 'C:/Program Files/Git/bin/bash.exe'
 const LOG_LINES = 2000
 
@@ -221,6 +225,13 @@ async function loadConfig($: EngineInterface): Promise<Config> {
   return mergeConfig(global, projectLayer(project))
 }
 
+// The rules this folder's .lean-gate.json turns down against the global file; a repo can ship that file, so it is shown, never silent.
+async function projectLowers($: EngineInterface): Promise<string[]> {
+  const global = parseJson(await configText($, await claudeDir($), 'lean-project.json'))
+  const project = parseJson(await configText($, norm(await $.session.cwd()), '.lean-project.json'))
+  return loweredRules(mergeConfig(global), mergeConfig(global, projectLayer(project)))
+}
+
 // Read-modify-write of one config file, keeping unknown keys. A file that is unreadable or not a JSON object is never written.
 // The edit also gets the merged config read inside the queue, so two quick presses build on each other.
 type Edit = (json: Record<string, unknown>, now: Config) => void
@@ -269,13 +280,26 @@ const git = ($: EngineInterface, dir: string, ms: number, args: string[], env?: 
   $.process.run(['git', ...args], { cwd: dir, timeoutMs: ms, ...(env ? { env } : {}) }).catch(() => undefined)
 const CODE_GLOBS = ['*.php', '*.js', '*.jsx', '*.ts', '*.tsx', '*.py', '*.sh']
 
-// Git Bash when it is installed (plain `bash` on Windows may be WSL's), else whatever `bash` is on PATH.
-async function shell($: EngineInterface, cwd: string, command: string) {
-  const bash = (await $.fs.exists(GIT_BASH).catch(() => false)) ? GIT_BASH : 'bash'
+// Git Bash when it is installed (plain `bash` on Windows may be WSL's), else whatever `bash` is on PATH. Git Bash is found at its
+// usual place, else next to the git on PATH (a per-user or scoop install); the answer is kept for the session.
+let bashFound: string | undefined
+async function bashPath($: EngineInterface): Promise<string> {
+  if (bashFound !== undefined) return bashFound
+  if (await $.fs.exists(GIT_BASH).catch(() => false)) return (bashFound = GIT_BASH)
+  const r = await $.process.run(['git', '--exec-path'], { timeoutMs: TOOL_MS }).catch(() => undefined)
+  const top = r?.exitCode === 0 ? norm(r.stdout.trim()).replace(/\/(mingw64|mingw32|clangarm64)\/libexec\/git-core\/?$/, '') : ''
+  const guess = top !== '' && top !== norm(r?.stdout.trim() ?? '') ? `${top}/bin/bash.exe` : ''
+  return (bashFound = guess !== '' && (await $.fs.exists(guess).catch(() => false)) ? guess : 'bash')
+}
+
+// `ms` defaults to the short budget of a status read; the panel's tool buttons pass a longer one.
+async function shell($: EngineInterface, cwd: string, command: string, ms = OTHER_MS) {
+  const bash = await bashPath($)
   // The app does not put the plugin's bin folder on PATH for its own processes, so `lean-gate` is found through the plugin root.
+  // The root goes in through the environment, so a quote in the path cannot break the command.
   const pluginRoot = $.plugin.root
-  const root = pluginRoot ? `export PATH="$(cygpath -u '${pluginRoot}' 2>/dev/null || echo '${norm(pluginRoot)}')/bin:$PATH"; ` : ''
-  return $.process.run([bash, '-c', `${root}${command}`], { cwd, timeoutMs: OTHER_MS }).catch(() => undefined)
+  const root = pluginRoot ? 'export PATH="$(cygpath -u "$LG_ROOT" 2>/dev/null || printf %s "$LG_ROOT")/bin:$PATH"; ' : ''
+  return $.process.run([bash, '-c', `${root}${command}`], { cwd, timeoutMs: ms, ...(pluginRoot ? { env: { LG_ROOT: norm(pluginRoot) } } : {}) }).catch(() => undefined)
 }
 
 // A fingerprint of the uncommitted code: the diff of tracked code files against HEAD, plus the untracked code files' names and sizes.
@@ -327,7 +351,11 @@ async function reviewState($: EngineInterface, dir: string, ms: number): Promise
   if (now === undefined || tree === undefined || names === undefined) return 'silent'
   const committedCode = names.exitCode !== 0 || names.stdout.split('\n').some(f => CODE_RELEASE.test(f.trim()))
   if (!committedCode && now === m.fp) return 'ok'
-  return m.tree !== '' && tree.stdout.trim() === m.tree && now === '' ? 'ok' : 'due'
+  if (now !== '' || !SHA.test(m.tree)) return 'due'
+  if (tree.stdout.trim() === m.tree) return 'ok'
+  // Committed what was reviewed plus non-code files (the changelog a tag asks for, notes): only the code has to match.
+  const same = await git($, repo, ms, ['diff', '--quiet', m.tree, 'HEAD', '--', ...CODE_GLOBS])
+  return same === undefined ? 'silent' : same.exitCode === 0 ? 'ok' : 'due'
 }
 
 // The immediate child folders of a non-repo cwd that are repos with a review due.
@@ -398,10 +426,20 @@ async function readTools($: EngineInterface) {
   await patch($, { ptMode: mode, tools: lines(r?.stdout ?? '', 8) })
 }
 const loadRegistry = async ($: EngineInterface) => parseRegistry((await readText($, `${await claudeDir($)}/lean-projects.json`)) ?? undefined)
+const isJsonList = (text: string) => {
+  try {
+    return Array.isArray(JSON.parse(text))
+  } catch {
+    return false
+  }
+}
+// A registry that is unreadable or not a JSON list is never rewritten: a hand edit with a typo must not cost every other project.
 function editRegistry($: EngineInterface, mem: Mem, edit: (list: Project[]) => Project[]): Promise<void> {
   return enqueue(mem, async () => {
     const file = `${await claudeDir($)}/lean-projects.json`
-    await $.fs.write(file, `${JSON.stringify(edit(parseRegistry((await readText($, file)) ?? undefined)), null, 2)}
+    const r = await readFile($, file)
+    if (r.kind === 'error' || (r.kind === 'ok' && r.text.trim() !== '' && !isJsonList(r.text))) return $.ui.toast('lean-gate: lean-projects.json is unreadable or not a list, not changed')
+    await $.fs.write(file, `${JSON.stringify(edit(parseRegistry(r.kind === 'ok' ? r.text : undefined)), null, 2)}
 `)
     $.ui.invalidate('ui.render')
   }).catch(() => undefined)
@@ -490,6 +528,14 @@ async function trip($: EngineInterface, mem: Mem, cfg: Config, rule: string, det
   return undefined
 }
 
+// A push of a version-shaped name is a release only when the repo has that tag: a branch called 1.x or v2 is not.
+// Git not answering counts as no tag (fails open, as the review check does).
+async function tagExists($: EngineInterface, rel: Release | undefined): Promise<Release | undefined> {
+  if (rel?.check === undefined) return rel
+  const r = await git($, rel.dir, TOOL_MS, ['rev-parse', '-q', '--verify', `refs/tags/${rel.check}`])
+  return r?.exitCode === 0 ? rel : undefined
+}
+
 // Before the tool runs: returns a deny text, or undefined to let it through.
 async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<string | undefined> {
   const tool = String(e.tool)
@@ -521,7 +567,7 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
   const cfg = await loadConfig($)
 
   if (hasEmDash(tool, rec)) {
-    const deny = await trip($, mem, cfg, 'no-em-dashes', `em dash in ${tool === 'Bash' ? 'a commit message' : base(String(rec.file_path ?? tool))}`, 'lean-gate: no em dashes; use a colon, a comma or parentheses')
+    const deny = await trip($, mem, cfg, 'no-em-dashes', `em dash in ${shellCommand(tool, rec) !== undefined ? 'a commit message' : base(String(rec.file_path ?? tool))}`, 'lean-gate: no em dashes; use a colon, a comma or parentheses')
     if (deny !== undefined) return deny
   }
 
@@ -587,15 +633,16 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
     }
   }
 
-  if (e.tool === 'Bash') {
-    if (effective(cfg, 'no-demo-files-public') !== 'off' && isGitPush(e.command)) {
+  const cmd = shellCommand(tool, rec)
+  if (cmd !== undefined) {
+    if (effective(cfg, 'no-demo-files-public') !== 'off' && isGitPush(cmd)) {
       const files = await publicDemoFiles($, norm(await $.session.cwd()), cfg.demo_pattern)
       if (files.length > 0) {
         const deny = await trip($, mem, cfg, 'no-demo-files-public', `public repo would get: ${cut(files.join(', '), 100)}`, 'lean-gate: this push sends demo or scratch files to a public repo; keep it to changelog, readme and descriptions')
         if (deny !== undefined) return deny
       }
     }
-    if (cfg.pr_repos.length > 0 && isGitPush(e.command)) {
+    if (cfg.pr_repos.length > 0 && isGitPush(cmd)) {
       const cwd = norm(await $.session.cwd())
       const [top, branch] = await Promise.all([git($, cwd, TOOL_MS, ['rev-parse', '--show-toplevel']), git($, cwd, TOOL_MS, ['rev-parse', '--abbrev-ref', 'HEAD'])])
       const name = base(top?.stdout.trim() ?? '')
@@ -604,12 +651,12 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
         if (deny !== undefined) return deny
       }
     }
-    const oc = opencodeProblem(e.command)
+    const oc = opencodeProblem(cmd)
     if (oc !== undefined) {
       const deny = await trip($, mem, cfg, 'free-opencode-only', oc, 'lean-gate: OpenCode runs must name a free model (the name ends in -free)')
       if (deny !== undefined) return deny
     }
-    const relAny = releaseAction(e.command, await $.session.cwd(), (await home($)) ?? '')
+    const relAny = await tagExists($, releaseAction(cmd, await $.session.cwd(), (await home($)) ?? ''))
     if (relAny !== undefined && effective(cfg, 'changelog-before-tag') !== 'off' && !relAny.what.startsWith('git push') && (await changelogUnchanged($, relAny.dir))) {
       const deny = await trip($, mem, cfg, 'changelog-before-tag', `${relAny.what} with no changelog or readme change since the last tag`, 'lean-gate: write the changelog (and readme if behaviour changed) before tagging')
       if (deny !== undefined) return deny
@@ -648,17 +695,21 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
 // After the tool ran: what the turn-end rules and the band need to know.
 async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny?: string; isError?: true }) {
   if (ran.deny !== undefined) return
-  if (e.tool === 'Bash' && !ran.isError) {
-    const rel = releaseAction(e.command, await $.session.cwd(), (await home($)) ?? '')
-    if (rel?.what.startsWith('git tag')) mem.tagged = true
-    // Only a push that sends tags publishes the release; a plain push leaves the tag local.
-    if (rel?.what === 'git push of tags') mem.pushed = true
+  const cmd = shellCommand(String(e.tool), e as unknown as Record<string, unknown>)
+  if (cmd !== undefined && !ran.isError) {
+    // Every action counts: `git tag v1 && git push origin v1` is a tag and its push.
+    for (const found of releaseActions(cmd, await $.session.cwd(), (await home($)) ?? '')) {
+      const rel = await tagExists($, found)
+      if (rel?.what.startsWith('git tag')) mem.tagged = true
+      // Only a push that sends tags publishes the release; a plain push leaves the tag local.
+      if (rel?.what === 'git push of tags') mem.pushed = true
+    }
   }
-  if (e.tool === 'Bash' && isTestCommand(e.command)) {
+  if (cmd !== undefined && isTestCommand(cmd)) {
     mem.tested = true
     await patch($, { tests: ran.isError ? 'fail' : 'pass' })
   }
-  if (e.tool === 'Bash' && isPhpcsCommand(e.command)) mem.phpcs = true
+  if (cmd !== undefined && isPhpcsCommand(cmd)) mem.phpcs = true
   if ((e.tool === 'Edit' || e.tool === 'Write') && !ran.isError) {
     const path = norm(e.file_path)
     const now = await $.clock.now()
@@ -787,6 +838,8 @@ export const register: Register = on => {
       await readStats($)
       await readTools($)
       await detectProject($)
+      const lowered = await projectLowers($)
+      if (lowered.length > 0) $.ui.toast(`lean-gate: this project's .lean-gate.json turns down: ${cut(lowered.join(', '), 120)}`)
     })().catch(() => undefined)
     return result
   }).catch(($, e, next) => next(e))
@@ -837,6 +890,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const b = await load($)
     const cfg = await loadConfig($)
+    const lowered = await projectLowers($)
     const now = await $.clock.now()
     const tokens = (await $.session.usage().catch(() => undefined))?.context.tokens
     const els = $.ui.resolve(e)
@@ -927,7 +981,7 @@ export const register: Register = on => {
     const parts: RenderChildren[] = [
       <Box flexDirection="row" gap={1}>
         <Text color={levelColor[cfg.mode]}>●</Text>
-        {gb('mode', cfg.mode, () => editGlobal($, mem, j => (j.mode = nextLevel(cfg.mode))))}
+        {gb('mode', cfg.mode, () => editGlobal($, mem, (j, c) => (j.mode = nextLevel(c.mode))))}
       </Box>,
       gb('route', `route ${rModel}`, cycleRouteModel),
     ]
@@ -960,6 +1014,7 @@ export const register: Register = on => {
     if (b.release === 'due') parts.push(pill('review due', 'warning'), gb('review', 'Review', review), gb('reviewed', 'Reviewed', reviewed, true))
     else if (b.release === 'ok') parts.push(pill('reviewed', 'success'))
     parts.push(pill(`⚠ ${b.violations.length}`, b.violations.length > 0 ? 'warning' : undefined))
+    if (lowered.length > 0) parts.push(pill(`project lowers ${lowered.length}`, 'warning'))
     parts.push(gb('details', b.details ? 'Compact' : 'Details', toggle))
     parts.push(gb('explain', b.explain ? 'Hide help' : 'Explain', () => patch($, { explain: !b.explain })))
 
@@ -997,7 +1052,7 @@ export const register: Register = on => {
       <Box key={`row-${rule}`} flexDirection="row" gap={1}>
         <Text color={LEVEL_COLOR[level(rule)]}>●</Text>
         <Box width={9} flexShrink={0}>
-          <Button key={`rule-${rule}`} variant="secondary" label={level(rule)} onPress={() => void editConfig($, mem, 'rules', j => (j.rules = { ...(j.rules as object), [rule]: nextLevel(level(rule)) }))} />
+          <Button key={`rule-${rule}`} variant="secondary" label={level(rule)} onPress={() => void editConfig($, mem, 'rules', (j, c) => (j.rules = { ...(j.rules as object), [rule]: nextLevel(c.rules[rule] ?? 'off') }))} />
         </Box>
         <Box flexDirection="column" flexShrink={1}>
           <Text>{rule}</Text>
@@ -1073,9 +1128,10 @@ export const register: Register = on => {
       await readTools($)
     }
     const runTool = (label: string, command: string, andThen?: () => Promise<void>) => async () => {
-      const r = await shell($, await here(), command)
+      // Audits, PHPCS and a vendor update (a download) can take minutes; no answer is a failure, never "done".
+      const r = await shell($, await here(), command, TOOL_RUN_MS)
       const text = (r?.stdout || r?.stderr || '').trim().split(/\r?\n/).filter(l => l.trim() !== '')
-      $.ui.toast(`${label}: ${cut(text[text.length - 1] ?? (r?.exitCode ? 'failed' : 'done'), 80)}`)
+      $.ui.toast(`${label}: ${cut(text[text.length - 1] ?? (r === undefined ? 'timed out or failed to start' : r.exitCode ? 'failed' : 'done'), 80)}`)
       if (andThen) await andThen()
     }
     const PHPCS_STANDARDS = ['WordPress', 'WordPress-Extra', 'WordPress-Core', 'WordPress-Docs']
@@ -1103,9 +1159,10 @@ export const register: Register = on => {
         const value = next === 'free' ? 'free' : `${next}:${part === 'effort' ? cycle(EFFORTS, ef) : ef || 'medium'}`
         j.routing = { ...(j.routing as object), [key]: value }
       })
-    const setMaxAgents = (n: number) => editConfig($, mem, 'max_agents', j => (j.max_agents = n))
-    const setCap = (key: string, n: number) => editConfig($, mem, 'agent_caps', j => (j.agent_caps = { ...(j.agent_caps as object), [key]: n }))
-    const setNum = (key: string, n: number) => editConfig($, mem, key, j => (j[key] = n))
+    // Steps take the config read inside the save queue, so two quick presses build on each other.
+    const setMaxAgents = (next: (c: Config) => number) => editConfig($, mem, 'max_agents', (j, c) => (j.max_agents = next(c)))
+    const setCap = (key: RoutingKey, next: (c: Config) => number) => editConfig($, mem, 'agent_caps', (j, c) => (j.agent_caps = { ...(j.agent_caps as object), [key]: next(c) }))
+    const setNum = (key: string, next: (c: Config) => number) => editConfig($, mem, key, (j, c) => (j[key] = next(c)))
     const editWorkflow = ask('Set the "workflow" text in ~/.claude/lean-gate.json (or this project\'s .lean-gate.json): a few short lines saying where each kind of work happens, how many agents and at what effort, and the order of steps. Ask me what it should say first.', 'Ask Claude: write the workflow text')
     const lastHit = recent[0]
     const onceRule = lastHit === undefined ? undefined : lastHit.rule
@@ -1133,15 +1190,23 @@ export const register: Register = on => {
       const top = await git($, cwd, TOOL_MS, ['rev-parse', '--show-toplevel'])
       if (top === undefined || top.exitCode !== 0) return $.ui.toast('lean-gate: this folder is not a git repo')
       const name = base(top.stdout.trim())
-      await editConfig($, mem, 'pr_repos', (j, c) => (j.pr_repos = c.pr_repos.includes(name) ? c.pr_repos.filter(n => n !== name) : [...c.pr_repos, name]))
+      // The target file's own list: the merged one would copy the project's list into the global file and drop the global entries.
+      await editConfig($, mem, 'pr_repos', j => {
+        const own = Array.isArray(j.pr_repos) ? j.pr_repos.filter((n): n is string => typeof n === 'string') : []
+        j.pr_repos = own.includes(name) ? own.filter(n => n !== name) : [...own, name]
+      })
     }
     const demoIndex = DEMO_PRESETS.findIndex(p => p.pattern === cfg.demo_pattern)
     const stepDemo = () => editGlobal($, mem, (j, c) => (j.demo_pattern = (DEMO_PRESETS[(DEMO_PRESETS.findIndex(p => p.pattern === c.demo_pattern) + 1) % DEMO_PRESETS.length] ?? DEMO_PRESETS[0]).pattern))
     // Reset keeps one backup (the last reset); Undo reset puts it back. Import backs up first too.
+    // A file that is already empty (a second press) or unchanged by the import never replaces the backup, and an unreadable file is
+    // left alone, so the backup always holds the user's last real settings.
+    const emptySettings = (text: string) => Object.keys(parseStrict(text) ?? { x: 1 }).length === 0
     const resetSettings = () =>
       enqueue(mem, async () => {
         const r = await readFile($, `${dir}/lean-gate.json`)
-        if (r.kind === 'ok') await $.fs.write(`${dir}/lean-gate.json.reset-bak`, r.text)
+        if (r.kind === 'error') return $.ui.toast('lean-gate: lean-gate.json is unreadable, not reset')
+        if (r.kind === 'ok' && !emptySettings(r.text)) await $.fs.write(`${dir}/lean-gate.json.reset-bak`, r.text)
         await $.fs.write(`${dir}/lean-gate.json`, '{}\n')
         $.ui.toast('lean-gate: settings reset to defaults (Undo reset puts them back)')
         $.ui.invalidate('ui.render')
@@ -1165,7 +1230,8 @@ export const register: Register = on => {
         const r = await readFile($, SETTINGS_FILE)
         if (r.kind !== 'ok' || parseStrict(r.text) === undefined) return $.ui.toast('lean-gate: lean-gate-settings.json here is not a settings object, nothing changed')
         const cur = await readFile($, `${dir}/lean-gate.json`)
-        if (cur.kind === 'ok') await $.fs.write(`${dir}/lean-gate.json.import-bak`, cur.text)
+        if (cur.kind === 'error') return $.ui.toast('lean-gate: lean-gate.json is unreadable, nothing imported')
+        if (cur.kind === 'ok' && cur.text !== r.text && !emptySettings(cur.text)) await $.fs.write(`${dir}/lean-gate.json.import-bak`, cur.text)
         await $.fs.write(`${dir}/lean-gate.json`, r.text)
         $.ui.toast('lean-gate: settings imported (the old ones are in lean-gate.json.import-bak)')
         $.ui.invalidate('ui.render')
@@ -1195,6 +1261,7 @@ export const register: Register = on => {
         {section(
           'project', 'Project',
           note(<Text dimColor wrap="truncate-end">{b.proj ? `registered: ${b.proj}` : b.projNew ? 'a project folder that is not registered' : 'no project detected in this folder'}</Text>),
+          lowered.length > 0 && note(<Text color="warning" wrap="wrap">this folder's .lean-gate.json turns down: {lowered.map(r => `${r} (${cfg.rules[r] ?? 'off'})`).join(', ')}</Text>),
           <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
             {b.proj === '' ? gb('proj-add', 'Register this folder', registerHere, true) : gb('proj-remove', 'Unregister', unregisterHere)}
             {gb('proj-all', 'Register folders here', registerAll)}
@@ -1245,7 +1312,7 @@ export const register: Register = on => {
               <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
                 {gb(`rt-${k}-model`, `model: ${m}`, () => stepRouting(k, 'model'))}
                 {m !== 'free' && gb(`rt-${k}-effort`, `effort: ${ef}`, () => stepRouting(k, 'effort'))}
-                {gb(`rt-${k}-cap`, `agents at once: ${cap === 0 ? 'no limit' : cap}`, () => setCap(k, cycle(SECTION_CAPS, cap)))}
+                {gb(`rt-${k}-cap`, `agents at once: ${cap === 0 ? 'no limit' : cap}`, () => setCap(k, c => cycle(SECTION_CAPS, c.agent_caps[k])))}
               </Box>,
             ], { color: MODEL_COLOR[m], help: ROUTING_HELP[k], extra: <Text color={MODEL_COLOR[m]}>{choice}</Text> })
           }),
@@ -1255,9 +1322,9 @@ export const register: Register = on => {
           'workflow', 'Workflow and limits',
           note(<Text dimColor>agent and read limits, and a note added to every session's prompt (Edit workflow text asks Claude to write it)</Text>),
           <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
-            {gb('wf-agents', `max agents per turn: ${cfg.max_agents === 0 ? 'no limit' : cfg.max_agents}`, () => setMaxAgents(cycle(AGENT_LIMITS, cfg.max_agents)))}
-            {gb('wf-delegate', `delegate after ${cfg.delegate_after_lead_calls} reads`, () => setNum('delegate_after_lead_calls', cycle(DELEGATE_AFTER, cfg.delegate_after_lead_calls)))}
-            {gb('wf-context', `context limit ${kilo(cfg.context_limit)}`, () => setNum('context_limit', cycle(CONTEXT_LIMITS, cfg.context_limit)))}
+            {gb('wf-agents', `max agents per turn: ${cfg.max_agents === 0 ? 'no limit' : cfg.max_agents}`, () => setMaxAgents(c => cycle(AGENT_LIMITS, c.max_agents)))}
+            {gb('wf-delegate', `delegate after ${cfg.delegate_after_lead_calls} reads`, () => setNum('delegate_after_lead_calls', c => cycle(DELEGATE_AFTER, c.delegate_after_lead_calls)))}
+            {gb('wf-context', `context limit ${kilo(cfg.context_limit)}`, () => setNum('context_limit', c => cycle(CONTEXT_LIMITS, c.context_limit)))}
             {gb('wf-edit', 'Edit workflow text', editWorkflow)}
           </Box>,
           note(<Text dimColor wrap="truncate-end">{cfg.workflow === '' ? 'no workflow text set' : cfg.workflow}</Text>)

@@ -5,9 +5,10 @@
 # lean-project was the old name. Copy (never move) its settings, memory and plugin data to the new names once, so a
 # rollback to the old plugin still finds its own files. Each step runs only while its new target is missing.
 gate_migrate() {
-  local c="$HOME/.claude" old="" d=${CLAUDE_PLUGIN_DATA:-} f lock
+  local c="$HOME/.claude" old="" d=${CLAUDE_PLUGIN_DATA:-} f lock ok
   # Only the installed plugin's own folder: cost, gain and the selftest point CLAUDE_PLUGIN_DATA at temp folders.
-  case "${d##*/}" in lean-gate-*) [ -e "$d/LESSONS.md" ] && d="" ;; *) d="" ;; esac
+  # .migrated, not LESSONS.md, marks it done: an old folder may have no lessons, and a killed copy must resume.
+  case "${d##*/}" in lean-gate-*) [ -e "$d/.migrated" ] && d="" ;; *) d="" ;; esac
   if [ -n "$d" ]; then
     old="$c/plugins/data/lean-project-lean-project"
     [ -d "$old" ] || old=$(ls -d "$c"/plugins/data/lean-project-*/ 2>/dev/null | head -n 1)
@@ -20,17 +21,23 @@ gate_migrate() {
   lock="$c/.lean-gate-migrating"
   find "$lock" -maxdepth 0 -mmin +2 -exec rmdir {} \; 2>/dev/null
   mkdir "$lock" 2>/dev/null || return 0
-  [ -e "$c/lean-gate.json" ] || [ ! -f "$c/lean-project.json" ] || cp -p "$c/lean-project.json" "$c/lean-gate.json"
-  [ -e "$c/lean-gate/memory" ] || [ ! -d "$c/lean-project/memory" ] || { mkdir -p "$c/lean-gate" && cp -Rp "$c/lean-project/memory" "$c/lean-gate/memory"; }
-  if [ -n "$old" ] && [ ! -e "$d/LESSONS.md" ] && mkdir -p "$d"; then
-    for f in LESSONS.md LESSONS-ARCHIVE.md last-full-review sessions "$old"/setup-nag-*; do f=${f##*/}; [ -e "$old/$f" ] && [ ! -e "$d/$f" ] && cp -Rp "$old/$f" "$d/"; done
+  # Each copy goes to a temp name, then mv: a hook killed mid-copy leaves no half target that would block the retry.
+  [ -e "$c/lean-gate.json" ] || [ ! -f "$c/lean-project.json" ] || { cp -p "$c/lean-project.json" "$c/lean-gate.json.tmp" && mv "$c/lean-gate.json.tmp" "$c/lean-gate.json"; }
+  [ -e "$c/lean-gate/memory" ] || [ ! -d "$c/lean-project/memory" ] || { mkdir -p "$c/lean-gate" && rm -rf "$c/lean-gate/.memory.tmp" && cp -Rp "$c/lean-project/memory" "$c/lean-gate/.memory.tmp" && mv "$c/lean-gate/.memory.tmp" "$c/lean-gate/memory"; }
+  if [ -n "$old" ] && mkdir -p "$d"; then
+    ok=1
+    for f in LESSONS.md LESSONS-ARCHIVE.md last-full-review sessions "$old"/setup-nag-*; do
+      f=${f##*/}; [ -e "$old/$f" ] && [ ! -e "$d/$f" ] || continue
+      rm -rf "$d/.$f.tmp"; { cp -Rp "$old/$f" "$d/.$f.tmp" && mv "$d/.$f.tmp" "$d/$f"; } || ok=""
+    done
+    [ -z "$ok" ] || touch "$d/.migrated"
   fi
   rmdir "$lock" 2>/dev/null
   return 0
 }
 gate_migrate
 
-gate_val() { [ -f "$1" ] && tr -d '\n' < "$1" | sed -n "s/.*\"$2\"[[:space:]]*:[[:space:]]*\(true\|false\|\"[a-z]*\"\).*/\1/p" | head -n 1; }
+gate_val() { [ -f "$1" ] && tr -d '\n' < "$1" | sed -n -E "s/.*\"$2\"[[:space:]]*:[[:space:]]*(true|false|\"[a-z]*\").*/\1/p" | head -n 1; }
 # The project's config file: .lean-gate.json, or the old .lean-project.json when there is no new one.
 gate_project_file() { if [ -f "$1/.lean-gate.json" ] || [ ! -f "$1/.lean-project.json" ]; then echo "$1/.lean-gate.json"; else echo "$1/.lean-project.json"; fi; }
 gate_on() {

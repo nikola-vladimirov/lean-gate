@@ -267,8 +267,12 @@ cmd_board() {
         fi
       fi
       [ $# -gt 0 ] || die "board $verb: give the text"
-      if [ "$verb" = files ]; then verb=note; set -- "files:" "$@"; fi
-      text=$(printf '%s ' "$@" | tr '\r\n' '  ' | sed 's/ *$//')
+      if [ "$verb" = files ]; then
+        # Tab-separated, so a path with a space ("E:\Claude Sessions\...") stays one path
+        verb=note; text="files: $(IFS=$'\t'; printf '%s' "$*")"
+      else
+        text=$(printf '%s ' "$@" | tr '\r\n' '  ' | sed 's/ *$//')
+      fi
       board_append "$verb" "$id" "$text"
       ;;
     *)
@@ -316,8 +320,11 @@ board_append() {
       '> Shared by the lead and its subagents. Append-only: write with `lean-gate board add|move|note|files`, read with `lean-gate board [id]`.' '' > "$f" \
       || die "board: cannot create $f"
   fi
-  # A retried post (the same writer, verb, card and text among the last 20 lines) is skipped, so a repeated call cannot duplicate it
-  if tail -n 20 "$f" | grep -qF -- " | $who | $1 | $2 | $text"; then return 0; fi
+  # A retry (this writer's newest line for this card, among the last 20, has the same verb and text) is skipped
+  if tail -n 20 "$f" | LG_WHO="$who" LG_ID="$2" LG_WANT="$who | $1 | $2 | $text" awk -F ' [|] ' '
+    { sub(/\r$/, "") }
+    /^- [0-9]/ && $2 == ENVIRON["LG_WHO"] && $4 == ENVIRON["LG_ID"] { s = $0; sub(/^- [^|]* [|] /, "", s) }
+    END { exit !(s == ENVIRON["LG_WANT"]) }'; then return 0; fi
   printf -- '- %s | %s | %s | %s | %s\n' "$(date '+%Y-%m-%d %H:%M')" "$who" "$1" "$2" "$text" >> "$f"
 }
 
@@ -335,27 +342,28 @@ card_files() {
 # A failure moves the card back to todo and writes the tool output onto the card. Returns 1 on failure.
 # Usage: check_gate <card id> [files...]   (no files: the card's newest "files:" note)
 check_gate() {
-  local id="${1:-}" files f php="" msgs="" out cfg warn="" rc=0
+  local id="${1:-}" files f php=() msgs="" out cfg warn="" rc=0 bin
   [ -n "$id" ] || die "check gate: give the card id"
   shift
-  files="$*"
-  [ $# -gt 0 ] || files=$(card_files "$id")
-  if [ -z "$files" ]; then echo "gate $id: no files recorded (board files $id <paths>), nothing checked"; return 0; fi
-  for f in $files; do
+  phpcs_path
+  # The card's list is tab-separated; read -a splits it without globbing
+  [ $# -gt 0 ] || { IFS=$'\t' read -r -a files <<< "$(card_files "$id")"; set -- ${files[@]+"${files[@]}"}; }
+  if [ $# -eq 0 ]; then echo "gate $id: no files recorded (board files $id <paths>), nothing checked"; return 0; fi
+  for f in "$@"; do
     if [ ! -f "$f" ]; then msgs="$msgs missing file $f;"; rc=1; continue; fi
-    case "$f" in *.php) php="$php $f" ;; esac
+    case "$f" in *.php) php+=("$f") ;; esac
   done
-  if [ -n "$php" ]; then
+  if [ ${#php[@]} -gt 0 ]; then
     if command -v php >/dev/null 2>&1; then
-      for f in $php; do
+      for f in "${php[@]}"; do
         out=$(php -l "$f" 2>&1) || { msgs="$msgs $(printf '%s' "$out" | grep -v '^No syntax errors' | head -n 3 | tr '\n' ' ')"; rc=1; }
       done
     else
       warn="php not installed, syntax not checked"
     fi
-    if [ $rc = 0 ] && command -v phpcs >/dev/null 2>&1; then
-      cfg=""; [ -f phpcs.xml ] || [ -f phpcs.xml.dist ] || cfg="--standard=${LEAN_WPCS_STANDARD:-WordPress}"
-      out=$(phpcs -n -q $cfg $php 2>&1) || {
+    if [ $rc = 0 ] && bin=$(phpcs_find phpcs); then
+      cfg=""; [ -f phpcs.xml ] || [ -f phpcs.xml.dist ] || cfg="--standard=$(phpcs_standard)"
+      out=$("$bin" -n -q $cfg "${php[@]}" 2>&1) || {
         case "$out" in
           *"not installed"*) warn="${warn:+$warn; }WordPress coding standard not installed, coding standards not checked" ;;
           *) msgs="$msgs phpcs: $(printf '%s' "$out" | head -n 3 | tr '\n' ' ')"; rc=1 ;;
@@ -426,8 +434,9 @@ cmd_waste() {
       }
       { sub(/\r$/, "") }
       iscomment($0) { if (!run) start = NR; run++; next }
-      { if (run >= 8) print start, NR - 1, run; run = 0 }
-      END { if (run >= 8) print start, NR, run }' "$f")
+      # A block at line 1 or 2 is the file header (a script may print it as its usage): never moved
+      { if (run >= 8 && start > 2) print start, NR - 1, run; run = 0 }
+      END { if (run >= 8 && start > 2) print start, NR, run }' "$f")
     if [ -n "$runs" ]; then
       printf '%s\n' "$runs" | while read -r s e n; do printf '  %s:%s-%s  comment block, %s lines\n' "$rel" "$s" "$e" "$n"; done
       blocks=$((blocks + $(printf '%s\n' "$runs" | grep -c .)))
@@ -465,16 +474,22 @@ EOF
   return 0
 }
 
-# Lessons: the file lives in the plugin data folder (LESSONS_FILE overrides it, for tests).
-lessons_file() {
-  if [ -n "${LESSONS_FILE:-}" ]; then printf '%s\n' "$LESSONS_FILE"; return 0; fi
-  if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then printf '%s\n' "$CLAUDE_PLUGIN_DATA/LESSONS.md"; return 0; fi
+# The plugin data folder: CLAUDE_PLUGIN_DATA in a hook, else the installed plugin's folder.
+data_dir() {
+  if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then printf '%s\n' "$CLAUDE_PLUGIN_DATA"; return 0; fi
   # No CLAUDE_PLUGIN_DATA outside a hook. Exact names first: a plain glob sorts a test install (lean-*-inline) ahead.
   local d g=""
   for d in lean-gate-lean-gate 'lean-gate-*' lean-project-lean-project 'lean-project-*'; do
     g=$(ls -d "$HOME"/.claude/plugins/data/$d/ 2>/dev/null | head -n 1); [ -n "$g" ] && break
   done
-  printf '%s\n' "${g:-$HOME/.claude/plugins/data/lean-gate/}LESSONS.md"
+  g=${g:-$HOME/.claude/plugins/data/lean-gate/}
+  printf '%s\n' "${g%/}"
+}
+
+# Lessons: the file lives in the plugin data folder (LESSONS_FILE overrides it, for tests).
+lessons_file() {
+  if [ -n "${LESSONS_FILE:-}" ]; then printf '%s\n' "$LESSONS_FILE"; return 0; fi
+  printf '%s/LESSONS.md\n' "$(data_dir)"
 }
 
 # Move every entry with this key to LESSONS-ARCHIVE.md (verbatim) and add the rule under "## Local rules" once.
@@ -482,7 +497,9 @@ lessons_file() {
 lesson_promote() {
   local f="$1" arch
   arch="$(dirname "$f")/LESSONS-ARCHIVE.md"
-  awk -v key="$2" -v rule="$3" -v arch="$arch" '
+  # Through the environment: awk -v turns the backslashes of a Windows path into escapes
+  LG_RULE="$3" LG_ARCH="$arch" awk -v key="$2" '
+    BEGIN { rule = ENVIRON["LG_RULE"]; arch = ENVIRON["LG_ARCH"] }
     function norm(s) { s = tolower(s); gsub(/[^a-z0-9]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s); return s }
     function body(s) { sub(/^- [^|]*\| [^|]*\| [^|]*\| /, "", s); return s }
     FNR == NR { sub(/\r$/, ""); if ($0 ~ /^## /) s1 = $0; if (s1 == "## Local rules" && $0 ~ /^- / && norm($0) == key) have = 1; next }
@@ -499,8 +516,8 @@ cmd_lesson() {
   local text="" mode="-" proj="-" f key n rule lines
   while [ $# -gt 0 ]; do
     case "$1" in
-      --mode) mode="${2:-}"; shift 2 ;;
-      --project) proj="${2:-}"; shift 2 ;;
+      --mode) mode="${2:-}"; shift; [ $# -gt 0 ] && shift ;;
+      --project) proj="${2:-}"; shift; [ $# -gt 0 ] && shift ;;
       *) text="${text:+$text }$1"; shift ;;
     esac
   done
@@ -544,10 +561,10 @@ cmd_lessons() {
   echo "entries: $(awk '/^## / { s = $0 } s == "## Entries" && /^- [0-9]/' "$f" | wc -l | tr -d ' '), file: $(wc -l < "$f" | tr -d ' ') lines"
 }
 
-# Session drafts folder: the session_drafts_dir setting, or the plugin data folder (same rule as scripts/session-end.sh).
+# Session drafts folder: the session_drafts_dir setting, or the plugin data folder (where scripts/session-end.sh writes).
 sessions_dir() {
   if [ -n "${CLAUDE_PLUGIN_OPTION_SESSION_DRAFTS_DIR:-}" ]; then printf '%s\n' "$CLAUDE_PLUGIN_OPTION_SESSION_DRAFTS_DIR"
-  else printf '%s\n' "${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}/lean-gate}/sessions"; fi
+  else printf '%s\n' "$(data_dir)/sessions"; fi
 }
 
 # Review scope (release gate): the files changed since the last release tag, and whether a full review is due.
@@ -556,7 +573,7 @@ sessions_dir() {
 cmd_review_scope() {
   local last base full_file n due
   last=$(git describe --tags --abbrev=0 2>/dev/null) || die "review-scope: no release tag yet; give audit security a folder instead"
-  full_file="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}/lean-gate}/last-full-review"
+  full_file="$(data_dir)/last-full-review"
   if [ "${1:-}" = --full-done ]; then
     mkdir -p "$(dirname "$full_file")"; printf '%s\n' "$last" > "$full_file"
     echo "full review recorded at $last"; return 0
@@ -567,7 +584,8 @@ cmd_review_scope() {
   elif [ "${base%%.*}" != "${last%%.*}" ]; then
     due="yes: a new major version since $base"
   else
-    n=$(git tag --list 'v*' --sort=v:refname | awk -v b="$base" 'f { n++ } $0 == b { f = 1 } END { print n + 0 }')
+    # versionsort.suffix puts v1.0.0-beta.N before v1.0.0
+    n=$(git -c versionsort.suffix=- tag --list 'v*' --sort=v:refname | awk -v b="$base" 'f { n++ } $0 == b { f = 1 } END { print n + 0 }')
     if [ "$n" -ge 5 ]; then due="yes: $n releases since the full review at $base"
     else due="no: $n release(s) since the full review at $base"; fi
   fi
@@ -584,11 +602,20 @@ cmd_sessions() {
     shift
   done
   d=$(sessions_dir); proj=$(basename "$PWD")
-  out=$(ls -1t "$d"/*.md 2>/dev/null | while IFS= read -r f; do
-    p=$(sed -n 's/^Project: //p' "$f" | head -n 1)
-    [ -z "$here" ] || [ "$p" = "$proj" ] || continue
-    printf '%s\t%s\t%s\n' "$(basename "$f" .md | cut -c1-10)" "$p" "$f"
-  done | head -n "$n")
+  # One awk for every draft (a process per draft nears the hook's 10 s timeout); names start with the date, so the newest is last.
+  out=$(printf '%s\n' "$d"/*.md | LG_PROJ="$proj" awk -v n="$n" -v here="$here" '
+    { f[++c] = $0 }
+    END {
+      for (i = c; i >= 1 && k < n + 0; i--) {
+        p = ""
+        while ((r = (getline l < f[i])) > 0) if (l ~ /^Project: /) { p = substr(l, 10); break }
+        if (r < 0) continue
+        close(f[i]); sub(/\r$/, "", p)
+        if (here != "" && p != ENVIRON["LG_PROJ"]) continue
+        b = f[i]; sub(/.*\//, "", b); sub(/\.md$/, "", b)
+        printf "%s\t%s\t%s\n", substr(b, 1, 10), p, f[i]; k++
+      }
+    }')
   if [ -n "$out" ]; then printf '%s\n' "$out"; else [ -n "$here" ] || echo "(no session drafts yet in $d)"; fi
 }
 
@@ -597,7 +624,9 @@ cmd_lessons_review() {
   local days="${1:-14}" f cutoff
   f=$(lessons_file)
   [ -f "$f" ] || { echo '(none yet: lean-gate lesson "<text>" records one)'; return 0; }
-  cutoff=$(date -d "-$days days" +%F 2>/dev/null) || die "lessons review: days must be a number, e.g. lessons review 30"
+  case "$days" in ''|*[!0-9]*) die "lessons review: days must be a number, e.g. lessons review 30" ;; esac
+  # GNU date, then BSD date
+  cutoff=$(date -d "-$days days" +%F 2>/dev/null || date -v-"$days"d +%F)
   awk -v cutoff="$cutoff" '
     function norm(s) { s = tolower(s); gsub(/[^a-z0-9]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s); return s }
     function body(s) { sub(/^- [^|]*\| [^|]*\| [^|]*\| /, "", s); return s }
@@ -637,7 +666,8 @@ cmd_lesson_drop() {
     sec == "## Entries" && /^- [0-9]/ && norm(body($0)) == key { c++ }
     END { print c + 0 }' "$f")
   [ "$n" -gt 0 ] || { echo "no entry with that text in $f"; return 0; }
-  awk -v key="$key" -v arch="$arch" '
+  LG_ARCH="$arch" awk -v key="$key" '
+    BEGIN { arch = ENVIRON["LG_ARCH"] }
     function norm(s) { s = tolower(s); gsub(/[^a-z0-9]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s); return s }
     function body(s) { sub(/^- [^|]*\| [^|]*\| [^|]*\| /, "", s); return s }
     { sub(/\r$/, "") }
@@ -752,7 +782,7 @@ SEC_AWK='
 # Give a folder to scan all of it, or the listed files to scan only those (the review scope rule).
 cmd_audit_security() {
   local dir="${1:-.}" f rel lang out files
-  if [ -f "$1" ]; then
+  if [ -f "${1:-}" ]; then
     files=$(printf '%s\n' "$@" | grep -E '\.(php|js)$' | sort -u)
     dir=$(pwd -P)
   else
@@ -793,8 +823,9 @@ cmd_audit_perf() {
 
 # Gain: one line per run (date, project, auto-loaded tokens, hook tokens) in gain.tsv, with the change since the project's last run.
 cmd_gain() {
-  local dir="${1:-.}" data="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}/lean-gate}" log auto_t=0 f hook_b tdata root
+  local dir="${1:-.}" data log auto_t=0 f hook_b tdata root
   [ -d "$dir" ] || die "gain: $dir is not a folder"
+  data=$(data_dir)
   mkdir -p "$data"; log="$data/gain.tsv"
   while IFS= read -r f; do [ -n "$f" ] || continue; auto_t=$((auto_t + $(tok "$f"))); done <<EOF
 $(auto_loaded "$dir")
