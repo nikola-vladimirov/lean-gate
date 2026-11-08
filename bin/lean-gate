@@ -793,7 +793,7 @@ cmd_audit_security() {
   out=$(while IFS= read -r f; do
     [ -n "$f" ] || continue
     rel="${f#"$dir"/}"
-    case "$f" in *.php) lang=php ;; *) lang=js ;; esac
+    lang=js; [ "${f%.php}" = "$f" ] || lang=php  # no case here: bash 3.2 (macOS) misreads its ) inside $(...)
     awk -v rel="$rel" -v lang="$lang" "$SEC_AWK" "$f"
   done <<EOF
 $files
