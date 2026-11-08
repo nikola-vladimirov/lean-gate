@@ -997,7 +997,110 @@ test('Details renders every panel section open, with its title', async ($, on) =
   world(on, config({ mode: 'block' }))
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await ui.press({ key: 'details' })
-  const titles = ['Project', 'Rules', 'Rule builder', 'Model routing', 'Workflow and limits', 'Built-in helpers', 'Project memory', 'Board', 'Lessons and local rules', 'Review', 'Ponytail', 'WordPress checks', 'Packs', 'Recent violations']
+  const titles = ['Project', 'Rules', 'Rule builder', 'Model routing', 'Workflow and limits', 'Settings', 'Built-in helpers', 'Project memory', 'Board', 'Lessons and local rules', 'Review', 'Ponytail', 'WordPress checks', 'Packs', 'Recent violations']
   for (const t of titles) expect(await ui.find({ text: new RegExp(`^▾ ${t}`) })).toBeDefined()
+  await ui.unmount()
+})
+
+test('Settings: presses save to this project when switched, the mode stays global', async ($, on) => {
+  const w = world(on, config({ mode: 'warn' }))
+  const PROJECT = 'C:/proj/.lean-gate.json'
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'details' })
+  await ui.press({ key: 'set-target' })
+  await ui.press({ key: 'rule-tests-before-done' })
+  await settle()
+  expect(JSON.parse(w.files[PROJECT] ?? '{}').rules['tests-before-done']).toBe('block')
+  expect(JSON.parse(w.files[CONFIG] ?? '{}').rules).toBeUndefined()
+  // The mode cannot live in a project file: it still goes global.
+  await ui.press({ key: 'mode' })
+  await settle()
+  expect(JSON.parse(w.files[CONFIG] ?? '{}').mode).toBe('block')
+  expect(JSON.parse(w.files[PROJECT] ?? '{}').mode).toBeUndefined()
+  // The state file is per project whatever the switch says; two quick presses build on each other.
+  await ui.press({ key: 'set-target' })
+  await ui.press({ key: 'set-statefile' })
+  await ui.press({ key: 'set-statefile' })
+  await settle()
+  expect(JSON.parse(w.files[PROJECT] ?? '{}').state_file).toBe('AGENTS.md')
+  await ui.unmount()
+})
+
+test('Settings: reminder every turn, scope everywhere and quiet warnings change what the end-of-turn rules do', async ($, on) => {
+  const w = world(on, config({ mode: 'warn', rules: { 'lean-gate-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off', 'phpcs-before-done': 'off', 'state-file-fresh': 'off' } }))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'details' })
+  const turn = async (id: string) => {
+    await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.php', old_string: 'a', new_string: 'b' })
+    await $.turn.complete({ ...DONE, turnId: id })
+    await settle()
+  }
+  const hits = () => lines(w.files).filter(l => l.includes('\ttests-before-done\t')).length
+  // No project marker: not judged, until the scope says everywhere.
+  await turn('t1')
+  expect(hits()).toBe(0)
+  await ui.press({ key: 'set-scope' })
+  await settle()
+  await turn('t2')
+  expect(hits()).toBe(1)
+  // Once a session by default; every turn after the press.
+  await turn('t3')
+  expect(hits()).toBe(1)
+  await ui.press({ key: 'set-rem-tests-before-done' })
+  await settle()
+  await turn('t4')
+  await turn('t5')
+  expect(hits()).toBe(3)
+  // Quiet: still logged, no pop-up.
+  await ui.press({ key: 'set-quiet' })
+  await settle()
+  w.toasts.length = 0
+  await turn('t6')
+  expect(hits()).toBe(4)
+  expect(w.toasts.some(t => t.includes('tests-before-done'))).toBe(false)
+  await ui.unmount()
+})
+
+test('Settings: reset backs up and Undo reset restores; export and import go through lean-gate-settings.json', async ($, on) => {
+  const w = world(on, config({ mode: 'block', keep: 1 }))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'details' })
+  await ui.press({ key: 'set-reset' })
+  await settle()
+  expect(w.files[CONFIG]).toBe('{}\n')
+  // The test surface redraws on a panel-state change (a tool call patches the counters), not on invalidate.
+  const redraw = async () => { await $.tool.call(BASH('echo')); await settle() }
+  await redraw()
+  await ui.press({ key: 'set-undo' })
+  await settle()
+  expect(JSON.parse(w.files[CONFIG] ?? '{}')).toEqual({ mode: 'block', keep: 1 })
+  await ui.press({ key: 'set-export' })
+  await settle()
+  expect(JSON.parse(w.files['C:/proj/lean-gate-settings.json'] ?? '{}')).toEqual({ mode: 'block', keep: 1 })
+  w.files['C:/proj/lean-gate-settings.json'] = '{"mode":"off"}'
+  await redraw()
+  await ui.press({ key: 'set-import' })
+  await settle()
+  expect(JSON.parse(w.files[CONFIG] ?? '{}')).toEqual({ mode: 'off' })
+  expect(JSON.parse(w.files[`${CONFIG}.import-bak`] ?? '{}')).toEqual({ mode: 'block', keep: 1 })
+  // A file that is not a settings object changes nothing.
+  w.files['C:/proj/lean-gate-settings.json'] = '[1]'
+  await ui.press({ key: 'set-import' })
+  await settle()
+  expect(JSON.parse(w.files[CONFIG] ?? '{}')).toEqual({ mode: 'off' })
+  await ui.unmount()
+})
+
+test('Explain shows a one-line explanation beside the buttons and a legend for the top row', async ($, on) => {
+  world(on, config({ mode: 'warn' }))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ text: /^Shows or hides the sections below/ })).toBeUndefined()
+  await ui.press({ key: 'explain' })
+  expect(await ui.find({ text: /^Shows or hides the sections below/ })).toBeDefined()
+  expect(await ui.find({ text: /^lead \/ sub: reads the main session made/ })).toBeDefined()
+  await ui.press({ key: 'details' })
+  expect(await ui.find({ text: /^Where presses save/ })).toBeDefined()
+  await ui.press({ key: 'explain' })
+  expect(await ui.find({ text: /^Where presses save/ })).toBeUndefined()
   await ui.unmount()
 })

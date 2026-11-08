@@ -1,6 +1,8 @@
 # lean-gate
 
-**One hub for how Claude works on your projects.** lean-gate is a docked control panel and an enforcing rule gate, and it runs everything else in the plugin: the token-saving guides (the lean-gate skill), ponytail, the WordPress performance audit, PHPCS with the WordPress standard and the ICM project structure. Every setting is a button, new and existing projects are set up and detected from the panel, and every project follows one layout with `AGENTS.md` as the entry file. Beta 1.0.0-beta.5 (branch hub). Start with [docs/HUB.md](docs/HUB.md); the panel reference is [docs/LEAN-GATE.md](docs/LEAN-GATE.md).
+**A control panel and rule gate for how Claude works on your projects.** lean-gate checks what Claude does and warns or blocks: model and effort on every agent, agent caps, release reviews, and project habits (state file, tests, PHPCS). Every setting is a button in a docked panel, and Explain says what each one does. It carries token-saving project guides (plans, docs, file maps, memory, lessons, a shared board for agents), ponytail, the WordPress performance audit, PHPCS with the WordPress standard and the ICM project layout, and it registers, detects, starts and adopts projects from the panel.
+
+The full manual, with every button, rule, setting and command: [docs/MANUAL.md](docs/MANUAL.md).
 
 **Renamed.** lean-project is now lean-gate. The `lean-project` command still works as an alias. Your settings, memory and lessons are copied to the new names at the first session after the update, and the old files are kept.
 
@@ -9,17 +11,17 @@ A Claude Code plugin that makes every session cheaper. Claude re-sends the whole
 Contents table below: open only the section you need.
 
 <!-- toc -->
-- 23-65: Features
-- 66-76: Install
-- 77-113: Delegating work
-- 114-126: Use
-- 127-169: Commands
-- 170-173: Minimal install (low context)
-- 174-184: Settings
-- 185-201: What a project gets
-- 202-205: Where your data lives
-- 206-209: Credits
-- 210-212: License
+- 27-69: Features
+- 70-80: Install
+- 81-117: Delegating work
+- 118-130: Use
+- 131-173: Commands
+- 174-177: Minimal install (low context)
+- 178-188: Settings
+- 189-205: What a project gets
+- 206-209: Where your data lives
+- 210-213: Credits
+- 214-216: License
 <!-- /toc -->
 
 ## Features
@@ -51,7 +53,7 @@ Contents table below: open only the section you need.
 - **Handoff draft.** `lean-gate handoff` drafts the state file from the branch, the next open tasks and the cards in flight, for review before a reset.
 - **Builder skills on demand.** The 108 Bricks and BricksExtras skills live inside this one skill, in `builder/`. `builder/INDEX.md` routes a task to the one skill it needs, so nothing loads unless a plan step names a Bricks element, template or query. Their generated JSON schema data stays out of the plugin.
 - **Project memory.** `lean-gate memory add "<note>" [--tag decision|state|link|note]` keeps short dated notes per project, `link` ties projects together, and session start prints one line (count, newest note, linked projects). `memory recall` reads the notes and the newest three of each linked project only when you ask; `forget` archives a note, never deletes it. Notes live in `~/.claude/lean-gate/memory/<project>/`.
-- **Control panel and rule gate.** A panel docked beside the chat (`/lean-gate` opens it) shows the model route, delegation counts, context use, state-file age, test result and review status, and enforces rules on tool calls: model and effort on every subagent, no Haiku for coding, free OpenCode models only, review before release, state file and tests before done, no em dashes, the lean-gate skill loaded first, WordPress skills and docs read before WordPress or Bricks code, changelog before a tag, a push after a tag, pull requests only for the repos in `pr_repos`, and no demo files to public repos. Each rule is off, warn or block with one press, and a rule builder adds your own. Model routing sets the model, effort and agents-at-once cap for each kind of work (reading and writing, coding, complex coding, review, planning). Project memory, the shared board, lessons and packs have their own sections, and project memory and lessons can record automatically. Everything is set by buttons and stored in `~/.claude/lean-gate.json`; a project's `.lean-gate.json` can tune rules, routing and limits. Hub guide: [docs/HUB.md](docs/HUB.md); every panel button: [docs/LEAN-GATE.md](docs/LEAN-GATE.md). 0.31.4: the Ponytail section is removed from the panel and the full guide is added. 0.31.5: the route button picks a model and an effort, like Model routing. 0.31.6: lean-gate outranks lean-project (context limit, em dashes and routing text defer to it, a precedence line in the prompt), and the distinctive-session-names rule is built in. Hub (unreleased, branch hub): ponytail 5.3.3, the performance audit, PHPCS and icm-architect are vendored and switched from the panel; projects are registered, detected, started and adopted with buttons. 1.0.0-beta.2: Renamed to lean-gate (plugin, command, skill, config file, memory folder, rule lean-gate-first); old names still read. 1.0.0-beta.3: the copy to the new names runs once when several hooks start together (it nested the memory folder). 1.0.0-beta.4: setup-nag counts carry over; `lean-gate phpcs` finds Laragon PHP and a global Composer PHPCS when they are not on PATH. 1.0.0-beta.5: the routing-line rule is retired; a skill loaded before a plugin reload still counts; state, test and PHPCS reminders warn once per session; scratch folders are not judged.
+- **Control panel and rule gate.** A panel docked beside the chat (`/lean-gate` opens it) shows the model route, delegation counts, context use, state-file age, test result and review status, and enforces rules on tool calls: model and effort on every subagent, no Haiku for coding, free OpenCode models only, review before release, state file and tests before done, no em dashes, the lean-gate skill loaded first, WordPress skills and docs read before WordPress or Bricks code, changelog before a tag, a push after a tag, pull requests only for the repos in `pr_repos`, and no demo files to public repos. Each rule is off, warn or block with one press, and a rule builder adds your own. Model routing sets the model, effort and agents-at-once cap for each kind of work (reading and writing, coding, complex coding, review, planning). Project memory, the shared board, lessons and packs have their own sections, and project memory and lessons can record automatically. Everything is set by buttons and stored in `~/.claude/lean-gate.json`; a project's `.lean-gate.json` can tune rules, routing and limits. Hub guide: [docs/HUB.md](docs/HUB.md); every panel button: [docs/MANUAL.md](docs/MANUAL.md). 0.31.4: the Ponytail section is removed from the panel and the full guide is added. 0.31.5: the route button picks a model and an effort, like Model routing. 0.31.6: lean-gate outranks lean-project (context limit, em dashes and routing text defer to it, a precedence line in the prompt), and the distinctive-session-names rule is built in. Hub (unreleased, branch hub): ponytail 5.3.3, the performance audit, PHPCS and icm-architect are vendored and switched from the panel; projects are registered, detected, started and adopted with buttons. 1.0.0-beta.2: Renamed to lean-gate (plugin, command, skill, config file, memory folder, rule lean-gate-first); old names still read. 1.0.0-beta.3: the copy to the new names runs once when several hooks start together (it nested the memory folder). 1.0.0-beta.4: setup-nag counts carry over; `lean-gate phpcs` finds Laragon PHP and a global Composer PHPCS when they are not on PATH. 1.0.0-beta.5: the routing-line rule is retired; a skill loaded before a plugin reload still counts; state, test and PHPCS reminders warn once per session; scratch folders are not judged. 1.0.0-beta.6: buttons look like buttons, Explain shows what each one does, a Settings section (save to this project, reminder frequency, scope, quiet warnings, panel at start, state file, PR only, public push presets, reset and undo, export and import), and the full manual in docs/MANUAL.md.
 - **Skills and plugins on demand (packs).** Skill sets used rarely stay off so they cost no tokens at startup: the Bricks skills, the WordPress `wp-*` skills and the ui-ux plugin. They return when a task needs them. `lean-gate pack status` shows which are on; `lean-gate pack on <bricks|wp|ui-ux>` turns one on, and `off` turns it back off. Changes take effect in the next session.
 - **Reverse engineering on demand.** The REA guide lives in `reverse/` and loads only for reverse-engineering tasks. REA's MCP server stays off by default (startup cost) and is switched on per folder.
 
@@ -183,6 +185,7 @@ The skill and the `lean-gate` command work without any hooks. The hooks are the 
 | Remind again every | 50,000 tokens | How often it repeats after that |
 | Always back up docs before editing | off | On: copy every doc to a dated backup folder before lean-gate edits it. Off: back up only when the project is not under version control |
 | Backup folder | `backups` | Where backups go, relative to the project folder |
+| Session draft folder | (plugin data folder) | Where end-of-session handoff drafts go, for example a folder in your Obsidian vault |
 
 ## What a project gets
 

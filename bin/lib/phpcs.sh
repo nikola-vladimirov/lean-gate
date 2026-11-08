@@ -20,8 +20,13 @@ phpcs_find() { # $1 phpcs|phpcbf
   if [ -x "./vendor/bin/$1" ]; then echo "./vendor/bin/$1"; elif command -v "$1" >/dev/null 2>&1; then command -v "$1"; else return 1; fi
 }
 
+# The project's file first (the panel saves there while "saving to: this project"), then the global one.
 phpcs_standard() {
-  local s; s=$(tr -d '\n' < "$HOME/.claude/lean-gate.json" 2>/dev/null | sed -n 's/.*"phpcs_standard"[[:space:]]*:[[:space:]]*"\([A-Za-z-]*\)".*/\1/p' | head -n 1)
+  local s="" f
+  for f in "$(gate_project_file "$PWD")" "$HOME/.claude/lean-gate.json"; do
+    s=$(tr -d '\n' < "$f" 2>/dev/null | sed -n 's/.*"phpcs_standard"[[:space:]]*:[[:space:]]*"\([A-Za-z-]*\)".*/\1/p' | head -n 1)
+    [ -n "$s" ] && break
+  done
   echo "${s:-WordPress}"
 }
 

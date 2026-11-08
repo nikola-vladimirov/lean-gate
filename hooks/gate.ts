@@ -72,6 +72,14 @@ export type Config = {
   state_file: string
   // Paths a public repo must not receive (rule no-demo-files-public); a regex source, case-insensitive.
   demo_pattern: string
+  // End-of-turn reminders (state file, tests, PHPCS): 'once' a session until a turn fixes it, or 'every' turn.
+  reminders: Record<string, 'once' | 'every'>
+  // Session rules judge 'projects' only (a registered folder or one with a project marker), or 'everywhere'.
+  scope: 'projects' | 'everywhere'
+  // Warnings are counted and listed without the pop-up.
+  quiet: boolean
+  // How the panel opens at session start.
+  panel_start: 'details' | 'compact' | 'closed'
 }
 
 export const DEFAULTS: Config = {
@@ -112,6 +120,10 @@ export const DEFAULTS: Config = {
   routing: { read: 'sonnet:medium', code: 'sonnet:high', complex: 'opus:high', review: 'opus:high', plan: 'opus:high' },
   agent_caps: { read: 0, code: 0, complex: 0, review: 0, plan: 0 },
   state_file: '',
+  reminders: {},
+  scope: 'projects',
+  quiet: false,
+  panel_start: 'compact',
 }
 
 export const norm = (p: string) => p.replace(/\\/g, '/')
@@ -159,7 +171,7 @@ function customRule(v: unknown): CustomRule | undefined {
 }
 
 export function mergeConfig(...layers: Record<string, unknown>[]): Config {
-  const c: Config = { ...DEFAULTS, helpers: { ...DEFAULTS.helpers }, rules: { ...DEFAULTS.rules }, routing: { ...DEFAULTS.routing }, agent_caps: { ...DEFAULTS.agent_caps }, custom: [], pr_repos: [] }
+  const c: Config = { ...DEFAULTS, helpers: { ...DEFAULTS.helpers }, rules: { ...DEFAULTS.rules }, routing: { ...DEFAULTS.routing }, agent_caps: { ...DEFAULTS.agent_caps }, custom: [], pr_repos: [], reminders: {} }
   for (const l of layers) {
     if (isLevel(l.mode)) c.mode = l.mode
     if (typeof l.demo_pattern === 'string' && regexOk(l.demo_pattern)) c.demo_pattern = l.demo_pattern
@@ -193,6 +205,10 @@ export function mergeConfig(...layers: Record<string, unknown>[]): Config {
     if (typeof l.auto_memory === 'boolean') c.auto_memory = l.auto_memory
     if (typeof l.auto_lessons === 'boolean') c.auto_lessons = l.auto_lessons
     if (Array.isArray(l.pr_repos)) c.pr_repos = l.pr_repos.filter((n): n is string => typeof n === 'string' && n !== '').slice(0, 40)
+    for (const [k, v] of Object.entries(obj(l.reminders))) if (v === 'once' || v === 'every') c.reminders[k] = v
+    if (l.scope === 'projects' || l.scope === 'everywhere') c.scope = l.scope
+    if (typeof l.quiet === 'boolean') c.quiet = l.quiet
+    if (l.panel_start === 'details' || l.panel_start === 'compact' || l.panel_start === 'closed') c.panel_start = l.panel_start
   }
   return c
 }

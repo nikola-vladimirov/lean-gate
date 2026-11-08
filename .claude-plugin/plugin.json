@@ -1,8 +1,8 @@
 {
   "name": "lean-gate",
   "displayName": "lean-gate",
-  "version": "1.0.0-beta.5",
-  "description": "One hub for how Claude works on your projects: lean-gate (a docked panel and an enforcing rule gate, every setting a button) controls the lean-gate token-saving skills, ponytail, the WordPress performance audit, PHPCS with the WordPress standard and the ICM project structure. Projects are registered, detected, started and adopted from the panel, and every project follows one layout with AGENTS.md as the entry file. Includes model routing with agent caps, project memory, a shared board, lessons, a release review gate, and on-demand packs.",
+  "version": "1.0.0-beta.6",
+  "description": "A control panel and rule gate for how Claude works on your projects. It checks what Claude does and warns or blocks: model and effort on every agent, agent caps, release reviews, and project habits (state file, tests, PHPCS). Every setting is a button in a docked panel, with an Explain line for each. It carries token-saving project guides (plans, docs, file maps, memory, lessons, a shared agent board), ponytail, the WordPress performance audit, PHPCS with the WordPress standard and the ICM project layout, and registers, detects, starts and adopts projects.",
   "author": {
     "name": "nikola-vladimirov",
     "url": "https://github.com/nikola-vladimirov"
@@ -11,12 +11,15 @@
   "repository": "https://github.com/nikola-vladimirov/lean-gate",
   "license": "MIT",
   "keywords": [
+    "rules",
+    "gate",
+    "panel",
+    "model-routing",
     "tokens",
     "context",
     "docs",
-    "planning",
-    "handoff",
-    "productivity"
+    "wordpress",
+    "handoff"
   ],
   "userConfig": {
     "context_limit": {

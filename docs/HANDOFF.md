@@ -1,8 +1,8 @@
 # lean-gate hub: handoff
 
-Updated 2026-11-08. Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). Branch `hub`, `1.0.0-beta.5` pushed and installed as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`). `main` is 0.31.6, untouched. The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). To return to stable: in `~/.claude/settings.json` remove the marketplace `ref`, then `claude plugin update`.
+Updated 2026-11-08. Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). Branch `hub`, `1.0.0-beta.5` pushed and installed as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`); `1.0.0-beta.6` committed, not pushed. `main` is 0.31.6, untouched. The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). To return to stable: in `~/.claude/settings.json` remove the marketplace `ref`, then `claude plugin update`.
 
-Guides: `docs/HUB.md` (start here), `docs/LEAN-GATE.md` (every button), `skills/lean-gate/STRUCTURE.md` (project layout).
+Guides: `docs/HUB.md` (start here), `docs/MANUAL.md` (every button, rule, setting and command; update it with every feature or fix, `lean-gate selftest` checks it), `skills/lean-gate/STRUCTURE.md` (project layout).
 
 ## Rename to lean-gate (phase 1 of the improvement plan, 2026-11-08)
 
@@ -29,14 +29,19 @@ The violation log (500 rows) was 443 warnings from six rules. Changes:
 - Session rules (those four plus `lean-gate-first`) skip folders that are not projects (`inProject`: registry hit or a project marker), so scratch chats are not judged.
 - Tests: once-per-session, scratch skip, transcript lookup (fails with the lookup disabled). 67 tests, selftest, validate pass.
 
+## beta.6: panel build (phase 3, 2026-11-08)
+
+- Split refused by the platform: a hooks module may not pass the engine `$` across an import, so everything that takes `$` stays in `hooks/register.tsx` (lesson recorded). Pure panel data moved to `hooks/text.ts` instead: rule groups and meanings, presets, labels and the Explain text of every button.
+- Buttons: drawn with chrome (`variant`), the main action of a row primary; section titles stay plain headings. Rule rows aligned (fixed-width level column).
+- Explain (top row): a one-line explanation beside every button, and a legend for the top-row status items. The panel API has no tooltip, so this is the replacement.
+- Settings section, chosen with the user: saving to global or this project (`editConfig`; mode, workflow, custom rules and demo pattern stay global), reminder frequency per end-of-turn rule (`reminders`), `scope`, `quiet`, `panel_start`, state file per project, PR only for this repo, public push presets, Reset to defaults with Undo reset, Export and Import (`lean-gate-settings.json`).
+- Edits get the merged config read inside the save queue (`Edit` type), so quick presses build on each other. Found by the tests: an every-turn reminder that had already warned stayed quiet (fixed).
+- Manual: `docs/LEAN-GATE.md` became `docs/MANUAL.md`, extended to every button, rule, config key, command, hook and skill. `doc_coverage` in the selftest fails when one of those is missing from the manual or a button has no Explain line.
+- Descriptions rewritten: plugin.json, marketplace.json and the README lead.
+- Tests: 71 (settings target, reminders, scope, quiet, reset and undo, export and import, Explain); selftest; validate.
+
 ## Next phases of the plan
 
-3. Panel build:
-   - Split `hooks/register.tsx` (about 1250 lines) per section first, so the UI work below reads small files.
-   - Buttons that look like buttons (asked 2026-11-08, screenshot of beta.4): every panel button is drawn with `plain` (`gb` in `register.tsx`), which strips the chrome, so buttons and status text look alike. Drop `plain`, mark the main action of each row `variant="primary"` and the rest `secondary` (the desktop then draws native buttons, like the Changes pane's Create PR); keep status as `Text`.
-   - Explanations: the panel API has no tooltip prop (`ButtonProps` has `hover` for style only). Add an `Explain` toggle (hotkey `?`) that shows a dim one-line explanation under each button and section, from the texts in `docs/LEAN-GATE.md`.
-   - Align the rule rows: the level and the rule name start at different columns (screenshot).
-   - More settings as buttons, for keys that today need a hand edit: `state_file`, `pr_repos` (toggle the current repo), `demo_pattern` (presets), the nag mode per end-of-turn rule (once per session or every turn), and the project-only scope. Grill the list with the user before building.
 4. `lean-gate stats` from the violation log.
 5. Release 1.0.0: full review (`review-scope` says one is due; never on a beta), merge `hub` into `main`, tag, push, reset the marketplace ref.
 

@@ -43,6 +43,7 @@ import {
   repoKey,
 } from './gate'
 import type { Config, Level, Project, RoutingKey } from './gate'
+import { DEMO_PRESETS, HELPER_LABEL, PACKS, PRESETS, REMINDER_LABEL, REMINDER_RULES, ROUTING_LABEL, RULE_GROUPS, RULE_INFO, STATE_FILES, TOP_LEGEND, explainFor } from './text'
 
 const EMPTY: LeanGateBand = {
   details: false,
@@ -67,6 +68,8 @@ const EMPTY: LeanGateBand = {
   proj: '',
   projNew: false,
   projHit: null,
+  explain: false,
+  target: 'global',
 }
 const band = atom({ plugin: 'lean-gate', key: 'band' } as const, EMPTY)
 const PANE = 'lean-gate'
@@ -76,18 +79,6 @@ const ROUTE_MODELS = ['main', 'haiku', 'sonnet', 'opus', 'fable', 'free']
 const EFFORT_LIST = ['low', 'medium', 'high', 'xhigh', 'max']
 const routeOk = (v: unknown): v is LeanGateRoute => typeof v === 'string' && /^(main|free|(haiku|sonnet|opus|fable):(low|medium|high|xhigh|max))$/.test(v)
 const routeText = (r: LeanGateRoute) => (r === 'free' ? 'a free OpenCode model (name ends in -free)' : r)
-const HELPER_LABEL: Record<(typeof HELPERS)[number], string> = { startup_notes: 'startup notes', context_nudge: 'context nudge', guard_hints: 'doc and test hints', session_drafts: 'session drafts', ponytail: 'ponytail hooks' }
-const PACKS = ['wp', 'bricks', 'ui-ux']
-// Ready-made patterns for the rule builder: the band has buttons, not a text field. Anything else goes in custom_rules by hand or via Ask Claude.
-const PRESETS = [
-  { id: 'force-push', label: 'force push', tool: 'Bash', match: '\\bgit\\s+push\\b[^|;&]*(--force\\b|--force-with-lease|\\s-f\\b)', message: 'no force push' },
-  { id: 'rm-rf', label: 'rm -rf', tool: 'Bash', match: '\\brm\\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r)\\b', message: 'recursive force delete' },
-  { id: 'sudo', label: 'sudo', tool: 'Bash', match: '\\bsudo\\b', message: 'no sudo' },
-  { id: 'npm-install', label: 'new dependency', tool: 'Bash', match: '\\b(npm|pnpm|yarn)\\s+(i|install|add)\\b', message: 'adding a dependency: is it needed?' },
-  { id: 'secret', label: 'hardcoded secret', tool: 'Edit|Write', match: '(password|passwd|secret|api[_-]?key|token)\\s*[:=]\\s*[\'"][^\'"\\s]{8,}[\'"]', message: 'looks like a hardcoded secret' },
-  { id: 'debug', label: 'debug leftover', tool: 'Edit|Write', match: 'console\\.log\\(|var_dump\\(|print_r\\(', message: 'debug output left in code' },
-  { id: 'todo', label: 'TODO left', tool: 'Edit|Write', match: '\\b(TODO|FIXME|XXX)\\b', message: 'unfinished marker written' },
-] as const
 // What a routing button steps through; a value typed into the config by hand is kept until the button is pressed.
 const MODEL_NAMES = ['haiku', 'sonnet', 'opus', 'fable', 'free'] as const
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
@@ -95,38 +86,8 @@ const AGENT_LIMITS = [0, 2, 3, 4, 6, 8] as const
 const SECTION_CAPS = [0, 1, 2, 3, 4, 6] as const
 const DELEGATE_AFTER = [4, 6, 8, 12, 16] as const
 const CONTEXT_LIMITS = [200000, 300000, 500000, 1000000] as const
-const ROUTING_LABEL: Record<RoutingKey, string> = { read: 'Reading and writing (text, images)', code: 'Coding', complex: 'Complex coding', review: 'Review', plan: 'Planning' }
 // Rules that only ever warn (they run after the work), so a block override has nothing to act on.
 const WARN_ONLY = new Set(['state-file-fresh', 'tests-before-done', 'phpcs-before-done', 'push-after-tag'])
-// The details view lists rules by group, each with a one-line meaning.
-const RULE_GROUPS: readonly (readonly [string, readonly string[]])[] = [
-  ['Agents and models', ['agent-needs-model-effort', 'no-haiku-coding', 'free-opencode-only', 'delegate-more', 'max-agents', 'review-edited-files-only', 'distinctive-session-names']],
-  ['Every session', ['lean-gate-first', 'ponytail-active', 'state-file-fresh', 'tests-before-done', 'no-em-dashes']],
-  ['Releases and git', ['release-needs-review', 'changelog-before-tag', 'push-after-tag', 'one-pr-per-fix', 'no-demo-files-public']],
-  ['WordPress and docs', ['wp-skills-for-wp-code', 'docs-before-builder', 'phpcs-before-done']],
-]
-const RULE_INFO: Record<string, string> = {
-  'agent-needs-model-effort': 'Agent calls must set a model and effort',
-  'no-haiku-coding': 'Haiku never writes code',
-  'free-opencode-only': 'OpenCode runs must use a free model',
-  'delegate-more': 'Long runs of reads go to a subagent',
-  'max-agents': 'Limit on subagents per turn',
-  'review-edited-files-only': 'A review agent is scoped to files',
-  'lean-gate-first': 'Load lean-gate before editing code',
-  'ponytail-active': 'Ponytail on before editing code',
-  'state-file-fresh': 'Touch the state file after code edits',
-  'tests-before-done': 'Run tests after code edits',
-  'phpcs-before-done': 'Run PHPCS after PHP edits',
-  'no-em-dashes': 'No em dashes in files or commit messages',
-  'distinctive-session-names': 'Sub-session titles start with date and time',
-  'release-needs-review': 'Review before a release tag',
-  'changelog-before-tag': 'Changelog or readme change before a tag',
-  'push-after-tag': 'Push the tag in the same turn',
-  'one-pr-per-fix': 'Listed repos take PRs, not pushes to main',
-  'no-demo-files-public': 'No demo files in a push to a public repo',
-  'wp-skills-for-wp-code': 'Load the wp-* skills for WordPress code',
-  'docs-before-builder': 'Read the docs before builder or WordPress code',
-}
 // Rule 8 counts reading tools only: Bash is neither counted nor ever denied.
 const DELEGATE = new Set(['Read', 'Grep', 'Glob'])
 const TOOL_MS = 3000
@@ -170,6 +131,8 @@ function sane(raw: unknown): LeanGateBand {
     proj: typeof r.proj === 'string' ? r.proj : '',
     projNew: r.projNew === true,
     projHit: typeof (r.projHit as { name?: unknown } | null)?.name === 'string' && typeof (r.projHit as { path?: unknown }).path === 'string' ? (r.projHit as { name: string; path: string }) : null,
+    explain: r.explain === true,
+    target: r.target === 'project' ? 'project' : 'global',
     lessons: Array.isArray(r.lessons) ? r.lessons.filter((n): n is string => typeof n === 'string').slice(0, 12) : [],
   }
 }
@@ -254,19 +217,28 @@ async function loadConfig($: EngineInterface): Promise<Config> {
   return mergeConfig(global, projectLayer(project))
 }
 
-// Read-modify-write of the GLOBAL file, keeping unknown keys. A file that is unreadable or not a JSON object is never written.
-// shortcut: the band shows the merged value, so a rule a project file overrides looks unchanged after a press; edit the project file then.
-function editGlobal($: EngineInterface, mem: Mem, edit: (json: Record<string, unknown>) => void): Promise<void> {
+// Read-modify-write of one config file, keeping unknown keys. A file that is unreadable or not a JSON object is never written.
+// The edit also gets the merged config read inside the queue, so two quick presses build on each other.
+type Edit = (json: Record<string, unknown>, now: Config) => void
+function editFile($: EngineInterface, mem: Mem, dir: string, oldName: string, label: string, edit: Edit): Promise<void> {
   return enqueue(mem, async () => {
-    const file = `${await claudeDir($)}/lean-gate.json`
-    const r = await readNewOrOld($, await claudeDir($), 'lean-project.json')
+    const file = `${dir}/${oldName.replace('lean-project', 'lean-gate')}`
+    const r = await readNewOrOld($, dir, oldName)
     let json: Record<string, unknown> | undefined = {}
     if (r.kind === 'ok' && r.text.trim() !== '') json = parseStrict(r.text)
-    if (r.kind === 'error' || json === undefined) return $.ui.toast('lean-gate: global config unreadable, not changed')
-    edit(json)
+    if (r.kind === 'error' || json === undefined) return $.ui.toast(`lean-gate: ${label} config unreadable, not changed`)
+    edit(json, await loadConfig($))
     await $.fs.write(file, `${JSON.stringify(json, null, 2)}\n`)
     $.ui.invalidate('ui.render')
   }).catch(() => undefined)
+}
+const editGlobal = async ($: EngineInterface, mem: Mem, edit: Edit) => editFile($, mem, await claudeDir($), 'lean-project.json', 'global', edit)
+const editProject = async ($: EngineInterface, mem: Mem, edit: Edit) => editFile($, mem, norm(await $.session.cwd()), '.lean-project.json', 'project', edit)
+// A panel press saves where the Settings switch points. A project file cannot set these keys (it may arrive with a cloned repo), so they go global.
+const GLOBAL_ONLY = /^(mode|workflow|custom_rules|demo_pattern)$/
+async function editConfig($: EngineInterface, mem: Mem, key: string, edit: Edit): Promise<void> {
+  const { target } = await load($)
+  return target === 'project' && !GLOBAL_ONLY.test(key) ? editProject($, mem, edit) : editGlobal($, mem, edit)
 }
 
 // The violation log has no append, so each row is read, extended and written inside the queue.
@@ -450,8 +422,10 @@ async function detectProject($: EngineInterface) {
   const marked = hit === undefined ? (await $.fs.list(cwd).catch(() => [])).some(f => PROJECT_MARKERS.includes(f.name)) : false
   await patch($, { proj: hit?.name ?? '', projNew: marked })
 }
-// A registered project, or a folder with a project marker. Not one: a scratch chat folder, where session rules do not apply.
+// A registered project, or a folder with a project marker. Not one: a scratch chat folder, where session rules do not apply
+// (unless the Settings scope says everywhere).
 async function inProject($: EngineInterface): Promise<boolean> {
+  if ((await loadConfig($)).scope === 'everywhere') return true
   const cwd = norm(await $.session.cwd())
   return projectAt(await loadRegistry($), cwd) !== undefined || (await $.fs.list(cwd).catch(() => [])).some(f => PROJECT_MARKERS.includes(f.name))
 }
@@ -500,7 +474,8 @@ async function trip($: EngineInterface, mem: Mem, cfg: Config, rule: string, det
   await logRow($, mem, row)
   if (action === 'block') return message
   if (action === 'allow-once') return undefined
-  if (!mem.warned.has(rule)) {
+  // Quiet warnings (Settings): counted and listed, no pop-up.
+  if (!cfg.quiet && !mem.warned.has(rule)) {
     mem.warned.add(rule)
     $.ui.toast(`lean-gate: ${rule}: ${cut(detail, 60)}`)
   }
@@ -757,8 +732,10 @@ export const register: Register = on => {
         const project = n > 0 && (await inProject($))
         const nag = async (rule: string, broken: boolean, fixed: boolean, detail: string) => {
           if (fixed) mem.nagged.delete(rule)
-          if (!broken || !project || mem.nagged.has(rule)) return
-          mem.nagged.add(rule)
+          // The Settings reminder button can make it warn every turn instead.
+          const every = cfg.reminders[rule] === 'every'
+          if (!broken || !project || (!every && mem.nagged.has(rule))) return
+          if (!every) mem.nagged.add(rule)
           await trip($, mem, cfg, rule, detail, '', false)
         }
         await nag('state-file-fresh', !stateTouched, stateTouched, `${n} code file(s) edited, no state file touched`)
@@ -784,7 +761,12 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     await $.command.register({ name: 'lean-gate', description: 'Open the lean-gate panel' }).catch(() => undefined)
-    void $.ui.open({ id: PANE, title: 'lean-gate' }).catch(() => undefined)
+    // Settings: open with details, open compact, or stay closed (the Open button above the prompt still shows).
+    const { panel_start } = await loadConfig($)
+    if (panel_start !== 'closed') {
+      await patch($, { details: panel_start === 'details' }).catch(() => undefined)
+      void $.ui.open({ id: PANE, title: 'lean-gate' }).catch(() => undefined)
+    }
     // Log housekeeping and git work run after the session has started, not in front of it.
     void (async () => {
       await trimLog($, mem)
@@ -829,7 +811,7 @@ export const register: Register = on => {
     const { Box, Button } = $.ui.resolve(e)
     return (
       <Box flexDirection="column">
-        <Button key="open-panel" plain label="Open lean-gate panel" onPress={() => void $.ui.open({ id: PANE, title: 'lean-gate' }).then(() => $.ui.invalidate('ui.render')).catch(() => undefined)} />
+        <Button key="open-panel" variant="primary" label="Open lean-gate panel" onPress={() => void $.ui.open({ id: PANE, title: 'lean-gate' }).then(() => $.ui.invalidate('ui.render')).catch(() => undefined)} />
         {below}
       </Box>
     )
@@ -895,7 +877,22 @@ export const register: Register = on => {
     const stateAge = now - b.stateAt
     const stale = b.codeAt > b.stateAt || (b.stateAt > 0 && stateAge > 3600000)
     const ctxPct = tokens === undefined ? 0 : tokens / cfg.context_limit
-    const gb = (key: string, label: string, onPress: () => unknown) => <Button key={key} plain label={label} onPress={() => void onPress()} />
+    // Buttons are drawn with chrome (a desktop draws native buttons) so they stand apart from status text; the main action of a
+    // row is primary. With Explain on, each button sits on its own line with its one-line explanation beside it.
+    const gb = (key: string, label: string, onPress: () => unknown, primary = false) => {
+      const button = <Button key={key} variant={primary ? 'primary' : 'secondary'} label={label} onPress={() => void onPress()} />
+      const line = b.explain ? explainFor(key) : undefined
+      return line === undefined ? button : (
+        <Box key={`x-${key}`} flexDirection="row" gap={1}>
+          {button}
+          <Box flexShrink={1}><Text dimColor>{line}</Text></Box>
+        </Box>
+      )
+    }
+    // Section titles stay plain: they read as headings that fold, not as actions.
+    const hb = (key: string, label: string, onPress: () => unknown) => <Button key={key} plain label={label} onPress={() => void onPress()} />
+    // Button rows wrap side by side; with Explain on they stack, one explained button per line.
+    const rowDir = b.explain ? ('column' as const) : ('row' as const)
     const dot = <Text dimColor>·</Text>
     // flexShrink 0: a cell wraps as a whole to the next line, never mid-label.
     // The dot trails its cell, so a wrapped line never starts with one.
@@ -905,12 +902,12 @@ export const register: Register = on => {
     const parts: RenderChildren[] = [
       <Box flexDirection="row" gap={1}>
         <Text color={levelColor[cfg.mode]}>●</Text>
-        <Button key="mode" plain label={cfg.mode} onPress={() => void editGlobal($, mem, j => (j.mode = nextLevel(cfg.mode)))} />
+        {gb('mode', cfg.mode, () => editGlobal($, mem, j => (j.mode = nextLevel(cfg.mode))))}
       </Box>,
-      <Button key="route" plain label={`route ${rModel}`} onPress={cycleRouteModel} />,
+      gb('route', `route ${rModel}`, cycleRouteModel),
     ]
-    if (b.proj === '') parts.push(<Button key="setup" plain label="Set up project" onPress={() => void (b.projNew ? adoptProject() : startProject())} />)
-    if (rModel !== 'main' && rModel !== 'free') parts.push(<Button key="route-effort" plain label={rEffort} onPress={cycleRouteEffort} />)
+    if (b.proj === '') parts.push(gb('setup', 'Set up project', () => (b.projNew ? adoptProject() : startProject()), true))
+    if (rModel !== 'main' && rModel !== 'free') parts.push(gb('route-effort', rEffort, cycleRouteEffort))
     parts.push(
       <Text color={b.run >= cfg.delegate_after_lead_calls ? 'warning' : undefined}>
         lead {b.lead} / sub {b.sub}
@@ -918,7 +915,7 @@ export const register: Register = on => {
     )
     if (tokens !== undefined) {
       parts.push(<Text color={ctxPct >= 1 ? 'error' : ctxPct >= 0.8 ? 'warning' : undefined}>{kilo(tokens)}/{kilo(cfg.context_limit)}</Text>)
-      if (ctxPct >= 0.8) parts.push(gb('new', 'New session', newSession))
+      if (ctxPct >= 0.8) parts.push(gb('new', 'New session', newSession, true))
     }
     parts.push(
       b.stateAt === 0 && b.codeAt === 0 ? (
@@ -927,19 +924,26 @@ export const register: Register = on => {
         <Text color={stale ? 'warning' : 'success'}>{stale ? '⚠ stale' : `✓ ${age(stateAge)}`}</Text>
       )
     )
-    if (stale) parts.push(gb('state', 'Update state', updateState))
+    if (stale) parts.push(gb('state', 'Update state', updateState, true))
     parts.push(
       <Text color={b.tests === 'pass' ? 'success' : b.tests === 'fail' ? 'error' : undefined} dimColor={b.tests === 'none'}>
         tests {b.tests}
       </Text>
     )
-    if (b.tests !== 'pass') parts.push(gb('tests', 'Run tests', runTests))
-    if (b.release === 'due') parts.push(<Text color="warning">review due</Text>, gb('review', 'Review', review), gb('reviewed', 'Reviewed', reviewed))
+    if (b.tests !== 'pass') parts.push(gb('tests', 'Run tests', runTests, true))
+    if (b.release === 'due') parts.push(<Text color="warning">review due</Text>, gb('review', 'Review', review), gb('reviewed', 'Reviewed', reviewed, true))
     else if (b.release === 'ok') parts.push(<Text color="success">reviewed</Text>)
     parts.push(<Text color={b.violations.length > 0 ? 'warning' : undefined} dimColor={b.violations.length === 0}>⚠ {b.violations.length}</Text>)
     parts.push(gb('details', b.details ? 'Compact' : 'Details', toggle))
+    parts.push(gb('explain', b.explain ? 'Hide help' : 'Explain', () => patch($, { explain: !b.explain })))
 
-    const compact = (
+    // With Explain on, the top row stacks (one item per line) and a legend says what each status item means.
+    const compact = b.explain ? (
+      <Box flexDirection="column" width={e.props.bodyColumns}>
+        {parts.map((p, i) => <Box key={`cell-${i}`}>{p}</Box>)}
+        {TOP_LEGEND.map((l, i) => <Text key={`legend-${i}`} dimColor>{l}</Text>)}
+      </Box>
+    ) : (
       <Box flexDirection="row" alignItems="center" gap={1} flexWrap="wrap" width={e.props.bodyColumns}>
         {join(parts)}
       </Box>
@@ -951,15 +955,15 @@ export const register: Register = on => {
     const flip = (id: string) => update($, band, x => { const s = sane(x); return { ...s, shut: s.shut.includes(id) ? s.shut.filter(n => n !== id) : [...s.shut, id] } })
     const fold = (id: string, title: string, body: RenderChildren[]) => (
       <Box key={id} flexDirection="column">
-        {gb(`sec-${id}`, `${b.shut.includes(id) ? '▸' : '▾'} ${title}`, () => flip(id))}
+        {hb(`sec-${id}`, `${b.shut.includes(id) ? '▸' : '▾'} ${title}`, () => flip(id))}
         {!b.shut.includes(id) && <Box flexDirection="column" paddingLeft={2}>{body}</Box>}
       </Box>
     )
     // One rule per row: the level button, then the name over a dim one-line meaning. Rules sit in groups, each under a title.
     const ruleRow = (rule: string, info: string) => (
       <Box key={`row-${rule}`} flexDirection="row" gap={1}>
-        <Box width={7}>
-          <Button key={`rule-${rule}`} plain label={level(rule)} onPress={() => void editGlobal($, mem, j => (j.rules = { ...(j.rules as object), [rule]: nextLevel(level(rule)) }))} />
+        <Box width={9} flexShrink={0}>
+          <Button key={`rule-${rule}`} variant="secondary" label={level(rule)} onPress={() => void editConfig($, mem, 'rules', j => (j.rules = { ...(j.rules as object), [rule]: nextLevel(level(rule)) }))} />
         </Box>
         <Box flexDirection="column" flexShrink={1}>
           <Text>{rule}</Text>
@@ -1039,15 +1043,10 @@ export const register: Register = on => {
       if (andThen) await andThen()
     }
     const PHPCS_STANDARDS = ['WordPress', 'WordPress-Extra', 'WordPress-Core', 'WordPress-Docs']
-    const stepStandard = () => editGlobal($, mem, j => {
-      const cur = typeof j.phpcs_standard === 'string' ? j.phpcs_standard : 'WordPress'
-      j.phpcs_standard = PHPCS_STANDARDS[(PHPCS_STANDARDS.indexOf(cur) + 1) % PHPCS_STANDARDS.length]
-    })
-    const toggleHelper = (key: (typeof HELPERS)[number]) => editGlobal($, mem, j => {
-        const stored = (j.helpers as Record<string, unknown> | undefined)?.[key]
-        j.helpers = { ...(j.helpers as object), [key]: stored === false }
-      })
-    const toggleAuto = (key: 'auto_memory' | 'auto_lessons') => editGlobal($, mem, j => (j[key] = j[key] !== true))
+    // Settings presses step from the value the panel shows (global and project merged) and save where the Settings switch points.
+    const stepStandard = () => editConfig($, mem, 'phpcs_standard', (j, c) => (j.phpcs_standard = cycle(PHPCS_STANDARDS, c.phpcs_standard)))
+    const toggleHelper = (key: (typeof HELPERS)[number]) => editConfig($, mem, 'helpers', (j, c) => (j.helpers = { ...(j.helpers as object), [key]: !c.helpers[key] }))
+    const toggleAuto = (key: 'auto_memory' | 'auto_lessons') => editConfig($, mem, key, (j, c) => (j[key] = !c[key]))
     const askBoard = ask('Run lean-gate board and tell me in a few lines which cards are blocked or waiting on another card, and what each needs.', 'Ask Claude: check the board')
     const addLesson = ask('Record a lesson with lean-gate lesson "<what to do differently>" for what went wrong or was corrected in this session. Ask me what it should say first.', 'Ask Claude: record a lesson')
     const reviewLessons = ask('Run lean-gate lessons review, then rewrite each old lesson into a rule (record it again) or drop it with lean-gate lessons drop.', 'Ask Claude: review old lessons')
@@ -1059,7 +1058,7 @@ export const register: Register = on => {
     const cycle = <T,>(list: readonly T[], cur: T): T => list[(list.indexOf(cur) + 1) % list.length] as T
     // Steps one part of a section's model:effort from the value in the file, so two quick presses build on each other.
     const stepRouting = (key: RoutingKey, part: 'model' | 'effort') =>
-      editGlobal($, mem, j => {
+      editConfig($, mem, 'routing', j => {
         const stored = (j.routing as Record<string, unknown> | undefined)?.[key]
         const [m = 'sonnet', ef = 'medium'] = (typeof stored === 'string' ? stored : cfg.routing[key]).split(':')
         // Haiku is left out of the coding sections: it never writes code.
@@ -1068,9 +1067,9 @@ export const register: Register = on => {
         const value = next === 'free' ? 'free' : `${next}:${part === 'effort' ? cycle(EFFORTS, ef) : ef || 'medium'}`
         j.routing = { ...(j.routing as object), [key]: value }
       })
-    const setMaxAgents = (n: number) => editGlobal($, mem, j => (j.max_agents = n))
-    const setCap = (key: string, n: number) => editGlobal($, mem, j => (j.agent_caps = { ...(j.agent_caps as object), [key]: n }))
-    const setNum = (key: string, n: number) => editGlobal($, mem, j => (j[key] = n))
+    const setMaxAgents = (n: number) => editConfig($, mem, 'max_agents', j => (j.max_agents = n))
+    const setCap = (key: string, n: number) => editConfig($, mem, 'agent_caps', j => (j.agent_caps = { ...(j.agent_caps as object), [key]: n }))
+    const setNum = (key: string, n: number) => editConfig($, mem, key, j => (j[key] = n))
     const editWorkflow = ask('Set the "workflow" text in ~/.claude/lean-gate.json (or this project\'s .lean-gate.json): a few short lines saying where each kind of work happens, how many agents and at what effort, and the order of steps. Ask me what it should say first.', 'Ask Claude: write the workflow text')
     const lastHit = recent[0]
     const onceRule = lastHit === undefined ? undefined : lastHit.rule
@@ -1080,6 +1079,61 @@ export const register: Register = on => {
       mem.once.set(onceRule, kind)
       $.ui.toast(`lean-gate: the next ${onceRule} hit is ${kind === 'allow' ? 'allowed' : 'blocked'} once`)
     }
+
+    // Settings. Labels show the merged value; presses save where the switch points (editConfig), except the per-project state
+    // file (always this project) and the global-only demo pattern.
+    const dir = await claudeDir($)
+    const cwd = await here()
+    const SETTINGS_FILE = `${cwd}/lean-gate-settings.json`
+    const [canUndo, canImport] = await Promise.all([$.fs.exists(`${dir}/lean-gate.json.reset-bak`).catch(() => false), $.fs.exists(SETTINGS_FILE).catch(() => false)])
+    const flipTarget = () => patch($, { target: b.target === 'global' ? 'project' : 'global' })
+    const stepReminder = (rule: string) => editConfig($, mem, 'reminders', (j, c) => (j.reminders = { ...(j.reminders as object), [rule]: c.reminders[rule] === 'every' ? 'once' : 'every' }))
+    const PANEL_STARTS = ['details', 'compact', 'closed'] as const
+    const stateFile = cfg.state_file
+    const stepStateFile = () => editProject($, mem, (j, c) => (j.state_file = cycle<string>(STATE_FILES, c.state_file)))
+    // shortcut: the label names the folder of this session, the press checks git's top level; they differ only in a subfolder.
+    const repoName = base(cwd)
+    const togglePr = async () => {
+      const top = await git($, cwd, TOOL_MS, ['rev-parse', '--show-toplevel'])
+      if (top === undefined || top.exitCode !== 0) return $.ui.toast('lean-gate: this folder is not a git repo')
+      const name = base(top.stdout.trim())
+      await editConfig($, mem, 'pr_repos', (j, c) => (j.pr_repos = c.pr_repos.includes(name) ? c.pr_repos.filter(n => n !== name) : [...c.pr_repos, name]))
+    }
+    const demoIndex = DEMO_PRESETS.findIndex(p => p.pattern === cfg.demo_pattern)
+    const stepDemo = () => editGlobal($, mem, (j, c) => (j.demo_pattern = (DEMO_PRESETS[(DEMO_PRESETS.findIndex(p => p.pattern === c.demo_pattern) + 1) % DEMO_PRESETS.length] ?? DEMO_PRESETS[0]).pattern))
+    // Reset keeps one backup (the last reset); Undo reset puts it back. Import backs up first too.
+    const resetSettings = () =>
+      enqueue(mem, async () => {
+        const r = await readFile($, `${dir}/lean-gate.json`)
+        if (r.kind === 'ok') await $.fs.write(`${dir}/lean-gate.json.reset-bak`, r.text)
+        await $.fs.write(`${dir}/lean-gate.json`, '{}\n')
+        $.ui.toast('lean-gate: settings reset to defaults (Undo reset puts them back)')
+        $.ui.invalidate('ui.render')
+      }).catch(() => undefined)
+    const undoReset = () =>
+      enqueue(mem, async () => {
+        const r = await readFile($, `${dir}/lean-gate.json.reset-bak`)
+        if (r.kind !== 'ok' || parseStrict(r.text) === undefined) return $.ui.toast('lean-gate: no reset to undo')
+        await $.fs.write(`${dir}/lean-gate.json`, r.text)
+        $.ui.toast('lean-gate: settings from before the reset are back')
+        $.ui.invalidate('ui.render')
+      }).catch(() => undefined)
+    const exportSettings = async () => {
+      const r = await readFile($, `${dir}/lean-gate.json`)
+      await $.fs.write(SETTINGS_FILE, r.kind === 'ok' ? r.text : '{}\n')
+      $.ui.toast(`lean-gate: settings written to ${SETTINGS_FILE}`)
+      $.ui.invalidate('ui.render')
+    }
+    const importSettings = () =>
+      enqueue(mem, async () => {
+        const r = await readFile($, SETTINGS_FILE)
+        if (r.kind !== 'ok' || parseStrict(r.text) === undefined) return $.ui.toast('lean-gate: lean-gate-settings.json here is not a settings object, nothing changed')
+        const cur = await readFile($, `${dir}/lean-gate.json`)
+        if (cur.kind === 'ok') await $.fs.write(`${dir}/lean-gate.json.import-bak`, cur.text)
+        await $.fs.write(`${dir}/lean-gate.json`, r.text)
+        $.ui.toast('lean-gate: settings imported (the old ones are in lean-gate.json.import-bak)')
+        $.ui.invalidate('ui.render')
+      }).catch(() => undefined)
 
     // A plain Button pads its label by one column, so text lines get the same pad to line up with the buttons.
     const note = (child: RenderChildren) => <Box paddingLeft={1}>{child}</Box>
@@ -1091,8 +1145,8 @@ export const register: Register = on => {
         {section(
           'project', 'Project',
           note(<Text dimColor wrap="truncate-end">{b.proj ? `registered: ${b.proj}` : b.projNew ? 'a project folder that is not registered' : 'no project detected in this folder'}</Text>),
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
-            {b.proj === '' ? gb('proj-add', 'Register this folder', registerHere) : gb('proj-remove', 'Unregister', unregisterHere)}
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
+            {b.proj === '' ? gb('proj-add', 'Register this folder', registerHere, true) : gb('proj-remove', 'Unregister', unregisterHere)}
             {gb('proj-all', 'Register folders here', registerAll)}
             {gb('proj-start', 'Start project', startProject)}
             {gb('proj-adopt', 'Adopt this folder', adoptProject)}
@@ -1100,7 +1154,7 @@ export const register: Register = on => {
           </Box>,
           b.projHit !== null && note(<Text color="warning" wrap="truncate-end">you mentioned {b.projHit.name} ({b.projHit.path})</Text>),
           b.projHit !== null && (
-            <Box flexDirection="row" gap={1} flexWrap="wrap">
+            <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
               {gb('proj-attach', `Attach ${b.projHit.name}`, attachHit)}
               {gb('proj-switch', 'Switch folder', switchHit)}
               {gb('proj-ignore', 'Ignore', () => patch($, { projHit: null }))}
@@ -1111,14 +1165,14 @@ export const register: Register = on => {
         {section(
           'builder', 'Rule builder',
           note(<Text dimColor>make your own rule: pick a ready-made pattern and a level, then Add rule. It appears under Your rules.</Text>),
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
             {gb('rb-pattern', `pattern: ${preset.label} (${preset.tool})`, () => { mem.draft.preset = (mem.draft.preset + 1) % PRESETS.length; redraw() })}
-            {gb('rb-level', `level: ${mem.draft.level}`, () => { mem.draft.level = nextLevel(mem.draft.level); redraw() })}
-            {gb('rb-add', 'Add rule', addRule)}
+            {gb('rb-level', `level: ${mem.draft.level}`, () => { mem.draft.level = mem.draft.level === 'warn' ? 'block' : 'warn'; redraw() })}
+            {gb('rb-add', 'Add rule', addRule, true)}
           </Box>,
           note(<Text dimColor wrap="truncate-end">{preset.match}</Text>),
           cfg.custom.length > 0 && (
-            <Box flexDirection="row" gap={1} flexWrap="wrap">
+            <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
               {cfg.custom.map(r => gb(`rb-del-${r.id}`, `Remove ${r.id}`, () => removeRule(r.id)))}
             </Box>
           ),
@@ -1131,7 +1185,7 @@ export const register: Register = on => {
             const [m = 'sonnet', ef = 'medium'] = cfg.routing[k].split(':')
             const cap = cfg.agent_caps[k]
             return fold(`rt:${k}`, ROUTING_LABEL[k], [
-              <Box flexDirection="row" gap={1} flexWrap="wrap">
+              <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
                 {gb(`rt-${k}-model`, `model: ${m}`, () => stepRouting(k, 'model'))}
                 {m !== 'free' && gb(`rt-${k}-effort`, `effort: ${ef}`, () => stepRouting(k, 'effort'))}
                 {gb(`rt-${k}-cap`, `agents at once: ${cap === 0 ? 'no limit' : cap}`, () => setCap(k, cycle(SECTION_CAPS, cap)))}
@@ -1143,7 +1197,7 @@ export const register: Register = on => {
         {section(
           'workflow', 'Workflow and limits',
           note(<Text dimColor>agent and read limits, and a note added to every session's prompt (Edit workflow text asks Claude to write it)</Text>),
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
             {gb('wf-agents', `max agents per turn: ${cfg.max_agents === 0 ? 'no limit' : cfg.max_agents}`, () => setMaxAgents(cycle(AGENT_LIMITS, cfg.max_agents)))}
             {gb('wf-delegate', `delegate after ${cfg.delegate_after_lead_calls} reads`, () => setNum('delegate_after_lead_calls', cycle(DELEGATE_AFTER, cfg.delegate_after_lead_calls)))}
             {gb('wf-context', `context limit ${kilo(cfg.context_limit)}`, () => setNum('context_limit', cycle(CONTEXT_LIMITS, cfg.context_limit)))}
@@ -1152,24 +1206,50 @@ export const register: Register = on => {
           note(<Text dimColor wrap="truncate-end">{cfg.workflow === '' ? 'no workflow text set' : cfg.workflow}</Text>)
         )}
         {section(
+          'settings', 'Settings',
+          note(<Text dimColor>presses save to the global file, or to this project's .lean-gate.json while the switch says so</Text>),
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
+            {gb('set-target', `saving to: ${b.target === 'global' ? 'global' : 'this project'}`, flipTarget, true)}
+          </Box>,
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
+            {REMINDER_RULES.map(r => gb(`set-rem-${r}`, `${REMINDER_LABEL[r]}: ${cfg.reminders[r] === 'every' ? 'every turn' : 'once'}`, () => stepReminder(r)))}
+          </Box>,
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
+            {gb('set-scope', `rules judge: ${cfg.scope === 'everywhere' ? 'everywhere' : 'projects only'}`, () => editConfig($, mem, 'scope', (j, c) => (j.scope = c.scope === 'everywhere' ? 'projects' : 'everywhere')))}
+            {gb('set-quiet', `quiet warnings: ${cfg.quiet ? 'on' : 'off'}`, () => editConfig($, mem, 'quiet', (j, c) => (j.quiet = !c.quiet)))}
+            {gb('set-panel', `panel at start: ${cfg.panel_start}`, () => editConfig($, mem, 'panel_start', (j, c) => (j.panel_start = cycle(PANEL_STARTS, c.panel_start))))}
+          </Box>,
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
+            {gb('set-statefile', `state file: ${stateFile === '' ? 'HANDOFF or STATE' : stateFile}`, stepStateFile)}
+            {gb('set-pr', `PR only for ${repoName}: ${cfg.pr_repos.includes(repoName) ? 'on' : 'off'}`, togglePr)}
+            {gb('set-demo', `public push blocks: ${demoIndex < 0 ? 'custom pattern' : DEMO_PRESETS[demoIndex]?.label}`, stepDemo)}
+          </Box>,
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
+            {gb('set-reset', 'Reset to defaults', resetSettings)}
+            {canUndo && gb('set-undo', 'Undo reset', undoReset)}
+            {gb('set-export', 'Export', exportSettings)}
+            {canImport && gb('set-import', 'Import', importSettings)}
+          </Box>
+        )}
+        {section(
           'helpers', 'Built-in helpers',
           note(<Text dimColor>small scripts that run on their own; each is one click</Text>),
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
             {HELPERS.map(k => gb(`hk-${k}`, `${HELPER_LABEL[k]}: ${cfg.helpers[k] ? 'on' : 'off'}`, () => toggleHelper(k)))}
           </Box>
         )}
         {section(
           'memory', 'Project memory',
           note(<Text dimColor wrap="truncate-end">{b.memory || 'no memory for this project yet'}</Text>),
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
-            {gb('mem-remember', 'Remember', remember)}
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
+            {gb('mem-remember', 'Remember', remember, true)}
             {gb('mem-recall', 'Recall', recall)}
             {gb('mem-forget', 'Forget last', forgetLast)}
             {gb('mem-auto', `automatic: ${cfg.auto_memory ? 'on' : 'off'}`, () => toggleAuto('auto_memory'))}
           </Box>,
           note(<Text dimColor>automatic: Claude records decisions and milestones by itself</Text>),
           b.memoryProjects.length > 0 && (
-            <Box flexDirection="row" gap={1} flexWrap="wrap">
+            <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
               <Text dimColor>link to</Text>
               {b.memoryProjects.map(n => gb(`mem-link-${n}`, n, () => memShell(`lean-gate memory link ${n}`)))}
             </Box>
@@ -1178,7 +1258,7 @@ export const register: Register = on => {
         {section(
           'board', 'Board (how agents talk to each other)',
           ...(b.board.length === 0 ? [note(<Text dimColor>not read yet: press Refresh</Text>)] : b.board.map(l => note(<Text dimColor wrap="truncate-end">{l}</Text>))),
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
             {gb('board-refresh', 'Refresh', () => readBoard($))}
             {gb('board-ask', 'Ask Claude to check it', askBoard)}
           </Box>
@@ -1186,7 +1266,7 @@ export const register: Register = on => {
         {section(
           'lessons', 'Lessons and local rules',
           ...(b.lessons.length === 0 ? [note(<Text dimColor>not read yet: press Refresh</Text>)] : b.lessons.map(l => note(<Text dimColor wrap="truncate-end">{l}</Text>))),
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
             {gb('les-refresh', 'Refresh', () => readLessons($))}
             {gb('les-add', 'Add lesson', addLesson)}
             {gb('les-review', 'Review old', reviewLessons)}
@@ -1197,7 +1277,7 @@ export const register: Register = on => {
         {section(
           'review', 'Review',
           note(<Text dimColor>Reviewed marks the current commit as reviewed, so release tags pass the release-needs-review rule</Text>),
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
             {b.release !== 'due' && gb('a-reviewed', 'Reviewed', reviewed)}
             {b.dueRepos.map(n => gb(`rv-${n}`, `Reviewed ${n}`, () => reviewChild(n)))}
           </Box>,
@@ -1206,7 +1286,7 @@ export const register: Register = on => {
         {section(
           'ponytail', 'Ponytail',
           note(<Text dimColor wrap="truncate-end">{b.tools.find(l => l.startsWith('ponytail')) ?? 'ponytail: not read yet'}</Text>),
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
             {gb('pt-mode', `mode: ${b.ptMode || 'off'}`, stepPonytail)}
             {gb('hk-ponytail', `hooks: ${cfg.helpers.ponytail ? 'on' : 'off'}`, () => toggleHelper('ponytail'))}
             {gb('pt-update', 'Update', runTool('ponytail', 'lean-gate vendor update ponytail', () => readTools($)))}
@@ -1217,9 +1297,9 @@ export const register: Register = on => {
         {section(
           'wpdev', 'WordPress checks (performance audit, PHPCS)',
           note(<Text dimColor wrap="truncate-end">{b.tools.find(l => l.startsWith('phpcs')) ?? 'phpcs: not read yet'}</Text>),
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
-            {gb('audit-run', 'Performance audit', runTool('audit', 'lean-gate audit perf'))}
-            {gb('phpcs-run', 'Run PHPCS', runTool('phpcs', 'lean-gate phpcs'))}
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
+            {gb('audit-run', 'Performance audit', runTool('audit', 'lean-gate audit perf'), true)}
+            {gb('phpcs-run', 'Run PHPCS', runTool('phpcs', 'lean-gate phpcs'), true)}
             {gb('phpcs-fix', 'Fix with PHPCBF', runTool('phpcbf', 'lean-gate phpcs fix'))}
             {gb('phpcs-std', `standard: ${cfg.phpcs_standard}`, stepStandard)}
             {gb('phpcs-status', 'Refresh', () => readTools($))}
@@ -1228,7 +1308,7 @@ export const register: Register = on => {
         )}
         {section(
           'packs', 'Packs (apply next session)',
-          <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
             {PACKS.flatMap(p => [gb(`${p}-on`, `${p} on`, () => setPack(p, 'on')), gb(`${p}-off`, `${p} off`, () => setPack(p, 'off'))])}
           </Box>,
           b.packs !== '' && note(<Text dimColor wrap="truncate-end">{b.packs}</Text>),
@@ -1239,7 +1319,7 @@ export const register: Register = on => {
           note(<Text dimColor>newest first. Allow once or Block once overrides the last rule that fired, for one hit only</Text>),
           recent.length === 0 ? note(<Text dimColor>none</Text>) : recent.map(v => note(<Text wrap="truncate-end" color={v.action === 'block' ? 'error' : 'warning'}>{v.action} {v.rule} {cut(v.detail, 60)}</Text>)),
           onceRule !== undefined && (
-            <Box flexDirection="row" gap={1} flexWrap="wrap">
+            <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
               {gb('once-allow', `Allow once: ${onceRule}`, () => setOnce('allow'))}
               {gb('once-block', `Block once: ${onceRule}`, () => setOnce('block'))}
             </Box>

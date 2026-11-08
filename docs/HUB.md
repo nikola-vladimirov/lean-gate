@@ -16,7 +16,7 @@ Contents: [What is in it](#what-is-in-it) · [Install and migrate](#install-and-
 | WordPress checks | Performance and HPOS audit (your `wp-woo-performance-audit`) and PHPCS with the WordPress standard | `vendor/wp-audit`, `bin/lib/phpcs.sh` | Panel: WordPress checks |
 | Helpers | Startup notes, context nudge, doc and test hints, session drafts | `scripts/` | Panel: Built-in helpers |
 
-The panel reference, with every button explained, is [LEAN-GATE.md](LEAN-GATE.md). The layout standard is [STRUCTURE.md](../skills/lean-gate/STRUCTURE.md).
+The panel reference, with every button explained, is [MANUAL.md](MANUAL.md). The layout standard is [STRUCTURE.md](../skills/lean-gate/STRUCTURE.md).
 
 ## Install and migrate
 

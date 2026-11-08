@@ -237,8 +237,37 @@ cmd_selftest() {
   # phpcs: a global Composer install is found when PATH has no phpcs
   pc="$tmp/pc"; mkdir -p "$pc/AppData/Roaming/Composer/vendor/bin"; printf '#!/bin/sh\n' > "$pc/AppData/Roaming/Composer/vendor/bin/phpcs"; chmod +x "$pc/AppData/Roaming/Composer/vendor/bin/phpcs"
   [ "$(HOME="$pc"; COMPOSER_HOME=""; PATH="/usr/bin:/bin"; phpcs_path; command -v phpcs)" = "$pc/AppData/Roaming/Composer/vendor/bin/phpcs" ] || { echo "FAIL phpcs global Composer lookup"; fail=1; }
+  ps="$tmp/ps"; mkdir -p "$ps/.claude"; echo '{"phpcs_standard":"WordPress-Core"}' > "$ps/.claude/lean-gate.json"
+  [ "$(cd "$ps" && HOME="$ps" phpcs_standard)" = WordPress-Core ] || { echo "FAIL phpcs standard from the global file"; fail=1; }
+  echo '{"phpcs_standard":"WordPress-Extra"}' > "$ps/.lean-gate.json"
+  [ "$(cd "$ps" && HOME="$ps" phpcs_standard)" = WordPress-Extra ] || { echo "FAIL phpcs standard from the project file"; fail=1; }
+  doc_coverage || fail=1
 
   rm -rf "$tmp"
   [ $fail = 0 ] && echo "selftest ok" || { echo "selftest FAILED"; return 1; }
 }
 
+
+# The manual (docs/MANUAL.md) names every rule, config key, CLI command and panel button, and every panel button has an
+# Explain line in hooks/text.ts. A new feature or fix that adds one of these fails here until the manual says what it does.
+doc_coverage() {
+  local root man gate text reg x miss="" fail=0
+  root="$(cd "$(dirname "$0")/.." && pwd)"; man="$root/docs/MANUAL.md"; gate="$root/hooks/gate.ts"; text="$root/hooks/text.ts"; reg="$root/hooks/register.tsx"
+  [ -f "$gate" ] && [ -f "$text" ] && [ -f "$reg" ] || return 0
+  [ -f "$man" ] || { echo "FAIL docs/MANUAL.md is missing"; return 1; }
+  # Rule ids, config keys (the config file spells `custom` as custom_rules), CLI commands, Explain keys.
+  for x in $(sed -n '/^export const RULES = \[/,/^\] as const/p' "$gate" | grep -o "'[a-z-]*'" | tr -d "'") \
+           $(sed -n '/^export type Config = {/,/^}/p' "$gate" | grep -o '^  [a-z_]*' | tr -d ' ' | sed 's/^custom$/custom_rules/') \
+           $(sed -n '/^case "\$cmd" in/,/^esac/p' "$root/bin/lean-gate" | grep -o '^  [a-z-]*)' | tr -d ' )') \
+           $(sed -n '/^export const EXPLAIN/,/^}/p' "$text" | grep -o "^  '\{0,1\}[a-z_-]*'\{0,1\}:" | tr -d " ':"); do
+    grep -qF "\`$x\`" "$man" || miss="$miss $x"
+  done
+  [ -z "$miss" ] || { echo "FAIL docs/MANUAL.md does not name:$miss"; fail=1; }
+  # Every gb('key') button in the panel has an Explain line (dynamic keys map to a shared entry, as explainFor does).
+  miss=""
+  for x in $(grep -o "gb('[^']*'" "$reg" | sed "s/gb('//; s/'//" | sort -u); do
+    sed -n '/^export const EXPLAIN/,/^}/p' "$text" | grep -q "^  '\{0,1\}$x'\{0,1\}:" || miss="$miss $x"
+  done
+  [ -z "$miss" ] || { echo "FAIL buttons with no Explain line in hooks/text.ts:$miss"; fail=1; }
+  return $fail
+}

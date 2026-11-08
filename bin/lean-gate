@@ -23,7 +23,7 @@
 #   lean-gate pack status|on|off <bricks|wp|ui-ux>   skill packs and plugins that stay off until needed; takes effect in the next session
 #   lean-gate icm links|index|viz [folder]   the ICM checks on a hub project: unresolved links, folder indexes, a graph (needs Python 3)
 #   lean-gate phpcs [status|fix] [files]   PHP_CodeSniffer with the WordPress standard on the changed PHP files (needs PHP and Composer)
-#   lean-gate vendor status|update ponytail|retire   the vendored tools (ponytail, performance audit), updating them, and switching off the standalone plugins they replace
+#   lean-gate vendor status|update ponytail|icm|retire   the vendored tools (ponytail, performance audit), updating them, and switching off the standalone plugins they replace
 #   lean-gate memory add|list|recall|forget|link|unlink|index|projects   per-project memory, linked across projects; session start prints only its one-line index
 #   lean-gate selftest                check the tool on this machine
 set -u

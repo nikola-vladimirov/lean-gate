@@ -44,6 +44,10 @@ export type LeanGateBand = {
   projNew: boolean
   /** A registered project named in the last prompt that is not the open one. */
   projHit: { name: string; path: string } | null
+  /** Explain lines under every button, on or off. */
+  explain: boolean
+  /** Where panel presses save: the global config, or this project's .lean-gate.json. Session only. */
+  target: 'global' | 'project'
   /** Ids of the details sections the person folded shut; everything else shows. */
   shut: string[]
 }

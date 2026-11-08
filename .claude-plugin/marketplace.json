@@ -1,6 +1,6 @@
 {
   "name": "lean-gate",
-  "description": "lean-gate: run Claude Code projects with fewer tokens per session.",
+  "description": "lean-gate: a control panel and rule gate for Claude Code, with token-saving project guides.",
   "owner": {
     "name": "nikola-vladimirov",
     "url": "https://github.com/nikola-vladimirov"
@@ -9,7 +9,7 @@
     {
       "name": "lean-gate",
       "source": "./",
-      "description": "New-project plans with phase gates, adopting projects already under way, lean docs, file maps, model routing for builds, a shared agent board, release-gate reviews of changed code, and a fresh-session reminder."
+      "description": "Rule gate and docked control panel: model and effort routing, agent caps, release reviews, state file, test and PHPCS reminders, every setting a button with explanations; plus project guides, memory, lessons, a shared agent board, ponytail and WordPress checks."
     }
   ]
 }
