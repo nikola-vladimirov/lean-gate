@@ -5,36 +5,36 @@ Contents table below: open only the section you need.
 <!-- toc -->
 - 39-53: How to keep this manual current
 - 54-88: Install, update and the rename
-- 89-357: The panel
-  - 93-101: Opening, closing, folding
-  - 102-115: Explain
-  - 116-136: The top row
-  - 137-154: Project
-  - 155-164: Rules
-  - 165-188: Rule builder
-  - 189-204: Model routing
-  - 205-215: Workflow and limits
-  - 216-236: Settings
-  - 237-248: Built-in helpers
-  - 249-262: Project memory
-  - 263-273: Board
-  - 274-286: Lessons and local rules
-  - 287-295: Review
-  - 296-306: Ponytail
-  - 307-320: WordPress checks
-  - 321-337: Packs
-  - 338-348: Rule stats (7 days)
-  - 349-357: Recent violations
-- 358-420: Rules
-  - 408-420: Custom rules
-- 421-487: Configuration
-  - 469-487: Files
-- 488-515: CLI reference
-- 516-543: Hooks and helpers
-- 544-573: Skills and vendored tools
+- 89-361: The panel
+  - 93-103: Opening, closing, folding
+  - 104-117: Explain
+  - 118-138: The top row
+  - 139-156: Project
+  - 157-168: Rules
+  - 169-192: Rule builder
+  - 193-208: Model routing
+  - 209-219: Workflow and limits
+  - 220-240: Settings
+  - 241-252: Built-in helpers
+  - 253-266: Project memory
+  - 267-277: Board
+  - 278-290: Lessons and local rules
+  - 291-299: Review
+  - 300-310: Ponytail
+  - 311-324: WordPress checks
+  - 325-341: Packs
+  - 342-352: Rule stats (7 days)
+  - 353-361: Recent violations
+- 362-424: Rules
+  - 412-424: Custom rules
+- 425-491: Configuration
+  - 473-491: Files
+- 492-519: CLI reference
+- 520-547: Hooks and helpers
+- 548-577: Skills and vendored tools
 <!-- /toc -->
 
-This is the one place that documents every function of lean-gate: the panel, the rules, the settings, the command line, the hooks and the bundled tools. Version 1.0.0-beta.7. Short pages for special topics: [HUB.md](HUB.md) (the hub, project registry and layout), [../README.md](../README.md) (features, delegation, install).
+This is the one place that documents every function of lean-gate: the panel, the rules, the settings, the command line, the hooks and the bundled tools. Version 1.0.0-beta.8. Short pages for special topics: [HUB.md](HUB.md) (the hub, project registry and layout), [../README.md](../README.md) (features, delegation, install).
 
 ## How to keep this manual current
 
@@ -98,6 +98,8 @@ The panel is the control surface. It sits in a docked pane beside the chat, show
 - Each section title (▾ open, ▸ closed) is a button that folds it. Folds are remembered for the session only.
 - A button that steps through choices (a level, a model, an effort, a cap) moves to the next choice on each press and writes the config file at once.
 - Buttons are drawn with chrome. The main action of a row is primary (filled): for example `proj-add`, `rb-add`, `mem-remember`, `set-target`, `audit-run`.
+- Colour: each section title has its own accent bar, and the title takes that colour under the pointer (a button takes no colour at rest). Rule groups have their own colours too. Colours are theme keys (`SECTION_COLOR`, `GROUP_COLOR`, `LEVEL_COLOR`, `MODEL_COLOR` in `hooks/text.ts`), so both light and dark themes read them.
+- Info icons: in the desktop app (and the editor and mobile app) a small i after the rule group titles, the Model routing rows and the Rule builder card shows help on hover (`GROUP_HELP`, `ROUTING_HELP`). The terminal draws no icons; Explain covers it there.
 
 ### Explain
 
@@ -107,7 +109,7 @@ The panel is the control surface. It sits in a docked pane beside the chat, show
 | --- | --- |
 | ● and the level | The master mode (off, warn, block). |
 | lead / sub | Reads the main session made itself, and subagents it started. Orange: many reads in a row with no edit. |
-| used / limit | Context used against the context limit. Orange from 80 percent. |
+| used / limit and the bar | Context used against the context limit, with a ten-cell bar. Orange from 70 percent, red from 90. |
 | ✓ age or ⚠ stale | When the state file was last touched. Stale: code changed after it, or it is over an hour old. |
 | tests | The result of the last test command (pass, fail, none). |
 | review due or reviewed | Whether code changed since the last review mark. |
@@ -130,7 +132,7 @@ The panel is the control surface. It sits in a docked pane beside the chat, show
 | `explain` | Explain or Hide help | Shows or hides the explanation lines. |
 | `hide` | Close lean-gate panel | Closes the panel. |
 
-The counters `lead 6 / sub 0` and the meter `250k/300k` have no button. The state item reads `state -` before any code or state edit is seen. The violations item `⚠ 4` counts hits; the log keeps the latest 50 for the panel and 2000 lines on disk (enough for a week of `lean-gate stats`).
+The counters `lead 6 / sub 0` and the meter `250k/300k` with its bar have no button. The state, tests, review and `⚠` items are coloured pills: green fine, orange needs attention, red failed; dim when there is nothing yet. The state item reads `state -` before any code or state edit is seen. The violations item `⚠ 4` counts hits; the log keeps the latest 50 for the panel and 2000 lines on disk (enough for a week of `lean-gate stats`).
 
 Example: `mode` on warn, `route` on opus with `route-effort` xhigh. The next prompt carries "Routing for this task: opus:xhigh". Closing the session forgets it.
 
@@ -154,6 +156,8 @@ A name or alias must be four letters or more to count as a mention, and nothing 
 
 ### Rules
 
+Each rule row starts with a dot in its level colour: grey off, orange warn, red block.
+
 Rules check what Claude does and either warn or refuse. See [Rules](#rules-1) below for what each checks. The panel lists them in groups, each row a level button, the rule name and a dim one-line meaning (`RULE_INFO`).
 
 | Key | Label | What it does |
@@ -168,7 +172,7 @@ Make your own rule without typing a regular expression. The panel has buttons, n
 
 | Key | Label | What it does |
 | --- | --- | --- |
-| `rb-pattern` | pattern: name (tools) | Steps through the ready-made patterns below. The line under the buttons shows the regular expression. |
+| `rb-pattern` | pattern: name (tools) | Steps through the ready-made patterns below. The draft sits in a bordered card; its regular expression is on the info icon (app) or under the buttons while Explain is on (terminal). |
 | `rb-level` | level: warn | The level the new rule gets. It steps off, warn, block (so it can also land on off). |
 | `rb-add` | Add rule | Adds the chosen pattern to `custom_rules` in the global file, as `custom-<pattern id>` (`-2`, `-3` for repeats). It appears in the Rules list under Your rules. |
 | `rb-del` | Remove id | One button per rule of yours. Deletes it and its level entry. |
@@ -188,7 +192,7 @@ Example: choose force push, level block, Add rule. From then on a `git push --fo
 
 ### Model routing
 
-Tells Claude which model and effort to use for each kind of work, and how many agents of each kind may run in a turn. Five sections: Reading and writing (text, images), Coding, Complex coding, Review, Planning (config keys `read`, `code`, `complex`, `review`, `plan` under `routing` and `agent_caps`). Each section is a fold with three buttons:
+Tells Claude which model and effort to use for each kind of work, and how many agents of each kind may run in a turn. Five sections: Reading and writing (text, images), Coding, Complex coding, Review, Planning (config keys `read`, `code`, `complex`, `review`, `plan` under `routing` and `agent_caps`). Folded, each row still shows its choice beside the title, for example `opus:high, 3 at once`, in the colour of its model (haiku green, sonnet blue, opus purple, fable orange, free grey). Each section is a fold with three buttons:
 
 | Key | Label | What it does |
 | --- | --- | --- |
@@ -337,7 +341,7 @@ Nothing is deleted: skill folders move between `~/.claude/skills` and `~/.claude
 
 ### Rule stats (7 days)
 
-The output of `lean-gate stats 7`, read when the details open: the total, then the five rules and five project folders with the most hits. Use it to find the rule that warns most and is never acted on.
+The output of `lean-gate stats 7`, read when the details open: the total, then the five rules with the most hits as bars (red for blocks, orange for warnings, scaled to the noisiest), then the five project folders with the most hits. Use it to find the rule that warns most and is never acted on.
 
 | Key | Label | What it does |
 | --- | --- | --- |

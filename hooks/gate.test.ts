@@ -202,7 +202,7 @@ test('isPhpcsCommand: phpcs, phpcbf, composer scripts and lean-gate or lean-proj
 
 test('statRules and statsView: rule rows in order, groups cut to n rows, nothing without a by rule header', () => {
   const out = ['rule hits in the last 7 days: 6 (log)', 'by rule:', '4  a-rule  (4 warn)', '1  b-rule  (1 block)', '1  c-rule  (1 warn)', 'by project:', '5  one', '1  two']
-  expect(statRules(out)).toEqual([['a-rule', 4], ['b-rule', 1], ['c-rule', 1]])
+  expect(statRules(out)).toEqual([['a-rule', 4, 0], ['b-rule', 1, 1], ['c-rule', 1, 0]])
   expect(statsView(out, 2)).toEqual(['rule hits in the last 7 days: 6 (log)', 'by rule:', '4  a-rule  (4 warn)', '1  b-rule  (1 block)', 'by project:', '5  one', '1  two'])
   expect(statRules(['no rule hits logged yet (x)'])).toEqual([])
 })

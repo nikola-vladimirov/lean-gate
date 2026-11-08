@@ -1,6 +1,6 @@
 # lean-gate hub: handoff
 
-Updated 2026-11-08. Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). Branch `hub`, `1.0.0-beta.6` pushed and installed as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`). `main` is 0.31.6, untouched. The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). To return to stable: in `~/.claude/settings.json` remove the marketplace `ref`, then `claude plugin update`.
+Updated 2026-11-08 (beta.8). Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). Branch `hub`, `1.0.0-beta.6` pushed and installed as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`). `main` is 0.31.6, untouched. The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). To return to stable: in `~/.claude/settings.json` remove the marketplace `ref`, then `claude plugin update`.
 
 Guides: `docs/HUB.md` (start here), `docs/MANUAL.md` (every button, rule, setting and command; update it with every feature or fix, `lean-gate selftest` checks it), `skills/lean-gate/STRUCTURE.md` (project layout).
 
@@ -48,9 +48,19 @@ The violation log (500 rows) was 443 warnings from six rules. Changes:
 - User call: PHPCS is not for every project. `phpcs-before-done` now counts only WordPress PHP (`isWpCode`, or any PHP once a WordPress skill is loaded); a Laravel edit is not judged. Known gap: `WP_HINT` matches `__(`, which Laravel also uses.
 - Tests: 73, selftest (stats counts), validate.
 
+## beta.8: panel look (2026-11-08; committed, not pushed)
+
+Grilled with the user. API limits: Text takes any colour and background; a Button takes no colour at rest (only `hover`); real hover tooltips only inside `Svg` with `isInteractive` (`<title>`), which the terminal does not have.
+- Colour as theme keys (`SECTION_COLOR`, `GROUP_COLOR`, `LEVEL_COLOR`, `MODEL_COLOR` in `hooks/text.ts`): an accent bar before every section and rule group title, the title in that colour on hover; a level dot on each rule row.
+- Info icons (Svg, app surfaces only; terminal keeps Explain) on rule groups, Model routing rows and the Rule builder card (`GROUP_HELP`, `ROUTING_HELP`).
+- Top row: state, tests, review and hit count as pills (inverse colour); the context meter has a ten-cell bar, orange from 70 percent, red from 90.
+- Model routing rows show their choice folded (`opus:high, 3 at once`) in the model colour. Rule builder: a bordered card, the regex on the info icon or with Explain on.
+- Rule stats: bars per rule, red for blocks and orange for warnings (`statRules` now returns block counts).
+- Not seen on screen: the panel cannot be screenshotted from a session. Theme keys other than success, warning and error (`suggestion`, `permission`, `claude`, `inactive`) are unverified on the desktop; a key it does not know draws in the default colour.
+- Tests: 74 (new: panel look), selftest, validate.
+
 ## Next phases of the plan
 
-4b. Panel look (user asked 2026-11-08, mid phase 4): colour, hover help, on the rule groups, Rule builder and Model routing rows. API: Text takes any colour and background; Button only primary or secondary; real hover tooltips only inside `Svg` with `isInteractive` (`<title>`). Grill the user before building.
 5. Release 1.0.0: full review (`review-scope` says one is due; never on a beta), merge `hub` into `main`, tag, push, reset the marketplace ref.
 
 ## Commands

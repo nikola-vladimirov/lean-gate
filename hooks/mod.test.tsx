@@ -338,7 +338,7 @@ test('the compact row shows review due with its buttons, and Reviewed turns it i
   await ui.press({ key: 'reviewed' })
   expect(w.toasts.at(-1)).toBe('Marked reviewed: proj')
   expect(await ui.find({ type: 'Text', text: /review due/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /^reviewed$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ ?reviewed ?$/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -1125,4 +1125,19 @@ test('Explain shows a one-line explanation beside the buttons and a legend for t
   await ui.press({ key: 'explain' })
   expect(await ui.find({ text: /^Where presses save/ })).toBeUndefined()
   await ui.unmount()
+})
+
+test('Panel look: routing rows show their choice folded, stats draw bars, info icons only where the surface draws SVG', async ($, on) => {
+  const w = world(on, config({ mode: 'block', routing: { code: 'opus:high' }, agent_caps: { code: 3 } }))
+  w.stdout = cmd => (cmd.includes('lean-gate stats') ? ['rule hits in the last 7 days: 4 (log)', 'by rule:', '4  no-em-dashes  (2 block, 2 warn)', 'by project:', '4  proj'].join('\n') : '')
+  const term = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await term.press({ key: 'details' })
+  await settle()
+  expect(await term.find({ type: 'Text', text: /^opus:high, 3 at once$/ })).toBeDefined()
+  expect(await term.find({ text: /4 {2}no-em-dashes \(2 block\)/ })).toBeDefined()
+  expect(await term.find({ type: 'Svg' })).toBeUndefined()
+  await term.unmount()
+  const app = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await app.find({ type: 'Svg' })).toBeDefined()
+  await app.unmount()
 })

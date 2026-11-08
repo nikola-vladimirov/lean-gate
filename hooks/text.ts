@@ -60,11 +60,37 @@ export const DEMO_PRESETS = [
   { label: 'folders only', pattern: '(^|/)(demos?|examples?|samples?|screenshots?|scratch|backups?|fixtures)/' },
 ] as const
 
+// Panel colours are theme keys, so both the light and the dark theme read them: one accent per section, rule group and model.
+export const SECTION_COLOR: Record<string, string> = {
+  project: 'suggestion', rules: 'warning', builder: 'claude', routing: 'permission', workflow: 'permission', settings: 'suggestion',
+  helpers: 'inactive', memory: 'success', board: 'success', lessons: 'success', review: 'error', ponytail: 'claude',
+  wpdev: 'suggestion', packs: 'inactive', stats: 'warning', violations: 'error',
+}
+export const GROUP_COLOR: Record<string, string> = { 'Agents and models': 'permission', 'Every session': 'suggestion', 'Releases and git': 'claude', 'WordPress and docs': 'success', 'Your rules': 'warning' }
+export const LEVEL_COLOR: Record<string, string> = { off: 'inactive', warn: 'warning', block: 'error' }
+export const MODEL_COLOR: Record<string, string> = { haiku: 'success', sonnet: 'suggestion', opus: 'permission', fable: 'claude', free: 'inactive' }
+
+// Hover help on the info icons (desktop app only; the terminal has Explain instead).
+export const GROUP_HELP: Record<string, string> = {
+  'Agents and models': 'Checked on every Agent call: model and effort set, no Haiku for code, free OpenCode models only, agent caps, scoped reviews, session names.',
+  'Every session': 'Checked as a session works: the lean-gate skill first, ponytail on, the state file and tests kept current, no em dashes.',
+  'Releases and git': 'Checked on tags, pushes and pull requests: review before release, a changelog before a tag, a push after a tag, one PR per fix, no demo files public.',
+  'WordPress and docs': 'Checked on WordPress code: WordPress skills and docs read first, PHPCS on WordPress PHP before done.',
+  'Your rules': 'Rules you added with the Rule builder or in custom_rules.',
+}
+export const ROUTING_HELP: Record<RoutingKey, string> = {
+  read: 'Agents that read, search or write text and images. A cheap model is usually enough.',
+  code: 'Agents that write or change code. Haiku is refused here.',
+  complex: 'Agents for code that spans many files or needs design. Haiku is refused here.',
+  review: 'Agents that review code. Only code changed since the last release, unless a full review is due.',
+  plan: 'Agents that plan a phase or a design.',
+}
+
 // What the status items of the top row mean, shown under it while Explain is on.
 export const TOP_LEGEND = [
   '● and the level: the master mode (off, warn, block).',
   'lead / sub: reads the main session made itself, and subagents it started. Orange: many reads in a row with no edit.',
-  'used / limit: context used against the context limit. Orange from 80 percent.',
+  'used / limit and the bar: context used against the context limit. Orange from 70 percent, red from 90.',
   '✓ age or ⚠ stale: when the state file was last touched. Stale: code changed after it, or over an hour old.',
   'tests: the result of the last test command (pass, fail, none).',
   'review due or reviewed: whether code changed since the last review mark.',

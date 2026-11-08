@@ -45,7 +45,7 @@ import {
   statsView,
 } from './gate'
 import type { Config, Level, Project, RoutingKey } from './gate'
-import { DEMO_PRESETS, HELPER_LABEL, PACKS, PRESETS, REMINDER_LABEL, REMINDER_RULES, ROUTING_LABEL, RULE_GROUPS, RULE_INFO, STATE_FILES, TOP_LEGEND, explainFor } from './text'
+import { DEMO_PRESETS, GROUP_COLOR, GROUP_HELP, HELPER_LABEL, LEVEL_COLOR, MODEL_COLOR, PACKS, PRESETS, REMINDER_LABEL, REMINDER_RULES, ROUTING_HELP, ROUTING_LABEL, RULE_GROUPS, RULE_INFO, SECTION_COLOR, STATE_FILES, TOP_LEGEND, explainFor } from './text'
 
 const EMPTY: LeanGateBand = {
   details: false,
@@ -839,7 +839,23 @@ export const register: Register = on => {
     const cfg = await loadConfig($)
     const now = await $.clock.now()
     const tokens = (await $.session.usage().catch(() => undefined))?.context.tokens
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const els = $.ui.resolve(e)
+    const { Box, Text, Button } = els
+    // The app surfaces draw SVG (hover tooltips through <title>); the terminal has none and keeps Explain.
+    const Svg = 'Svg' in els ? els.Svg : undefined
+    const esc = (s: string) => s.replace(/[<>&"]/g, c => `&#${c.charCodeAt(0)};`)
+    const info = (help: string | undefined) =>
+      Svg === undefined || help === undefined ? null : (
+        <Svg
+          source={`<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14"><title>${esc(help)}</title><circle cx="7" cy="7" r="6" fill="none" stroke="#8a8a8a"/><text x="7" y="10.5" text-anchor="middle" font-size="9" font-family="sans-serif" fill="#8a8a8a">i</text></svg>`}
+          alt={help}
+          width={14}
+          height={14}
+          isInteractive
+        />
+      )
+    // A status item drawn as a coloured pill; no colour draws it dim and plain.
+    const pill = (text: string, color: string | undefined) => (color === undefined ? <Text dimColor>{text}</Text> : <Text color={color} inverse>{` ${text} `}</Text>)
     // A labelled rule above our band, with a blank line before it, keeps it visibly apart from ponytail's.
     const stack = (mine: RenderChildren) => <Box flexDirection="column">{mine}</Box>
 
@@ -900,8 +916,6 @@ export const register: Register = on => {
         </Box>
       )
     }
-    // Section titles stay plain: they read as headings that fold, not as actions.
-    const hb = (key: string, label: string, onPress: () => unknown) => <Button key={key} plain label={label} onPress={() => void onPress()} />
     // Button rows wrap side by side; with Explain on they stack, one explained button per line.
     const rowDir = b.explain ? ('column' as const) : ('row' as const)
     const dot = <Text dimColor>·</Text>
@@ -925,26 +939,27 @@ export const register: Register = on => {
       </Text>
     )
     if (tokens !== undefined) {
-      parts.push(<Text color={ctxPct >= 1 ? 'error' : ctxPct >= 0.8 ? 'warning' : undefined}>{kilo(tokens)}/{kilo(cfg.context_limit)}</Text>)
+      // A ten-cell bar: orange from 70 percent, red from 90.
+      const ctxColor = ctxPct >= 0.9 ? 'error' : ctxPct >= 0.7 ? 'warning' : 'success'
+      const cells = Math.max(0, Math.min(10, Math.round(ctxPct * 10)))
+      parts.push(
+        <Box flexDirection="row" gap={1}>
+          <Text color={ctxPct >= 0.9 ? 'error' : ctxPct >= 0.7 ? 'warning' : undefined}>{kilo(tokens)}/{kilo(cfg.context_limit)}</Text>
+          <Text>
+            <Text color={ctxColor}>{'▰'.repeat(cells)}</Text>
+            <Text dimColor>{'▱'.repeat(10 - cells)}</Text>
+          </Text>
+        </Box>
+      )
       if (ctxPct >= 0.8) parts.push(gb('new', 'New session', newSession, true))
     }
-    parts.push(
-      b.stateAt === 0 && b.codeAt === 0 ? (
-        <Text dimColor>state -</Text>
-      ) : (
-        <Text color={stale ? 'warning' : 'success'}>{stale ? '⚠ stale' : `✓ ${age(stateAge)}`}</Text>
-      )
-    )
+    parts.push(b.stateAt === 0 && b.codeAt === 0 ? pill('state -', undefined) : pill(stale ? '⚠ stale' : `✓ ${age(stateAge)}`, stale ? 'warning' : 'success'))
     if (stale) parts.push(gb('state', 'Update state', updateState, true))
-    parts.push(
-      <Text color={b.tests === 'pass' ? 'success' : b.tests === 'fail' ? 'error' : undefined} dimColor={b.tests === 'none'}>
-        tests {b.tests}
-      </Text>
-    )
+    parts.push(pill(`tests ${b.tests}`, b.tests === 'pass' ? 'success' : b.tests === 'fail' ? 'error' : undefined))
     if (b.tests !== 'pass') parts.push(gb('tests', 'Run tests', runTests, true))
-    if (b.release === 'due') parts.push(<Text color="warning">review due</Text>, gb('review', 'Review', review), gb('reviewed', 'Reviewed', reviewed, true))
-    else if (b.release === 'ok') parts.push(<Text color="success">reviewed</Text>)
-    parts.push(<Text color={b.violations.length > 0 ? 'warning' : undefined} dimColor={b.violations.length === 0}>⚠ {b.violations.length}</Text>)
+    if (b.release === 'due') parts.push(pill('review due', 'warning'), gb('review', 'Review', review), gb('reviewed', 'Reviewed', reviewed, true))
+    else if (b.release === 'ok') parts.push(pill('reviewed', 'success'))
+    parts.push(pill(`⚠ ${b.violations.length}`, b.violations.length > 0 ? 'warning' : undefined))
     parts.push(gb('details', b.details ? 'Compact' : 'Details', toggle))
     parts.push(gb('explain', b.explain ? 'Hide help' : 'Explain', () => patch($, { explain: !b.explain })))
 
@@ -964,15 +979,23 @@ export const register: Register = on => {
     const level = (rule: string) => cfg.rules[rule] ?? 'off'
     // A title that folds its body shut or open; the folded ids are kept in the band state.
     const flip = (id: string) => update($, band, x => { const s = sane(x); return { ...s, shut: s.shut.includes(id) ? s.shut.filter(n => n !== id) : [...s.shut, id] } })
-    const fold = (id: string, title: string, body: RenderChildren[]) => (
+    // A Button takes no colour at rest, so a coloured bar leads the title and the title takes the colour on hover.
+    // `extra` sits after the title (the current choice of a folded row); `help` is the hover text of the info icon.
+    const fold = (id: string, title: string, body: RenderChildren[], o: { color?: string; help?: string; extra?: RenderChildren } = {}) => (
       <Box key={id} flexDirection="column">
-        {hb(`sec-${id}`, `${b.shut.includes(id) ? '▸' : '▾'} ${title}`, () => flip(id))}
+        <Box key={`t-${id}`} flexDirection="row" alignItems="center" gap={1}>
+          {o.color !== undefined && <Text color={o.color}>▌</Text>}
+          <Button key={`sec-${id}`} plain label={`${b.shut.includes(id) ? '▸' : '▾'} ${title}`} hover={o.color === undefined ? undefined : { color: o.color }} onPress={() => void flip(id)} />
+          {o.extra}
+          {info(o.help)}
+        </Box>
         {!b.shut.includes(id) && <Box flexDirection="column" paddingLeft={2}>{body}</Box>}
       </Box>
     )
-    // One rule per row: the level button, then the name over a dim one-line meaning. Rules sit in groups, each under a title.
+    // One rule per row: a level dot (grey off, orange warn, red block), the level button, then the name over a dim one-line meaning.
     const ruleRow = (rule: string, info: string) => (
       <Box key={`row-${rule}`} flexDirection="row" gap={1}>
+        <Text color={LEVEL_COLOR[level(rule)]}>●</Text>
         <Box width={9} flexShrink={0}>
           <Button key={`rule-${rule}`} variant="secondary" label={level(rule)} onPress={() => void editConfig($, mem, 'rules', j => (j.rules = { ...(j.rules as object), [rule]: nextLevel(level(rule)) }))} />
         </Box>
@@ -988,7 +1011,7 @@ export const register: Register = on => {
     if (loose.length > 0) groups.push(['Other', loose.map(r => ruleRow(r, ''))])
     if (cfg.custom.length > 0) groups.push(['Your rules', cfg.custom.map(r => ruleRow(r.id, r.message))])
     const ruleRows = groups.map(([title, rows], i) => (
-      <Box key={`group-${title}`} flexDirection="column" marginTop={i === 0 ? 0 : 1}>{fold(`rules:${title}`, `${title} (${rows.length})`, rows)}</Box>
+      <Box key={`group-${title}`} flexDirection="column" marginTop={i === 0 ? 0 : 1}>{fold(`rules:${title}`, `${title} (${rows.length})`, rows, { color: GROUP_COLOR[title], help: GROUP_HELP[title] })}</Box>
     ))
     const recent = b.violations.slice(-5).reverse()
     // The noisiest rule over the last 7 days that is still on (retired and switched-off rules read as off).
@@ -1150,7 +1173,21 @@ export const register: Register = on => {
 
     // A plain Button pads its label by one column, so text lines get the same pad to line up with the buttons.
     const note = (child: RenderChildren) => <Box paddingLeft={1}>{child}</Box>
-    const section = (id: string, title: string, ...body: RenderChildren[]) => <Box key={id} flexDirection="column" marginTop={1}>{fold(id, title, body)}</Box>
+    const section = (id: string, title: string, ...body: RenderChildren[]) => <Box key={id} flexDirection="column" marginTop={1}>{fold(id, title, body, { color: SECTION_COLOR[id] })}</Box>
+    // Rule stats: each rule as a bar of ten cells at most, red for its blocks and orange for its warnings, scaled to the noisiest.
+    const statRows = statRules(b.stats)
+    const top = statRows[0]?.[1] ?? 0
+    const statBar = ([rule, hits, blocks]: [string, number, number]) => {
+      const n = Math.max(1, Math.round((hits / Math.max(1, top)) * 10))
+      const red = Math.min(n, Math.round((blocks / Math.max(1, hits)) * n))
+      return note(
+        <Text key={`sb-${rule}`} wrap="truncate-end">
+          <Text color="error">{'█'.repeat(red)}</Text>
+          <Text color="warning">{'█'.repeat(n - red)}</Text>
+          {`${' '.repeat(11 - n)}${hits}  ${rule}${blocks > 0 ? ` (${blocks} block)` : ''}`}
+        </Text>
+      )
+    }
 
     return stack(
       <Box flexDirection="column" width={e.props.bodyColumns}>
@@ -1178,12 +1215,17 @@ export const register: Register = on => {
         {section(
           'builder', 'Rule builder',
           note(<Text dimColor>make your own rule: pick a ready-made pattern and a level, then Add rule. It appears under Your rules.</Text>),
-          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
-            {gb('rb-pattern', `pattern: ${preset.label} (${preset.tool})`, () => { mem.draft.preset = (mem.draft.preset + 1) % PRESETS.length; redraw() })}
-            {gb('rb-level', `level: ${mem.draft.level}`, () => { mem.draft.level = mem.draft.level === 'warn' ? 'block' : 'warn'; redraw() })}
-            {gb('rb-add', 'Add rule', addRule, true)}
+          // One card for the draft rule; the raw pattern is on the info icon (app) or shown with Explain on (terminal).
+          <Box borderStyle="round" borderColor={SECTION_COLOR.builder} flexDirection="column" paddingX={1}>
+            <Box flexDirection={rowDir} gap={1} flexWrap="wrap" alignItems="center">
+              {gb('rb-pattern', `pattern: ${preset.label} (${preset.tool})`, () => { mem.draft.preset = (mem.draft.preset + 1) % PRESETS.length; redraw() })}
+              {gb('rb-level', `level: ${mem.draft.level}`, () => { mem.draft.level = mem.draft.level === 'warn' ? 'block' : 'warn'; redraw() })}
+              <Text color={LEVEL_COLOR[mem.draft.level]}>●</Text>
+              {gb('rb-add', 'Add rule', addRule, true)}
+              {info(`${preset.message}. ${preset.tool} calls matching: ${preset.match}`)}
+            </Box>
+            {b.explain && <Text dimColor wrap="truncate-end">{preset.match}</Text>}
           </Box>,
-          note(<Text dimColor wrap="truncate-end">{preset.match}</Text>),
           cfg.custom.length > 0 && (
             <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
               {cfg.custom.map(r => gb(`rb-del-${r.id}`, `Remove ${r.id}`, () => removeRule(r.id)))}
@@ -1197,13 +1239,15 @@ export const register: Register = on => {
           ...ROUTING_KEYS.map(k => {
             const [m = 'sonnet', ef = 'medium'] = cfg.routing[k].split(':')
             const cap = cfg.agent_caps[k]
+            // Folded, the row still shows its choice: the model in its colour, the effort and the cap.
+            const choice = `${m === 'free' ? 'free' : `${m}:${ef}`}${cap === 0 ? '' : `, ${cap} at once`}`
             return fold(`rt:${k}`, ROUTING_LABEL[k], [
               <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
                 {gb(`rt-${k}-model`, `model: ${m}`, () => stepRouting(k, 'model'))}
                 {m !== 'free' && gb(`rt-${k}-effort`, `effort: ${ef}`, () => stepRouting(k, 'effort'))}
                 {gb(`rt-${k}-cap`, `agents at once: ${cap === 0 ? 'no limit' : cap}`, () => setCap(k, cycle(SECTION_CAPS, cap)))}
               </Box>,
-            ])
+            ], { color: MODEL_COLOR[m], help: ROUTING_HELP[k], extra: <Text color={MODEL_COLOR[m]}>{choice}</Text> })
           }),
           note(<Text dimColor>Haiku is not offered for coding and is refused there. An agent counts toward every section with its model and effort. A project's own .lean-gate.json overrides these.</Text>)
         )}
@@ -1329,7 +1373,9 @@ export const register: Register = on => {
         )}
         {section(
           'stats', 'Rule stats (7 days)',
-          b.stats.length === 0 ? note(<Text dimColor>no hits logged</Text>) : statsView(b.stats).map(l => note(<Text dimColor={!/^\d/.test(l)} wrap="truncate-end">{l}</Text>)),
+          b.stats.length === 0 ? note(<Text dimColor>no hits logged</Text>) : note(<Text dimColor wrap="truncate-end">{b.stats[0]}</Text>),
+          ...statRows.slice(0, 5).map(statBar),
+          ...(b.stats.includes('by project:') ? statsView(b.stats.slice(b.stats.indexOf('by project:'))) : []).map(l => note(<Text dimColor={!/^\d/.test(l)} wrap="truncate-end">{l}</Text>)),
           <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
             {noisy !== undefined && gb('stats-off', `Turn off ${noisy[0]} (${noisy[1]} hits)`, () => editConfig($, mem, 'rules', j => (j.rules = { ...(j.rules as object), [noisy[0]]: 'off' })).then(() => readStats($)), true)}
             {gb('stats-refresh', 'Refresh', () => readStats($))}

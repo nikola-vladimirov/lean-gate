@@ -692,14 +692,14 @@ export function projectMentioned(reg: Project[], text: string, cwd: string): Pro
   return reg.find(p => p !== here && [p.name, ...p.aliases].some(named))
 }
 
-// `lean-gate stats` output, trimmed lines: the rows under "by rule:" as [rule, hits], noisiest first.
-export function statRules(out: string[]): [string, number][] {
+// `lean-gate stats` output, trimmed lines: the rows under "by rule:" as [rule, hits, blocks], noisiest first.
+export function statRules(out: string[]): [string, number, number][] {
   const from = out.indexOf('by rule:')
   const to = out.indexOf('by project:')
   if (from < 0) return []
   return out.slice(from + 1, to < 0 ? undefined : to).flatMap(l => {
     const m = /^(\d+)\s+(\S+)/.exec(l)
-    return m?.[1] && m[2] ? [[m[2], Number(m[1])] as [string, number]] : []
+    return m?.[1] && m[2] ? [[m[2], Number(m[1]), Number(/(\d+) block/.exec(l)?.[1] ?? 0)] as [string, number, number]] : []
   })
 }
 
