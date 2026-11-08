@@ -70,7 +70,7 @@ Contents table below: open only the section you need.
 In Claude Code:
 
 ```
-/plugin marketplace add nikola-vladimirov/lean-project
+/plugin marketplace add nikola-vladimirov/lean-gate
 /plugin install lean-gate@lean-gate
 ```
 

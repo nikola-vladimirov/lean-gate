@@ -1,6 +1,6 @@
 # lean-gate hub: handoff
 
-Updated 2026-11-08. Branch `hub`. Installed: `1.0.0-beta.3` as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`). Committed on `hub`, not pushed yet: `1.0.0-beta.4`. `main` is 0.31.6, untouched. To return to stable: in `~/.claude/settings.json` remove the marketplace `ref`, then `claude plugin update`.
+Updated 2026-11-08. Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). Branch `hub`, `1.0.0-beta.4` pushed and installed as `lean-gate@lean-gate` (marketplace `lean-gate`, ref `hub`). `main` is 0.31.6, untouched. The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). To return to stable: in `~/.claude/settings.json` remove the marketplace `ref`, then `claude plugin update`.
 
 Guides: `docs/HUB.md` (start here), `docs/LEAN-GATE.md` (every button), `skills/lean-gate/STRUCTURE.md` (project layout).
 
@@ -19,11 +19,6 @@ Done on this machine: settings, memory, lessons and drafts copied (verified afte
 - New test: Details renders all 14 panel sections (fails when one is missing). The panel cannot be screenshotted from a session (computer use refuses the Claude app), so this is the render check.
 
 Checks: 67 tests, selftest (migration, lock, nag, PHPCS lookup), `plugin validate` pass; tsc errors only the old ones in `mod.test.tsx`.
-
-## Waiting on the user
-
-- Push `hub` and `claude plugin update lean-gate@lean-gate` (plugin pushes are asked first).
-- GitHub repo rename `nikola-vladimirov/lean-project` to `lean-gate`: refused by the permission classifier ("Remote Repoint"); needs the user's explicit go or a permission rule. After it: `git remote set-url`, `plugin.json` homepage and repository, README `marketplace add` line, `settings.json` and `known_marketplaces.json` repo, workspace `CLAUDE.md` line 50, `lean-gate-plugin.md`.
 
 ## Next phases of the plan
 
