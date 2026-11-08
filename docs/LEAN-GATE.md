@@ -17,7 +17,6 @@ Contents: [Project](#project) · [Ponytail](#ponytail) · [WordPress checks](#wo
 | --- | --- | --- |
 | Dot and `warn` / `block` / `off` | The master level. It caps every rule: at `warn` every rule only warns, at `block` each rule uses its own level, at `off` nothing is enforced. | Press to cycle. |
 | `route main` | Which model Claude is told to use for this task: main (no instruction), haiku, sonnet, opus, fable or free (a free OpenCode model). A second button beside it appears for a real model and cycles the effort (low, medium, high, xhigh, max). Anything but main adds a "Routing for this task" line (for example `opus:xhigh`) to the session prompt. Session only, not saved. | Press the model to cycle; press the effort to cycle. |
-| `no route` (orange) | The first Edit, Write or Agent call of the last turn had no `routing:` line before it. | Nothing; it clears next turn. |
 | `lead 6 / sub 0` | Reads (Read, Grep, Glob) the main session made itself, and subagents it started, since the last `/clear`. Turns orange when the main session has read many files in a row with no edit (see `delegate-more`). | None. |
 | `250k/300k` | Context used against the context limit (set under Workflow and limits). From 80 percent a **New session** button appears: it asks Claude to update the state file and tell you to start fresh. | Press New session. |
 | `✓ 5m` / `⚠ stale` / `state -` | Age of the last state-file edit (HANDOFF or STATE). Stale means code was edited after the state file, or the state file is over an hour old. **Update state** asks Claude to refresh it. | Press Update state. |
@@ -49,13 +48,14 @@ The master level in the top row caps these. Four rules can only warn (marked bel
 
 **Every session**
 
+`lean-gate-first`, `state-file-fresh`, `tests-before-done` and `phpcs-before-done` judge project folders only: a registered project, or a folder with an `AGENTS.md`, `CLAUDE.md`, `.git`, README or package file. A scratch chat folder is skipped.
+
 | Rule | What it checks |
 | --- | --- |
-| `lean-gate-first` | The lean-gate skill is loaded before code is edited. |
-| `ponytail-active` | The separate ponytail plugin is on before code is edited. (This only reads ponytail's on/off state; the panel does not control ponytail.) |
-| `routing-line` (warn only) | A `routing:` line appears before the first Edit, Write or Agent call of a turn. |
-| `state-file-fresh` (warn only) | The state file is touched after code is edited. |
-| `tests-before-done` (warn only) | A test command ran after code was edited. |
+| `lean-gate-first` | The lean-gate skill is loaded before code is edited. A load earlier in the transcript counts, so a plugin update or resume does not ask again. |
+| `ponytail-active` | Ponytail is on (its mode in the Ponytail section, read from `~/.claude/.ponytail-active`) before code is edited. |
+| `state-file-fresh` (warn only) | The state file is touched after code is edited. Warned once per session, then quiet until a turn touches the state file. |
+| `tests-before-done` (warn only) | A test command ran after code was edited. Warned once per session, then quiet until a turn runs tests. |
 | `no-em-dashes` | No em dashes in written files or commit messages. |
 
 **Releases and git**
@@ -77,7 +77,7 @@ The master level in the top row caps these. Four rules can only warn (marked bel
 
 **Your rules** lists custom rules from the rule builder.
 
-Example: to make a forgotten routing note harmless but keep agents strict, leave `routing-line` on warn and set `agent-needs-model-effort` to block, then set the master level to `block`.
+Example: to keep agents strict but let a missed state-file update only warn, set `agent-needs-model-effort` to block, leave `state-file-fresh` on warn, then set the master level to `block`.
 
 ## Rule builder
 
@@ -200,7 +200,7 @@ Ponytail (the lazy senior dev rules, MIT, vendored at the version shown) is part
 - **Performance audit** runs `lean-gate audit perf` on the PHP changed since the last tag (the vendored wp-woo-performance-audit skill; its skills are also available to Claude).
 - **Run PHPCS** and **Fix with PHPCBF** run PHP_CodeSniffer with the WordPress standard on the PHP files changed since the last tag plus uncommitted ones. **standard** cycles WordPress, WordPress-Extra, WordPress-Core and WordPress-Docs (`phpcs_standard`).
 - PHPCS needs PHP and Composer on the machine and the WPCS standard installed; the status line under the title says what is missing and the command to fix it.
-- The `phpcs-before-done` rule (warn only) logs a warning at the end of a turn that edited PHP without running PHPCS.
+- The `phpcs-before-done` rule (warn only) logs a warning at the end of a turn that edited PHP without running PHPCS: once per session, then quiet until a turn runs PHPCS.
 
 ## Built-in helpers
 
@@ -219,7 +219,7 @@ Keys: `helpers`, `phpcs_standard`, `mode`, `rules`, `custom_rules`, `routing`, `
 ```json
 {
   "mode": "block",
-  "rules": { "routing-line": "warn", "max-agents": "block" },
+  "rules": { "tests-before-done": "warn", "max-agents": "block" },
   "routing": { "code": "sonnet:high", "complex": "opus:high", "read": "haiku:low" },
   "agent_caps": { "code": 3, "complex": 2 },
   "max_agents": 6,

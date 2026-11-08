@@ -68,7 +68,7 @@ Record a lesson with `lean-gate lesson` (usage in `TOOLS.md`) when the panel's a
 
 ## Precedence
 
-The gate (the panel and `~/.claude/lean-gate.json`) outranks the guides in this skill. Where `ROUTING.md`, `BUILD.md` or any guide here names a model, effort or agent count, the gate's routing and agent caps win; the tables here are only defaults for what the gate does not set. A rule the gate blocks is a stop, not a suggestion; a rule it sets to warn or off makes this skill's matching instruction advisory (routing line, tests, state file, review before a tag, em dashes, context limit). Delegated runner work (`lean-gate delegate`) is also under the gate: free OpenCode models only, and the agent caps apply.
+The gate (the panel and `~/.claude/lean-gate.json`) outranks the guides in this skill. Where `ROUTING.md`, `BUILD.md` or any guide here names a model, effort or agent count, the gate's routing and agent caps win; the tables here are only defaults for what the gate does not set. A rule the gate blocks is a stop, not a suggestion; a rule it sets to warn or off makes this skill's matching instruction advisory (tests, state file, review before a tag, em dashes, context limit). Delegated runner work (`lean-gate delegate`) is also under the gate: free OpenCode models only, and the agent caps apply.
 
 The user's own rules (CLAUDE.md, memory) outrank this skill. Never delete content: replaced text moves verbatim to an archive file. Confirm before anything outward-facing (pushing, creating remotes, posting).
 

@@ -3,17 +3,17 @@ import { expect, test } from 'claude-code/testing'
 import { isPhpcsCommand, DEFAULTS, parseRegistry, projectAt, projectMentioned, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
 
 test('config: project beats global, rules merge per key, bad JSON falls back to defaults', () => {
-  const global = parseJson('{"mode":"block","rules":{"routing-line":"block"},"context_limit":200000}')
+  const global = parseJson('{"mode":"block","rules":{"tests-before-done":"block"},"context_limit":200000}')
   const project = parseJson('{"rules":{"no-haiku-coding":"off"},"delegate_after_lead_calls":3}')
   const c = mergeConfig(global, project)
   expect(c.mode).toBe('block')
-  expect(c.rules['routing-line']).toBe('block')
+  expect(c.rules['tests-before-done']).toBe('block')
   expect(c.rules['no-haiku-coding']).toBe('off')
   expect(c.rules['agent-needs-model-effort']).toBe('block')
   expect(c.context_limit).toBe(200000)
   expect(c.delegate_after_lead_calls).toBe(3)
   expect(mergeConfig(parseJson('{ not json'), parseJson('[1]'))).toEqual(DEFAULTS)
-  expect(mergeConfig({ mode: 'loud', rules: { 'routing-line': 7 } }).mode).toBe('warn')
+  expect(mergeConfig({ mode: 'loud', rules: { 'tests-before-done': 7 } }).mode).toBe('warn')
   expect(mergeConfig(parseJson('{"mode":"block"}'), parseJson('{"mode":"off"}')).mode).toBe('off')
   expect(parseStrict('{ nope')).toBeUndefined()
   expect(parseStrict('[]')).toBeUndefined()
@@ -27,10 +27,10 @@ test('config: the old rule id lean-project-first still sets lean-gate-first, unl
 })
 
 test('effective action: off wins, warn mode caps at warn, block mode uses the rule', () => {
-  const c = mergeConfig({ rules: { 'routing-line': 'off' } })
+  const c = mergeConfig({ rules: { 'tests-before-done': 'off' } })
   expect(effective(c, 'no-haiku-coding')).toBe('warn')
   expect(effective({ ...c, mode: 'block' }, 'no-haiku-coding')).toBe('block')
-  expect(effective({ ...c, mode: 'block' }, 'routing-line')).toBe('off')
+  expect(effective({ ...c, mode: 'block' }, 'tests-before-done')).toBe('off')
   expect(effective({ ...c, mode: 'off' }, 'no-haiku-coding')).toBe('off')
 })
 

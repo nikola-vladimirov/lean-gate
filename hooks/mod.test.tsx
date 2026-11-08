@@ -2,7 +2,6 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { EngineInterface, On, SessionMessage } from 'claude-code'
 
 import { repoKey } from './gate'
-import { lacksRoutingLine } from './register'
 
 const CLAUDE = 'C:/home/.claude'
 const TSV = `${CLAUDE}/lean-violations.tsv`
@@ -389,6 +388,7 @@ test('rule 8 delegate-more: warn toasts once at the threshold and allows', async
 
 test('phpcs-before-done: PHP edited and no PHPCS run is logged at turn end, a PHPCS run clears it', async ($, on) => {
   const w = world(on, config({ mode: 'warn', rules: { 'lean-gate-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off', 'state-file-fresh': 'off', 'tests-before-done': 'off' } }))
+  w.dirs['C:/proj'] = ['.git']
   await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.php', old_string: 'a', new_string: 'b' })
   await $.turn.complete({ ...DONE })
   await settle()
@@ -404,6 +404,7 @@ test('phpcs-before-done: PHP edited and no PHPCS run is logged at turn end, a PH
 test('rules 6 and 7 at turn.complete: code edited with no state file and no test run', async ($, on) => {
   // The session-fact rules would log a row per PHP edit here; they have their own test.
   const w = world(on, config({ mode: 'warn', rules: { 'lean-gate-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off', 'phpcs-before-done': 'off' } }))
+  w.dirs['C:/proj'] = ['.git']
   await $.tool.call({ tool: 'Edit', file_path: 'C:\\proj\\src\\a.php', old_string: 'a', new_string: 'b' })
   await $.turn.complete({ ...DONE })
   await settle()
@@ -411,6 +412,13 @@ test('rules 6 and 7 at turn.complete: code edited with no state file and no test
   expect(rules).toContain('state-file-fresh')
   expect(rules).toContain('tests-before-done')
   expect(w.toasts.length).toBeGreaterThan(0)
+
+  // Warned once per session: the next turn with the same gap stays quiet until a turn fixes it.
+  const once = lines(w.files).length
+  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.php', old_string: 'a', new_string: 'b' })
+  await $.turn.complete({ ...DONE, turnId: 't1b' })
+  await settle()
+  expect(lines(w.files).length).toBe(once)
 
   // A turn that touches the state file and runs a test adds nothing.
   const before = lines(w.files).length
@@ -434,6 +442,14 @@ test('rules 6 and 7 at turn.complete: code edited with no state file and no test
   await $.turn.complete({ ...DONE, turnId: 't4' })
   await settle()
   expect(lines(w.files).at(-1)).toContain('\ttests-before-done\twarn\t')
+
+  // A folder with no project marker (a scratch chat) is never judged, even with the state-file warning re-armed.
+  const scratch = lines(w.files).length
+  w.dirs['C:/proj'] = []
+  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.php', old_string: 'a', new_string: 'b' })
+  await $.turn.complete({ ...DONE, turnId: 't5' })
+  await settle()
+  expect(lines(w.files).length).toBe(scratch)
 })
 
 test('turn.complete answers before any git work or turn-end rule runs', async ($, on) => {
@@ -539,49 +555,6 @@ test('a hook that throws still lets the call through', async ($, on) => {
   expect(w.bottom).toBe(1)
 })
 
-test('rule 5 routing-line: judged only when the call row is stored, and only on this turn', async ($, on) => {
-  const w = world(on, config({ mode: 'warn' }))
-  const user = row('user', 'go')
-  const check = (rows: SessionMessage[]) => {
-    // Only $.session.messages() is used, so a stub stands in for the engine interface.
-    const stub = { session: { messages: async () => rows } } as unknown as EngineInterface
-    return lacksRoutingLine(stub, 'u1')
-  }
-  expect(await check([user, row('assistant', 'Routing: read=sonnet', ['u1'])])).toBe(false)
-  expect(await check([user, row('assistant', 'working on it', ['u1'])])).toBe(true)
-  // A routing line earlier in the same turn counts; tool results are user rows and do not end the turn.
-  const result: SessionMessage = { role: 'user', text: '', toolUses: [], toolResults: [{ tool_use_id: 'u0', text: 'ok', isError: false, result: null }] }
-  expect(await check([user, row('assistant', 'routing: x', ['u0']), result, row('assistant', '', ['u1'])])).toBe(false)
-  // The previous turn's routing line does not.
-  expect(await check([row('assistant', 'Routing: x'), user, row('assistant', 'working', ['u1'])])).toBe(true)
-  // The call's own row is not in the transcript yet: no verdict.
-  expect(await check([user, row('assistant', 'working', ['u0'])])).toBe(false)
-  // End to end: the engine passes the given tool_use_id on, and the transcript row of that call has no routing line.
-  const flagged = () => lines(w.files).filter(l => l.includes('	routing-line	warn	')).length
-  w.messages = [user, row('assistant', 'working', ['u1'])]
-  await $.tool.call({ ...EDIT, tool_use_id: 'u1' })
-  expect(flagged()).toBe(1)
-  // An Edit that follows in the same turn is not judged again.
-  w.messages = [user, row('assistant', 'still working', ['u2'])]
-  await $.tool.call({ ...EDIT, tool_use_id: 'u2' })
-  expect(flagged()).toBe(1)
-  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: /no route/ })).toBeDefined()
-  await ui.unmount()
-  // Next turn, with the routing line in place: no new violation.
-  await $.turn.complete({ ...DONE })
-  await settle()
-  w.messages = [user, row('assistant', 'Routing: read=sonnet', ['u3'])]
-  await $.tool.call({ ...EDIT, tool_use_id: 'u3' })
-  expect(flagged()).toBe(1)
-  // And a later turn without it is flagged again.
-  await $.turn.complete({ ...DONE })
-  await settle()
-  w.messages = [user, row('assistant', 'no line here', ['u4'])]
-  await $.tool.call({ ...EDIT, tool_use_id: 'u4' })
-  expect(flagged()).toBe(2)
-})
-
 test('band state stored by an older version loads without throwing or NaN', async ($, on) => {
   const w = world(on, config({ mode: 'warn' }))
   on('state.get', (_, e) => ({
@@ -652,6 +625,9 @@ test('lean-gate-first, ponytail-active and wp-skills-for-wp-code judge code edit
   const w = world(on, blockOnly('lean-gate-first', { rules: { 'lean-gate-first': 'block', 'ponytail-active': 'block', 'wp-skills-for-wp-code': 'block' } }))
   const PHP = { tool: 'Edit', file_path: 'C:/proj/a.php', old_string: 'a', new_string: 'b' } as const
   w.files[`${CLAUDE}/.ponytail-active`] = 'full'
+  // Not a project folder (a scratch chat): not judged. A project marker makes it one.
+  expect((await $.tool.call({ ...PHP })).deny).toBeUndefined()
+  w.dirs['C:/proj'] = ['AGENTS.md']
   expect((await $.tool.call({ ...PHP })).deny).toContain('lean-gate skill')
   expect((await $.tool.call({ ...EDIT, file_path: 'C:/proj/notes.md' })).deny).toBeUndefined()
   await $.tool.call({ tool: 'Skill', skill: 'lean-gate:lean-gate' } as never)
@@ -666,6 +642,21 @@ test('lean-gate-first, ponytail-active and wp-skills-for-wp-code judge code edit
   expect((await $.tool.call({ ...PHP, file_path: 'C:/site/wp-content/plugins/p/p.php' })).deny).toContain('wp-* skills')
   await $.tool.call({ tool: 'Skill', skill: 'wp-plugin-development' } as never)
   expect((await $.tool.call(WP)).deny).toBeUndefined()
+})
+
+test('lean-gate-first and wp-skills: a skill loaded before a module reload still counts, read from the transcript', async ($, on) => {
+  const w = world(on, blockOnly('lean-gate-first', { rules: { 'lean-gate-first': 'block', 'wp-skills-for-wp-code': 'block' } }))
+  w.dirs['C:/proj'] = ['.git']
+  w.files[`${CLAUDE}/.ponytail-active`] = 'full'
+  const PHP = { tool: 'Edit', file_path: 'C:/proj/a.php', old_string: 'a', new_string: "add_action( 'init', 'x' );" } as const
+  const skill = (name: string): SessionMessage => ({ role: 'assistant', text: '', toolUses: [{ tool_use_id: name, tool: 'Skill', input: { skill: name } }] })
+  // The transcript has other calls but no skill load: still refused.
+  w.messages = [row('user', 'go'), row('assistant', '', ['e1'])]
+  expect((await $.tool.call({ ...PHP })).deny).toContain('lean-gate skill')
+  w.messages = [row('user', 'go'), skill('lean-gate:lean-gate')]
+  expect((await $.tool.call({ ...PHP })).deny).toContain('wp-* skills')
+  w.messages = [row('user', 'go'), skill('lean-gate:lean-gate'), skill('wp-plugin-development')]
+  expect((await $.tool.call({ ...PHP })).deny).toBeUndefined()
 })
 
 test('review-edited-files-only: a review agent must be scoped to files', async ($, on) => {

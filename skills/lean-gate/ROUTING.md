@@ -38,4 +38,4 @@ Pick the tool that matches the work. Load its schema only when the task needs it
 
 - The project index lists the routing rules that apply to it.
 - The handoff logs each task's routing line.
-- Session-start check: if a task starts without a routing line, write one first. Whether that stops work or only warns is the gate's `routing-line` rule.
+- Session-start check: if a task starts without a routing line, write one first. The gate does not check this line; it enforces model and effort on every agent (`agent-needs-model-effort`).

@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, RenderChildren, ToolCallInput } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren, SessionMessage, ToolCallInput } from 'claude-code'
 
 import type { LeanGateBand, LeanGateRoute, LeanGateViolation } from '../types/index'
 import {
@@ -55,7 +55,6 @@ const EMPTY: LeanGateBand = {
   codeAt: 0,
   tests: 'none',
   release: 'unknown',
-  noRoute: false,
   packs: '',
   memory: '',
   memoryProjects: [],
@@ -98,11 +97,11 @@ const DELEGATE_AFTER = [4, 6, 8, 12, 16] as const
 const CONTEXT_LIMITS = [200000, 300000, 500000, 1000000] as const
 const ROUTING_LABEL: Record<RoutingKey, string> = { read: 'Reading and writing (text, images)', code: 'Coding', complex: 'Complex coding', review: 'Review', plan: 'Planning' }
 // Rules that only ever warn (they run after the work), so a block override has nothing to act on.
-const WARN_ONLY = new Set(['routing-line', 'state-file-fresh', 'tests-before-done', 'phpcs-before-done', 'push-after-tag'])
+const WARN_ONLY = new Set(['state-file-fresh', 'tests-before-done', 'phpcs-before-done', 'push-after-tag'])
 // The details view lists rules by group, each with a one-line meaning.
 const RULE_GROUPS: readonly (readonly [string, readonly string[]])[] = [
   ['Agents and models', ['agent-needs-model-effort', 'no-haiku-coding', 'free-opencode-only', 'delegate-more', 'max-agents', 'review-edited-files-only', 'distinctive-session-names']],
-  ['Every session', ['lean-gate-first', 'ponytail-active', 'routing-line', 'state-file-fresh', 'tests-before-done', 'no-em-dashes']],
+  ['Every session', ['lean-gate-first', 'ponytail-active', 'state-file-fresh', 'tests-before-done', 'no-em-dashes']],
   ['Releases and git', ['release-needs-review', 'changelog-before-tag', 'push-after-tag', 'one-pr-per-fix', 'no-demo-files-public']],
   ['WordPress and docs', ['wp-skills-for-wp-code', 'docs-before-builder', 'phpcs-before-done']],
 ]
@@ -115,7 +114,6 @@ const RULE_INFO: Record<string, string> = {
   'review-edited-files-only': 'A review agent is scoped to files',
   'lean-gate-first': 'Load lean-gate before editing code',
   'ponytail-active': 'Ponytail on before editing code',
-  'routing-line': 'State the model routing before the first call',
   'state-file-fresh': 'Touch the state file after code edits',
   'tests-before-done': 'Run tests after code edits',
   'phpcs-before-done': 'Run PHPCS after PHP edits',
@@ -161,7 +159,6 @@ function sane(raw: unknown): LeanGateBand {
     codeAt: num(r.codeAt, 0),
     tests: oneOf(r.tests, ['none', 'pass', 'fail'] as const, 'none'),
     release: oneOf(r.release, ['unknown', 'due', 'ok'] as const, 'unknown'),
-    noRoute: r.noRoute === true,
     packs: typeof r.packs === 'string' ? r.packs : '',
     memory: typeof r.memory === 'string' ? r.memory : '',
     memoryProjects: Array.isArray(r.memoryProjects) ? r.memoryProjects.filter((n): n is string => typeof n === 'string').slice(0, 12) : [],
@@ -186,8 +183,9 @@ type Mem = {
   tested: boolean
   phpcs: boolean
   php: number
-  routed: boolean
   warned: Set<string>
+  // End-of-turn rules already warned this session, quiet until a turn fixes them.
+  nagged: Set<string>
   // Skills loaded this session (kept across turns) and the rule-builder draft the band is editing.
   leanLoaded: boolean
   wpSkill: boolean
@@ -452,20 +450,17 @@ async function detectProject($: EngineInterface) {
   const marked = hit === undefined ? (await $.fs.list(cwd).catch(() => [])).some(f => PROJECT_MARKERS.includes(f.name)) : false
   await patch($, { proj: hit?.name ?? '', projNew: marked })
 }
+// A registered project, or a folder with a project marker. Not one: a scratch chat folder, where session rules do not apply.
+async function inProject($: EngineInterface): Promise<boolean> {
+  const cwd = norm(await $.session.cwd())
+  return projectAt(await loadRegistry($), cwd) !== undefined || (await $.fs.list(cwd).catch(() => [])).some(f => PROJECT_MARKERS.includes(f.name))
+}
 
-// Rule 5: was the "routing:" line in the assistant text before this first Edit/Write/Agent call?
-// shortcut: reads the transcript, so it judges only when the call's own assistant row is already stored; otherwise it stays silent.
-export async function lacksRoutingLine($: EngineInterface, id: string): Promise<boolean> {
-  const rows = await $.session.messages()
-  const last = rows[rows.length - 1]
-  if (last?.role !== 'assistant' || !last.toolUses.some(u => u.tool_use_id === id)) return false
-  let text = ''
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const r = rows[i]
-    if (r === undefined || (r.role === 'user' && !r.toolResults?.length)) break
-    if (r.role === 'assistant') text += `${r.text}\n`
-  }
-  return !/routing:/i.test(text)
+// A skill load is kept in this module's memory, which a reload (plugin update, resume) empties; the transcript still has it.
+// shortcut: after a compaction the old Skill call may be gone from the transcript, so the rule asks for one more load.
+async function skillInTranscript($: EngineInterface, matches: (name: string) => boolean): Promise<boolean> {
+  const rows: unknown = await $.session.messages().catch(() => [])
+  return Array.isArray(rows) && (rows as SessionMessage[]).some(r => r.role === 'assistant' && r.toolUses.some(u => u.tool === 'Skill' && matches(String(u.input.skill ?? ''))))
 }
 
 // no-demo-files-public: demo-like paths in the commits a push would send, only when the repo is public. Any failure reads as "none".
@@ -555,7 +550,7 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
 
   if (isLead && (tool === 'Edit' || tool === 'Write')) {
     const path = norm(String(rec.file_path ?? ''))
-    if (CODE_EDITED.test(path) && !mem.leanLoaded) {
+    if (CODE_EDITED.test(path) && !mem.leanLoaded && (await inProject($)) && !(mem.leanLoaded = await skillInTranscript($, isLeanSkill))) {
       const deny = await trip($, mem, cfg, 'lean-gate-first', `code edit before the lean-gate skill: ${base(path)}`, 'lean-gate: load the lean-gate skill before editing code')
       if (deny !== undefined) return deny
     }
@@ -563,7 +558,7 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
       const deny = await trip($, mem, cfg, 'ponytail-active', `ponytail is off: ${base(path)}`, 'lean-gate: turn ponytail on (/ponytail full) before editing code')
       if (deny !== undefined) return deny
     }
-    if (!mem.wpSkill && isWpCode(path, callText(tool, rec))) {
+    if (!mem.wpSkill && isWpCode(path, callText(tool, rec)) && !(mem.wpSkill = await skillInTranscript($, isWpSkill))) {
       const deny = await trip($, mem, cfg, 'wp-skills-for-wp-code', `WordPress code edited with no wp-* skill: ${base(path)}`, 'lean-gate: load the matching wp-* skills before editing WordPress code')
       if (deny !== undefined) return deny
     }
@@ -651,14 +646,6 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
     }
   }
 
-  if (isLead && (e.tool === 'Edit' || e.tool === 'Write' || e.tool === 'Agent') && !mem.routed) {
-    mem.routed = true
-    if (effective(cfg, 'routing-line') !== 'off' && (await lacksRoutingLine($, e.tool_use_id).catch(() => false))) {
-      await patch($, { noRoute: true })
-      await trip($, mem, cfg, 'routing-line', `no "routing:" line before the first ${tool}`, '', false)
-    }
-  }
-
   if (isLead && DELEGATE.has(tool)) {
     const limit = cfg.delegate_after_lead_calls
     if (before >= limit && effective(cfg, 'delegate-more') === 'block') {
@@ -704,14 +691,13 @@ async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny
 }
 
 export const register: Register = on => {
-  const mem: Mem = { edited: new Set(), stateTouched: false, tested: false, phpcs: false, php: 0, routed: false, warned: new Set(), leanLoaded: false, wpSkill: false, draft: { preset: 0, level: 'warn' }, docsRead: false, agents: 0, agentsBy: {}, counted: new Map(), tagged: false, pushed: false, once: new Map(), run: 0, lead: 0, sub: 0, chain: Promise.resolve() }
+  const mem: Mem = { edited: new Set(), stateTouched: false, tested: false, phpcs: false, php: 0, warned: new Set(), nagged: new Set(), leanLoaded: false, wpSkill: false, draft: { preset: 0, level: 'warn' }, docsRead: false, agents: 0, agentsBy: {}, counted: new Map(), tagged: false, pushed: false, once: new Map(), run: 0, lead: 0, sub: 0, chain: Promise.resolve() }
   const resetTurn = () => {
     mem.edited.clear()
     mem.stateTouched = false
     mem.tested = false
     mem.phpcs = false
     mem.php = 0
-    mem.routed = false
     mem.tagged = false
     mem.pushed = false
     mem.warned.clear()
@@ -743,7 +729,7 @@ export const register: Register = on => {
     mem.agents = 0
     mem.agentsBy = {}
     mem.counted.clear()
-    await patch($, { run: 0, noRoute: false }).catch(() => undefined)
+    await patch($, { run: 0 }).catch(() => undefined)
     void (async () => {
       const hit = projectMentioned(await loadRegistry($), String((e as { text?: unknown }).text ?? ''), norm(await $.session.cwd()))
       await patch($, { projHit: hit === undefined ? null : { name: hit.name, path: hit.path } })
@@ -759,15 +745,25 @@ export const register: Register = on => {
       const n = mem.edited.size
       const stateTouched = mem.stateTouched
       const tested = mem.tested
-      const phpUnchecked = mem.php > 0 && !mem.phpcs
+      const php = mem.php > 0
+      const phpcsRan = mem.phpcs
       const unpushed = mem.tagged && !mem.pushed
       resetTurn()
       void (async () => {
         const cfg = await loadConfig($)
         if (unpushed) await trip($, mem, cfg, 'push-after-tag', 'a tag was made this turn and nothing was pushed', '', false)
-        if (n > 0 && !stateTouched) await trip($, mem, cfg, 'state-file-fresh', `${n} code file(s) edited, no state file touched`, '', false)
-        if (n > 0 && !tested) await trip($, mem, cfg, 'tests-before-done', `${n} code file(s) edited, no test command ran`, '', false)
-        if (phpUnchecked) await trip($, mem, cfg, 'phpcs-before-done', 'PHP files edited, PHPCS did not run', '', false)
+        // Warned once, then quiet until a turn fixes it (touches the state file, runs tests or PHPCS), which re-arms it.
+        // A folder that is not a project (a scratch chat) has no state file or tests to keep, so it is never judged.
+        const project = n > 0 && (await inProject($))
+        const nag = async (rule: string, broken: boolean, fixed: boolean, detail: string) => {
+          if (fixed) mem.nagged.delete(rule)
+          if (!broken || !project || mem.nagged.has(rule)) return
+          mem.nagged.add(rule)
+          await trip($, mem, cfg, rule, detail, '', false)
+        }
+        await nag('state-file-fresh', !stateTouched, stateTouched, `${n} code file(s) edited, no state file touched`)
+        await nag('tests-before-done', !tested, tested, `${n} code file(s) edited, no test command ran`)
+        await nag('phpcs-before-done', php && !phpcsRan, phpcsRan, 'PHP files edited, PHPCS did not run')
         await refreshRelease($)
       })().catch(() => undefined)
     }
@@ -779,6 +775,7 @@ export const register: Register = on => {
       mem.run = mem.lead = mem.sub = 0
       mem.leanLoaded = mem.wpSkill = mem.docsRead = false
       mem.once.clear()
+      mem.nagged.clear()
       await patch($, { lead: 0, sub: 0, run: 0, violations: [] }).catch(() => undefined)
     }
     return next(e)
@@ -914,7 +911,6 @@ export const register: Register = on => {
     ]
     if (b.proj === '') parts.push(<Button key="setup" plain label="Set up project" onPress={() => void (b.projNew ? adoptProject() : startProject())} />)
     if (rModel !== 'main' && rModel !== 'free') parts.push(<Button key="route-effort" plain label={rEffort} onPress={cycleRouteEffort} />)
-    if (b.noRoute) parts.push(<Text color="warning">no route</Text>)
     parts.push(
       <Text color={b.run >= cfg.delegate_after_lead_calls ? 'warning' : undefined}>
         lead {b.lead} / sub {b.sub}

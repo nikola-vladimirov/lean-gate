@@ -25,8 +25,6 @@ export type LeanGateBand = {
   codeAt: number
   tests: 'none' | 'pass' | 'fail'
   release: 'unknown' | 'due' | 'ok'
-  /** True when the first Edit/Write/Agent of the last turn had no routing line. */
-  noRoute: boolean
   /** Output of `lean-gate pack status`, read when the details open. */
   packs: string
   /** Output of `lean-gate memory index` for this project, and the other projects that have notes; read when the details open. */

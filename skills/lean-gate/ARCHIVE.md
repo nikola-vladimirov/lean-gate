@@ -70,3 +70,16 @@ When the current thread session passes the configuration context limit (default 
 
 <!-- Archived 2026-10-16: the spec above conflicted with BUILD.md, which is the source of truth for build routing. -->
 
+
+## Archived 2026-11-08: the routing-line rule (retired in 1.0.0-beta.5)
+
+From docs/LEAN-GATE.md, verbatim:
+
+| `no route` (orange) | The first Edit, Write or Agent call of the last turn had no `routing:` line before it. | Nothing; it clears next turn. |
+| `routing-line` (warn only) | A `routing:` line appears before the first Edit, Write or Agent call of a turn. |
+Example: to make a forgotten routing note harmless but keep agents strict, leave `routing-line` on warn and set `agent-needs-model-effort` to block, then set the master level to `block`.
+  "rules": { "routing-line": "warn", "max-agents": "block" },
+
+From skills/lean-gate/ROUTING.md line 41, verbatim:
+
+- Session-start check: if a task starts without a routing line, write one first. Whether that stops work or only warns is the gate's `routing-line` rule.
