@@ -22,16 +22,17 @@ gate_migrate() {
   find "$lock" -maxdepth 0 -mmin +2 -exec rmdir {} \; 2>/dev/null
   mkdir "$lock" 2>/dev/null || return 0
   # Each copy goes to a temp name of this process, then mv only while the target is still missing: a hook killed mid-copy
-  # leaves no half target, and even two hooks that both got past the lock can never copy a folder into another's.
+  # leaves no half target. Hooks can still overlap (seen on Linux CI despite the lock), and a mv into a folder that appeared
+  # meanwhile lands inside it, so that inner copy is removed: the first copy wins and nothing nests.
   p=${BASHPID:-$$}
   [ -e "$c/lean-gate.json" ] || [ ! -f "$c/lean-project.json" ] || { cp -p "$c/lean-project.json" "$c/.lean-gate.json.$p" && { [ -e "$c/lean-gate.json" ] || mv "$c/.lean-gate.json.$p" "$c/lean-gate.json"; }; rm -f "$c/.lean-gate.json.$p"; }
-  [ -e "$c/lean-gate/memory" ] || [ ! -d "$c/lean-project/memory" ] || { mkdir -p "$c/lean-gate" && cp -Rp "$c/lean-project/memory" "$c/lean-gate/.memory.$p" && { [ -e "$c/lean-gate/memory" ] || mv "$c/lean-gate/.memory.$p" "$c/lean-gate/memory"; }; rm -rf "$c/lean-gate/.memory.$p"; }
+  [ -e "$c/lean-gate/memory" ] || [ ! -d "$c/lean-project/memory" ] || { mkdir -p "$c/lean-gate" && cp -Rp "$c/lean-project/memory" "$c/lean-gate/.memory.$p" && { [ -e "$c/lean-gate/memory" ] || mv "$c/lean-gate/.memory.$p" "$c/lean-gate/memory"; }; rm -rf "$c/lean-gate/.memory.$p" "$c/lean-gate/memory/.memory.$p"; }
   if [ -n "$old" ] && mkdir -p "$d"; then
     ok=1
     for f in LESSONS.md LESSONS-ARCHIVE.md last-full-review sessions "$old"/setup-nag-*; do
       f=${f##*/}; [ -e "$old/$f" ] && [ ! -e "$d/$f" ] || continue
       { cp -Rp "$old/$f" "$d/.$f.$p" && { [ -e "$d/$f" ] || mv "$d/.$f.$p" "$d/$f"; }; } || ok=""
-      rm -rf "$d/.$f.$p"
+      rm -rf "$d/.$f.$p" "$d/$f/.$f.$p"
     done
     [ -z "$ok" ] || touch "$d/.migrated"
   fi

@@ -69,9 +69,18 @@ The user said it is not a beta anymore. Full review by two Opus reviewers (hooks
 
 Release steps: commit on `hub`, fast-forward `main` to `hub` (main is an ancestor), the user presses Reviewed in the panel (the gate blocks the tag otherwise), tag `v1.0.0`, `lean-gate review-scope --full-done`, push `main`, `hub` and the tag (needs the user's OK), then remove the marketplace `ref` in `~/.claude/settings.json` and `claude plugin update lean-gate`.
 
+## After 1.0.0 (2026-11-08, on hub, not released)
+
+- GitHub release page `v1.0.0` published (notes from the CHANGELOG entry).
+- CI selftest runs on ubuntu-latest and macos-latest (`.github/workflows/selftest.yml`, fail-fast off). macOS found: bash 3.2 misreads a `case` inside `$(...)` (`cmd_audit_security`), and BSD `wc` pads counts (`pack status` printed "parked       1"; two selftest checks). Fixed.
+- The `main` and `v1.0.0` CI runs failed "migrate nested a folder when run at once" (Linux only, intermittent, never in Git Bash). `gate_migrate` now copies to per-process temp names and moves only while the target is missing, so overlapping hooks cannot nest; the check prints what it found if it fails again. Root cause of the lock overlap not found.
+- The GitHub page looked broken in the app browser pane: GitHub loaded without its styles and scripts there (no githubassets.com requests). The manual itself renders fine (checked with the GitHub API).
+
+Release these as 1.0.1: CHANGELOG entry, version, fast-forward `main`, tag.
+
 ## Next
 
-Nothing planned after 1.0.0. Ideas: stats over a longer window; a real macOS run of the selftest.
+Ideas: stats over a longer window.
 
 ## Commands
 
