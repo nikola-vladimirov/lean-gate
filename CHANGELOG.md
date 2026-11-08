@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1 (2026-11-08)
+
+- The selftest runs on macOS too (CI matrix: Linux and macOS).
+- macOS: `bin/lean-gate` parses under the system bash 3.2 (a `case` inside `$(...)` broke it); `pack status` and `cost` no longer show padded counts from BSD `wc`.
+- The copy from the old lean-project folders can no longer nest a folder when several hooks start at once (seen on Linux).
+- A full review recorded from the Bash tool before 1.0.0 sat in a temp folder; record it again with `lean-gate review-scope --full-done` if review-scope asks for one.
+
 ## 1.0.0 (2026-11-08)
 
 First stable release of lean-gate (formerly lean-project): the hub with its rule gate, docked panel, vendored ponytail, performance audit, PHPCS and icm-architect, the rename, noise reduction, the Settings section and full manual, rule stats, and the coloured panel with hover help. Everything listed under the 1.0.0 betas below is in it.

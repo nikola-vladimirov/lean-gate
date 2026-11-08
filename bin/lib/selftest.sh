@@ -1,7 +1,7 @@
 # Selftest for bin/lean-gate. Sourced by it, not run directly.
 
 cmd_selftest() {
-  local tmp f fail=0
+  local tmp f fail=0 nest
   tmp=$(mktemp -d) || die "selftest: no temp dir"
   # Expanded now: $tmp is local and gone when a die mid-test reaches the EXIT trap
   trap "rm -rf '$tmp'" EXIT

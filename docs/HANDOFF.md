@@ -1,6 +1,6 @@
 # lean-gate hub: handoff
 
-Updated 2026-11-08. Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). `1.0.0` released: tag `v1.0.0` on `main` and `hub` (same commit), pushed and installed as `lean-gate@lean-gate` from the default branch (the `hub` ref is gone from `~/.claude/settings.json` and `plugins/known_marketplaces.json`; backups `*.bak-before-1.0.0`). The local folder stays `E:Claude Sessionsean-project` (sessions and memory are keyed by it). Work continues on `hub`; release by fast-forwarding `main`.
+Updated 2026-11-08. Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). `1.0.1` released: tag `v1.0.1` on `main` and `hub` (same commit), pushed and installed as `lean-gate@lean-gate` from the default branch (the `hub` ref is gone from `~/.claude/settings.json` and `plugins/known_marketplaces.json`; backups `*.bak-before-1.0.0`). The local folder stays `E:Claude Sessionsean-project` (sessions and memory are keyed by it). Work continues on `hub`; release by fast-forwarding `main`.
 
 Guides: `docs/HUB.md` (start here), `docs/MANUAL.md` (every button, rule, setting and command; update it with every feature or fix, `lean-gate selftest` checks it), `skills/lean-gate/STRUCTURE.md` (project layout).
 
@@ -69,14 +69,12 @@ The user said it is not a beta anymore. Full review by two Opus reviewers (hooks
 
 Release steps: commit on `hub`, fast-forward `main` to `hub` (main is an ancestor), the user presses Reviewed in the panel (the gate blocks the tag otherwise), tag `v1.0.0`, `lean-gate review-scope --full-done`, push `main`, `hub` and the tag (needs the user's OK), then remove the marketplace `ref` in `~/.claude/settings.json` and `claude plugin update lean-gate`.
 
-## After 1.0.0 (2026-11-08, on hub, not released)
+## 1.0.1 (2026-11-08)
 
 - GitHub release page `v1.0.0` published (notes from the CHANGELOG entry).
 - CI selftest runs on ubuntu-latest and macos-latest (`.github/workflows/selftest.yml`, fail-fast off). macOS found: bash 3.2 misreads a `case` inside `$(...)` (`cmd_audit_security`), and BSD `wc` pads counts (`pack status` printed "parked       1"; two selftest checks). Fixed.
 - The `main` and `v1.0.0` CI runs failed "migrate nested a folder when run at once" (Linux only, intermittent, never in Git Bash). CI logs showed three hooks copying at once despite the mkdir lock (cause of the overlap not found). `gate_migrate` now copies to per-process temp names, moves only while the target is missing, and removes its copy if it landed inside a folder another hook made meanwhile; the check prints what it found if it ever fails again. Five CI runs in a row passed on both systems (before: 2 of 3 Linux runs failed).
 - The GitHub page looked broken in the app browser pane: GitHub loaded without its styles and scripts there (no githubassets.com requests). The manual itself renders fine (checked with the GitHub API).
-
-Release these as 1.0.1: CHANGELOG entry, version, fast-forward `main`, tag.
 
 ## Next
 
