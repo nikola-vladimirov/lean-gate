@@ -41,7 +41,7 @@ cmd_pack() {
   if [ "$action" = status ]; then
     for name in bricks wp; do
       n=0; for p in $(pack_patterns "$name"); do n=$((n + $(ls -d "$PACK_ACTIVE"/$p 2>/dev/null | wc -l))); done
-      echo "$name: active $n, parked $(ls "$PACK_OFF/$name" 2>/dev/null | wc -l)"
+      echo "$name: active $n, parked $(( $(ls "$PACK_OFF/$name" 2>/dev/null | wc -l) ))"
     done
     if key=$(pack_plugin_key ui-ux); then
       grep -q "\"$key\": true" "$PACK_SETTINGS" 2>/dev/null && echo "ui-ux: on" || echo "ui-ux: off"

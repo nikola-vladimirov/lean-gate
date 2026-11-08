@@ -213,7 +213,7 @@ EOF
   done
   echo "  Skill listing, user scope + this folder (~tokens of name and description; each one loads in every session):"
   for f in "$HOME"/.claude/skills/*/SKILL.md "$dir"/.claude/skills/*/SKILL.md; do
-    [ -f "$f" ] && printf '%s\t%s\n' "$(basename "$(dirname "$f")" | sed 's/-.*//')" "$(awk '/^---/ { k++; next } k == 1 && /^(name|description|when_to_use):/' "$f" | wc -c)"
+    [ -f "$f" ] && printf '%s\t%s\n' "$(basename "$(dirname "$f")" | sed 's/-.*//')" "$(( $(awk '/^---/ { k++; next } k == 1 && /^(name|description|when_to_use):/' "$f" | wc -c) ))"
   done | awk -F '\t' '{ n[$1]++; c[$1] += $2 } END { for (g in n) printf "  %6d  %3d skills  %s-*\n", c[g] / 4, n[g], g }' | sort -rn
   echo "  Cut it: move skills and MCP servers that only one project uses out of user scope (~/.claude/skills, ~/.claude.json) into that project."
   echo

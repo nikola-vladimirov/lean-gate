@@ -59,7 +59,7 @@ cmd_selftest() {
   cmd_memory index --project beta | grep -q 'linked: alpha$' || { echo "FAIL memory link not both ways"; fail=1; }
   cmd_memory recall --project alpha | grep -q '^# linked: beta$' || { echo "FAIL memory recall misses a linked project"; fail=1; }
   cmd_memory forget 1 --project alpha > /dev/null
-  [ "$(cmd_memory list --project alpha | wc -l)" = 1 ] && grep -q 'chose Laravel' "$tmp/mem/alpha/notes-archive.md" || { echo "FAIL memory forget did not archive"; fail=1; }
+  [ "$(( $(cmd_memory list --project alpha | wc -l) ))" = 1 ] && grep -q 'chose Laravel' "$tmp/mem/alpha/notes-archive.md" || { echo "FAIL memory forget did not archive"; fail=1; }
   cmd_memory unlink beta --project alpha > /dev/null
   cmd_memory index --project alpha | grep -q 'linked' && { echo "FAIL memory unlink"; fail=1; }
   # memory (review fixes): unquoted words are one note; forgetting the last note leaves a clean count; a mistyped link target is refused
@@ -240,7 +240,7 @@ cmd_selftest() {
   gd="$tmp/gain"; mkdir -p "$gd/proj"
   (cd "$gd/proj" && CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain > /dev/null)
   (cd "$gd/proj" && CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain > /dev/null)
-  [ "$(wc -l < "$gd/data/gain.tsv")" = 2 ] || { echo "FAIL gain did not log two runs"; fail=1; }
+  [ "$(( $(wc -l < "$gd/data/gain.tsv") ))" = 2 ] || { echo "FAIL gain did not log two runs"; fail=1; }
   (cd "$gd/proj" && CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain) | tail -n 1 | grep -q '	+0$' || { echo "FAIL gain change figure"; fail=1; }
   unset LEAN_BOARD
   # rename: the old lean-project settings, memory and lessons are copied once, never over a newer file, and the old ones stay
@@ -264,7 +264,8 @@ cmd_selftest() {
   # hooks start together: four migrations at once copy each folder once, never nested, and leave no lock
   rm -rf "$mg/.claude/lean-gate" "$mg/.claude/lean-gate.json" "$mg/.claude/plugins/data/lean-gate-lean-gate"
   for _ in 1 2 3 4; do migrate "$mg/.claude/plugins/data/lean-gate-lean-gate" & done; wait
-  [ -z "$(find "$mg/.claude/lean-gate/memory" "$mg/.claude/plugins/data/lean-gate-lean-gate/sessions" -mindepth 1 \( -name memory -o -name sessions -o -name ".memory.*" -o -name ".sessions.*" \) 2>/dev/null)" ] || { echo "FAIL migrate nested a folder when run at once"; fail=1; }
+  nest=$(find "$mg/.claude/lean-gate/memory" "$mg/.claude/plugins/data/lean-gate-lean-gate/sessions" -mindepth 1 \( -name memory -o -name sessions -o -name ".memory.*" -o -name ".sessions.*" \) 2>/dev/null)
+  [ -z "$nest" ] || { echo "FAIL migrate nested a folder when run at once: $nest"; ls -la "$mg/.claude" "$mg/.claude/lean-gate" "$mg/.claude/lean-gate/memory" 2>&1 | head -30; fail=1; }
   [ ! -e "$mg/.claude/.lean-gate-migrating" ] || { echo "FAIL migrate left its lock"; fail=1; }
   # a lock held by another hook makes this run skip; the next run after it is gone copies
   rm -rf "$mg/.claude/lean-gate"; mkdir "$mg/.claude/.lean-gate-migrating"; migrate "$mg/.claude/plugins/data/lean-gate-lean-gate"
