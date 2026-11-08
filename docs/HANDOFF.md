@@ -40,9 +40,17 @@ The violation log (500 rows) was 443 warnings from six rules. Changes:
 - Descriptions rewritten: plugin.json, marketplace.json and the README lead.
 - Tests: 71 (settings target, reminders, scope, quiet, reset and undo, export and import, Explain); selftest; validate.
 
+## beta.7: rule stats (phase 4, 2026-11-08; committed, not pushed)
+
+- `lean-gate stats [days]` (`bin/lib/stats.sh`): hits per rule (split block, warn, allow-once) and per project folder from `~/.claude/lean-violations.tsv`; old `lean-project-first` counts as `lean-gate-first`; `LEAN_VIOLATIONS` overrides the log.
+- Panel section Rule stats (7 days): top five rules and projects; `stats-off` turns the noisiest rule that is still on off (retired and off rules skipped; saves where presses save), `stats-refresh`. Parsing in `statRules` and `statsView` (`hooks/gate.ts`).
+- Log cap 500 to 2000 lines (`LOG_LINES`): 500 held only two days, so a week of stats was cut short.
+- User call: PHPCS is not for every project. `phpcs-before-done` now counts only WordPress PHP (`isWpCode`, or any PHP once a WordPress skill is loaded); a Laravel edit is not judged. Known gap: `WP_HINT` matches `__(`, which Laravel also uses.
+- Tests: 73, selftest (stats counts), validate.
+
 ## Next phases of the plan
 
-4. `lean-gate stats` from the violation log.
+4b. Panel look (user asked 2026-11-08, mid phase 4): colour, hover help, on the rule groups, Rule builder and Model routing rows. API: Text takes any colour and background; Button only primary or secondary; real hover tooltips only inside `Svg` with `isInteractive` (`<title>`). Grill the user before building.
 5. Release 1.0.0: full review (`review-scope` says one is due; never on a beta), merge `hub` into `main`, tag, push, reset the marketplace ref.
 
 ## Commands

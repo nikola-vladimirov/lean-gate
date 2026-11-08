@@ -32,6 +32,8 @@ function world(on: On, files: Record<string, string>) {
     order: [] as string[],
     noTimeout: [] as string[],
     shells: [] as string[],
+    // What a `lean-gate ...` shell command prints, by command text; '' when unset.
+    stdout: (_cmd: string) => '',
     gitSilent: false,
     failing: undefined as RegExp | undefined,
     bottom: 0,
@@ -70,7 +72,7 @@ function world(on: On, files: Record<string, string>) {
     if (e.argv[0] === 'gh') return done(0, ctx.ghPublic ? 'false\n' : 'true\n')
     if (e.argv[0] !== 'git') {
       ctx.shells.push(e.argv.join(' '))
-      return done(0)
+      return done(0, ctx.stdout(e.argv.join(' ')))
     }
     ctx.order.push('git')
     // A timeout rejects the call, as the engine does.
@@ -389,7 +391,12 @@ test('rule 8 delegate-more: warn toasts once at the threshold and allows', async
 test('phpcs-before-done: PHP edited and no PHPCS run is logged at turn end, a PHPCS run clears it', async ($, on) => {
   const w = world(on, config({ mode: 'warn', rules: { 'lean-gate-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off', 'state-file-fresh': 'off', 'tests-before-done': 'off' } }))
   w.dirs['C:/proj'] = ['.git']
-  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.php', old_string: 'a', new_string: 'b' })
+  // PHP that is not WordPress (a Laravel app) is not judged.
+  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/app/Http/Kernel.php', old_string: 'a', new_string: 'return $next($request);' })
+  await $.turn.complete({ ...DONE })
+  await settle()
+  expect(lines(w.files).map(l => l.split('	')[2])).not.toContain('phpcs-before-done')
+  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.php', old_string: 'a', new_string: "add_action('init', 'f');" })
   await $.turn.complete({ ...DONE })
   await settle()
   expect(lines(w.files).map(l => l.split('	')[2])).toContain('phpcs-before-done')
@@ -478,15 +485,15 @@ test('a failing test command still counts as a test run and shows as tests fail'
   await ui.unmount()
 })
 
-test('session.start trims the violation log to its last 500 lines, after the session has started', async ($, on) => {
+test('session.start trims the violation log to its last 2000 lines, after the session has started', async ($, on) => {
   const w = world(on, config({ mode: 'warn' }))
-  w.files[TSV] = `${Array.from({ length: 600 }, (_, i) => `row ${i + 1}`).join('\n')}\n`
+  w.files[TSV] = `${Array.from({ length: 2100 }, (_, i) => `row ${i + 1}`).join('\n')}\n`
   await $.session.start({ cwd: 'C:/proj', surface: 'terminal', isInteractive: true })
   await settle()
   const kept = lines(w.files)
-  expect(kept.length).toBe(500)
+  expect(kept.length).toBe(2000)
   expect(kept[0]).toBe('row 101')
-  expect(kept.at(-1)).toBe('row 600')
+  expect(kept.at(-1)).toBe('row 2100')
 })
 
 test('config: a project file tunes rules over the global one (but not the mode), and bad JSON falls back to defaults', async ($, on) => {
@@ -997,8 +1004,23 @@ test('Details renders every panel section open, with its title', async ($, on) =
   world(on, config({ mode: 'block' }))
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await ui.press({ key: 'details' })
-  const titles = ['Project', 'Rules', 'Rule builder', 'Model routing', 'Workflow and limits', 'Settings', 'Built-in helpers', 'Project memory', 'Board', 'Lessons and local rules', 'Review', 'Ponytail', 'WordPress checks', 'Packs', 'Recent violations']
+  const titles = ['Project', 'Rules', 'Rule builder', 'Model routing', 'Workflow and limits', 'Settings', 'Built-in helpers', 'Project memory', 'Board', 'Lessons and local rules', 'Review', 'Ponytail', 'WordPress checks', 'Packs', 'Rule stats', 'Recent violations']
   for (const t of titles) expect(await ui.find({ text: new RegExp(`^▾ ${t}`) })).toBeDefined()
+  await ui.unmount()
+})
+
+test('Rule stats: shows the top rows and turns the noisiest rule that is still on off in one press', async ($, on) => {
+  const w = world(on, config({ mode: 'block', rules: { 'state-file-fresh': 'warn' } }))
+  const out = ['rule hits in the last 7 days: 9 (log keeps the last 2000)', 'by rule:', '  5  routing-line  (5 warn)', '  3  state-file-fresh  (3 warn)', '  1  no-em-dashes  (1 block)', 'by project:', '  9  proj']
+  w.stdout = cmd => (cmd.includes('lean-gate stats') ? out.join('\n') : '')
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'details' })
+  await settle()
+  expect(await ui.find({ text: /3 {2}state-file-fresh/ })).toBeDefined()
+  // routing-line is retired (not in the config), so the button skips it.
+  await ui.press({ key: 'stats-off' })
+  await settle()
+  expect(JSON.parse(w.files[CONFIG] ?? '{}').rules['state-file-fresh']).toBe('off')
   await ui.unmount()
 })
 

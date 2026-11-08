@@ -691,3 +691,20 @@ export function projectMentioned(reg: Project[], text: string, cwd: string): Pro
   const named = (n: string) => n.length >= 4 && new RegExp('(^|[^a-z0-9])' + escRe(n.toLowerCase()) + '($|[^a-z0-9])').test(t)
   return reg.find(p => p !== here && [p.name, ...p.aliases].some(named))
 }
+
+// `lean-gate stats` output, trimmed lines: the rows under "by rule:" as [rule, hits], noisiest first.
+export function statRules(out: string[]): [string, number][] {
+  const from = out.indexOf('by rule:')
+  const to = out.indexOf('by project:')
+  if (from < 0) return []
+  return out.slice(from + 1, to < 0 ? undefined : to).flatMap(l => {
+    const m = /^(\d+)\s+(\S+)/.exec(l)
+    return m?.[1] && m[2] ? [[m[2], Number(m[1])] as [string, number]] : []
+  })
+}
+
+// The same output with only the first n rows of each group (rows start with their hit count).
+export function statsView(out: string[], n = 5): string[] {
+  let kept = 0
+  return out.filter(l => (/^\d/.test(l) ? ++kept <= n : ((kept = 0), true)))
+}

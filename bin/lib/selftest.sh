@@ -241,6 +241,11 @@ cmd_selftest() {
   [ "$(cd "$ps" && HOME="$ps" phpcs_standard)" = WordPress-Core ] || { echo "FAIL phpcs standard from the global file"; fail=1; }
   echo '{"phpcs_standard":"WordPress-Extra"}' > "$ps/.lean-gate.json"
   [ "$(cd "$ps" && HOME="$ps" phpcs_standard)" = WordPress-Extra ] || { echo "FAIL phpcs standard from the project file"; fail=1; }
+  # stats: rows inside the window only, old rule ids under the new name, counts per rule and per project
+  now=$(date -u +%Y-%m-%dT%H:%M:%S)
+  printf '%s\tp1\tlean-project-first\twarn\tx\n%s\tp1\tlean-gate-first\tblock\tx\n%s\tp2\tno-em-dashes\twarn\tx\n2001-01-01T00:00:00\tp3\told-rule\twarn\tx\n' "$now" "$now" "$now" > "$tmp/v.tsv"
+  out=$(LEAN_VIOLATIONS="$tmp/v.tsv" cmd_stats 7)
+  echo "$out" | grep -q "last 7 days: 3 " && echo "$out" | grep -q '^ *2  lean-gate-first  (1 block, 1 warn)$' && echo "$out" | grep -q '^ *2  p1$' && ! echo "$out" | grep -q 'old-rule\|p3' || { echo "FAIL stats counts"; fail=1; }
   doc_coverage || fail=1
 
   rm -rf "$tmp"

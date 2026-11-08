@@ -25,6 +25,7 @@
 #   lean-gate phpcs [status|fix] [files]   PHP_CodeSniffer with the WordPress standard on the changed PHP files (needs PHP and Composer)
 #   lean-gate vendor status|update ponytail|icm|retire   the vendored tools (ponytail, performance audit), updating them, and switching off the standalone plugins they replace
 #   lean-gate memory add|list|recall|forget|link|unlink|index|projects   per-project memory, linked across projects; session start prints only its one-line index
+#   lean-gate stats [days]            rule hits per rule and per project from the violation log (default 7 days)
 #   lean-gate selftest                check the tool on this machine
 set -u
 # Command groups live in bin/lib; sourcing them defines their functions before the dispatch below runs.
@@ -842,5 +843,6 @@ case "$cmd" in
   icm) cmd_icm "$@" ;;
   memory) cmd_memory "$@" || exit 1 ;;
   gain) cmd_gain "$@" ;;
+  stats) cmd_stats "$@" ;;
   *) sed -n '5,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

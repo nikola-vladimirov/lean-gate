@@ -142,7 +142,9 @@ export const EXPLAIN: Record<string, string> = {
   'phpcs-fix': 'Lets PHPCBF fix what it can in the changed PHP files.',
   'phpcs-std': 'The PHPCS standard: WordPress, -Extra, -Core or -Docs.',
   'phpcs-status': 'Reads the PHPCS and vendored-tool status again.',
-  // Packs and violations
+  // Rule stats, packs and violations
+  'stats-off': 'Sets the noisiest rule of the last 7 days to off (where presses save); its row under Rules turns it back on.',
+  'stats-refresh': 'Reads the rule stats again (lean-gate stats).',
   'pack-on': 'Brings this skill pack back (next session).',
   'pack-off': 'Parks this skill pack so it costs nothing at startup (next session).',
   'once-allow': 'Lets the next hit of this rule through, even a block.',

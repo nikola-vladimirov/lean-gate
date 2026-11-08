@@ -35,6 +35,8 @@ export type LeanGateBand = {
   /** Lines of `lean-gate board` and `lean-gate lessons`, read when the details open. */
   board: string[]
   lessons: string[]
+  /** Lines of `lean-gate stats` (rule hits over the last 7 days), read when the details open. */
+  stats: string[]
   /** Ponytail mode from ~/.claude/.ponytail-active, and the lines of lean-gate vendor status and phpcs status; read when the details open. */
   ptMode: string
   tools: string[]

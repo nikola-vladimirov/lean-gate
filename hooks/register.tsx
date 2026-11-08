@@ -41,6 +41,8 @@ import {
   releaseAction,
   sha1Hex,
   repoKey,
+  statRules,
+  statsView,
 } from './gate'
 import type { Config, Level, Project, RoutingKey } from './gate'
 import { DEMO_PRESETS, HELPER_LABEL, PACKS, PRESETS, REMINDER_LABEL, REMINDER_RULES, ROUTING_LABEL, RULE_GROUPS, RULE_INFO, STATE_FILES, TOP_LEGEND, explainFor } from './text'
@@ -63,6 +65,7 @@ const EMPTY: LeanGateBand = {
   shut: [],
   board: [],
   lessons: [],
+  stats: [],
   ptMode: '',
   tools: [],
   proj: '',
@@ -93,7 +96,7 @@ const DELEGATE = new Set(['Read', 'Grep', 'Glob'])
 const TOOL_MS = 3000
 const OTHER_MS = 5000
 const GIT_BASH = 'C:/Program Files/Git/bin/bash.exe'
-const LOG_LINES = 500
+const LOG_LINES = 2000
 
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const age = (ms: number) => (ms < 60000 ? '<1m' : ms < 3600000 ? `${Math.floor(ms / 60000)}m` : `${Math.floor(ms / 3600000)}h${Math.floor((ms % 3600000) / 60000)}m`)
@@ -134,6 +137,7 @@ function sane(raw: unknown): LeanGateBand {
     explain: r.explain === true,
     target: r.target === 'project' ? 'project' : 'global',
     lessons: Array.isArray(r.lessons) ? r.lessons.filter((n): n is string => typeof n === 'string').slice(0, 12) : [],
+    stats: Array.isArray(r.stats) ? r.stats.filter((n): n is string => typeof n === 'string').slice(0, 60) : [],
   }
 }
 const load = async ($: EngineInterface): Promise<LeanGateBand> => sane(await read($, band))
@@ -380,6 +384,10 @@ async function readBoard($: EngineInterface) {
 async function readLessons($: EngineInterface) {
   const r = await shell($, norm(await $.session.cwd()), 'lean-gate lessons')
   await patch($, { lessons: lines(r?.stdout ?? '', 12) })
+}
+async function readStats($: EngineInterface) {
+  const r = await shell($, norm(await $.session.cwd()), 'lean-gate stats 7')
+  await patch($, { stats: lines(r?.stdout ?? '', 60) })
 }
 
 // Project registry (~/.claude/lean-projects.json): which project the folder is, and whether a prompt names another one.
@@ -659,7 +667,8 @@ async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny
       await patch($, { stateAt: now })
     } else if (CODE_EDITED.test(path)) {
       mem.edited.add(path)
-      if (/.php$/i.test(path)) mem.php++
+      // PHPCS is for WordPress code only: a WordPress PHP edit, or any PHP once the WordPress skills are loaded.
+      if (/\.php$/i.test(path) && (mem.wpSkill || isWpCode(path, callText(e.tool, e as unknown as Record<string, unknown>)))) mem.php++
       await patch($, { codeAt: now })
     }
   }
@@ -775,6 +784,7 @@ export const register: Register = on => {
       await readMemory($)
       await readBoard($)
       await readLessons($)
+      await readStats($)
       await readTools($)
       await detectProject($)
     })().catch(() => undefined)
@@ -848,6 +858,7 @@ export const register: Register = on => {
         await readMemory($)
         await readBoard($)
         await readLessons($)
+        await readStats($)
         await readTools($)
       }
     }
@@ -980,6 +991,8 @@ export const register: Register = on => {
       <Box key={`group-${title}`} flexDirection="column" marginTop={i === 0 ? 0 : 1}>{fold(`rules:${title}`, `${title} (${rows.length})`, rows)}</Box>
     ))
     const recent = b.violations.slice(-5).reverse()
+    // The noisiest rule over the last 7 days that is still on (retired and switched-off rules read as off).
+    const noisy = statRules(b.stats).find(([r]) => level(r) !== 'off')
 
     // Rule builder: pick a ready-made pattern and a level, then Add. The draft lives in module memory, so a press only redraws.
     const preset = PRESETS[mem.draft.preset] ?? PRESETS[0]
@@ -1313,6 +1326,14 @@ export const register: Register = on => {
           </Box>,
           b.packs !== '' && note(<Text dimColor wrap="truncate-end">{b.packs}</Text>),
           note(<Text dimColor>Skill sets kept off so they cost no tokens at startup. on brings one back, off parks it. wp = WordPress skills, bricks = Bricks and BricksExtras skills, ui-ux = the UI/UX plugin.</Text>)
+        )}
+        {section(
+          'stats', 'Rule stats (7 days)',
+          b.stats.length === 0 ? note(<Text dimColor>no hits logged</Text>) : statsView(b.stats).map(l => note(<Text dimColor={!/^\d/.test(l)} wrap="truncate-end">{l}</Text>)),
+          <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
+            {noisy !== undefined && gb('stats-off', `Turn off ${noisy[0]} (${noisy[1]} hits)`, () => editConfig($, mem, 'rules', j => (j.rules = { ...(j.rules as object), [noisy[0]]: 'off' })).then(() => readStats($)), true)}
+            {gb('stats-refresh', 'Refresh', () => readStats($))}
+          </Box>
         )}
         {section(
           'violations', 'Recent violations',

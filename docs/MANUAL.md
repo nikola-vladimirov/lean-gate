@@ -3,37 +3,38 @@
 Contents table below: open only the section you need.
 
 <!-- toc -->
-- 38-52: How to keep this manual current
-- 53-87: Install, update and the rename
-- 88-345: The panel
-  - 92-100: Opening, closing, folding
-  - 101-114: Explain
-  - 115-135: The top row
-  - 136-153: Project
-  - 154-163: Rules
-  - 164-187: Rule builder
-  - 188-203: Model routing
-  - 204-214: Workflow and limits
-  - 215-235: Settings
-  - 236-247: Built-in helpers
-  - 248-261: Project memory
-  - 262-272: Board
-  - 273-285: Lessons and local rules
-  - 286-294: Review
-  - 295-305: Ponytail
-  - 306-319: WordPress checks
-  - 320-336: Packs
-  - 337-345: Recent violations
-- 346-408: Rules
-  - 396-408: Custom rules
-- 409-475: Configuration
-  - 457-475: Files
-- 476-502: CLI reference
-- 503-530: Hooks and helpers
-- 531-560: Skills and vendored tools
+- 39-53: How to keep this manual current
+- 54-88: Install, update and the rename
+- 89-357: The panel
+  - 93-101: Opening, closing, folding
+  - 102-115: Explain
+  - 116-136: The top row
+  - 137-154: Project
+  - 155-164: Rules
+  - 165-188: Rule builder
+  - 189-204: Model routing
+  - 205-215: Workflow and limits
+  - 216-236: Settings
+  - 237-248: Built-in helpers
+  - 249-262: Project memory
+  - 263-273: Board
+  - 274-286: Lessons and local rules
+  - 287-295: Review
+  - 296-306: Ponytail
+  - 307-320: WordPress checks
+  - 321-337: Packs
+  - 338-348: Rule stats (7 days)
+  - 349-357: Recent violations
+- 358-420: Rules
+  - 408-420: Custom rules
+- 421-487: Configuration
+  - 469-487: Files
+- 488-515: CLI reference
+- 516-543: Hooks and helpers
+- 544-573: Skills and vendored tools
 <!-- /toc -->
 
-This is the one place that documents every function of lean-gate: the panel, the rules, the settings, the command line, the hooks and the bundled tools. Version 1.0.0-beta.5. Short pages for special topics: [HUB.md](HUB.md) (the hub, project registry and layout), [../README.md](../README.md) (features, delegation, install).
+This is the one place that documents every function of lean-gate: the panel, the rules, the settings, the command line, the hooks and the bundled tools. Version 1.0.0-beta.7. Short pages for special topics: [HUB.md](HUB.md) (the hub, project registry and layout), [../README.md](../README.md) (features, delegation, install).
 
 ## How to keep this manual current
 
@@ -129,7 +130,7 @@ The panel is the control surface. It sits in a docked pane beside the chat, show
 | `explain` | Explain or Hide help | Shows or hides the explanation lines. |
 | `hide` | Close lean-gate panel | Closes the panel. |
 
-The counters `lead 6 / sub 0` and the meter `250k/300k` have no button. The state item reads `state -` before any code or state edit is seen. The violations item `⚠ 4` counts hits; the log keeps the latest 50 for the panel and 500 lines on disk.
+The counters `lead 6 / sub 0` and the meter `250k/300k` have no button. The state item reads `state -` before any code or state edit is seen. The violations item `⚠ 4` counts hits; the log keeps the latest 50 for the panel and 2000 lines on disk (enough for a week of `lean-gate stats`).
 
 Example: `mode` on warn, `route` on opus with `route-effort` xhigh. The next prompt carries "Routing for this task: opus:xhigh". Closing the session forgets it.
 
@@ -315,7 +316,7 @@ The audit and PHPCS check the PHP files changed since the last tag (PHPCS also t
 | `phpcs-std` | standard: WordPress | `phpcs_standard`. Cycles WordPress, WordPress-Extra, WordPress-Core, WordPress-Docs. |
 | `phpcs-status` | Refresh | Reads the PHPCS and vendored-tool status again. |
 
-The `phpcs-before-done` rule (warn only) logs a warning at the end of a turn that edited PHP without running PHPCS.
+The `phpcs-before-done` rule (warn only) logs a warning at the end of a turn that edited WordPress PHP without running PHPCS. PHP that is not WordPress (a Laravel app, a PHP library) is not judged. WordPress PHP is a file under `wp-content/`, an edit with WordPress calls in it (`add_action`, `wp_*`, `esc_*`, `WC_*`, a plugin header), or any PHP once a WordPress skill is loaded in the session.
 
 ### Packs
 
@@ -333,6 +334,17 @@ Packs are sets of skills and plugins that stay off until a task needs them. Ever
 | `ui-ux` | The UI/UX plugin (`ui-ux-pro-max@ui-ux-pro-max-skill`). |
 
 Nothing is deleted: skill folders move between `~/.claude/skills` and `~/.claude/skills-off`, and a plugin pack flips its switch in `settings.json`. Example: before a WordPress task, press `wp on`, then start a new session.
+
+### Rule stats (7 days)
+
+The output of `lean-gate stats 7`, read when the details open: the total, then the five rules and five project folders with the most hits. Use it to find the rule that warns most and is never acted on.
+
+| Key | Label | What it does |
+| --- | --- | --- |
+| `stats-off` | Turn off rule (n hits) | Sets the noisiest rule of the last 7 days that is still on to off, saved where presses save (global or this project, see Settings). Retired and already-off rules are skipped, so the next press offers the next one. Its level button under Rules turns it back on. |
+| `stats-refresh` | Refresh | Reads the stats again. |
+
+Example: `tests-before-done` shows 40 warnings in a week on scratch work; press Turn off, or set the target to this project first to turn it off here only.
 
 ### Recent violations
 
@@ -391,7 +403,7 @@ Once per session: `state-file-fresh`, `tests-before-done` and `phpcs-before-done
 | --- | --- | --- |
 | `wp-skills-for-wp-code` | warn | A wp-*, wordpress or woocommerce skill is loaded before WordPress code is edited. WordPress code is a PHP file under `wp-content/`, or PHP text that uses `add_action`, `add_filter`, `wp_*`, `esc_html`, `ABSPATH`, `WC_*`, `woocommerce_*` or a `Plugin Name:` header. An edit of plain lines with none of those words passes. A load earlier in the transcript counts. |
 | `docs-before-builder` | warn | The official docs were read before Bricks or WordPress code is edited. Reading docs means a web fetch or search, a Read of a docs, documentation or reference folder or `WORDPRESS.md`, or loading a wp or Bricks skill. |
-| `phpcs-before-done` | warn, warn only | PHPCS ran in a turn that edited PHP. PHPCS means `phpcs`, `phpcbf`, a composer lint script or `lean-gate phpcs`. Project folders only, once per session. |
+| `phpcs-before-done` | warn, warn only | PHPCS ran in a turn that edited WordPress PHP (other PHP is not judged; see WordPress checks). PHPCS means `phpcs`, `phpcbf`, a composer lint script or `lean-gate phpcs`. Project folders only, once per session. |
 
 ### Custom rules
 
@@ -463,7 +475,7 @@ A complete example:
 | `~/.claude/lean-gate.json.import-bak` | The global file as it was before the last `set-import`. |
 | `lean-gate-settings.json` | In the current folder: the file `set-export` writes and `set-import` reads. |
 | `<project>/.lean-gate.json` | Per-project tuning. Old name `.lean-project.json` is still read while no new file exists. |
-| `~/.claude/lean-violations.tsv` | The rule hit log: time, folder, rule, action (block, warn or allow-once), detail. Trimmed to its last 500 lines at session start. |
+| `~/.claude/lean-violations.tsv` | The rule hit log: time, folder, rule, action (block, warn or allow-once), detail. Trimmed to its last 2000 lines at session start. `lean-gate stats` and the Rule stats section read it. |
 | `~/.claude/lean-projects.json` | The project registry: name, path, aliases. |
 | `~/.claude/lean-review/` | The review marks, one small file per repo, kept outside the repo so they never ship in a zip. |
 | `~/.claude/lean-gate/memory/<project>/` | Project memory: `notes.md`, `notes-archive.md`, `links`. The `LEAN_MEMORY` variable moves the root. |
@@ -499,6 +511,7 @@ The `lean-gate` command is on Claude's PATH while the plugin is enabled. You can
 | `icm` | `icm links [root]`, `icm index <folder>`, `icm viz [root]` | The ICM checks on a hub project (needs Python 3). `links`: every relative link and input path that does not resolve; exit 1 if any. `index`: write `_index.md` in the folder. `viz`: draw the workspace as one interactive graph. |
 | `memory` | `memory add "<text>" [--tag decision, state, link or note] [--project P]`, `memory list`, `memory recall`, `memory forget <n>`, `memory link <other>`, `memory unlink <other>`, `memory index`, `memory projects` | Per-project memory. `add` writes a dated note. `list` numbers the notes. `recall` prints the notes plus the newest three of each linked project. `forget` moves note n to `notes-archive.md`. `link` and `unlink` tie projects together (both need notes). `index` is the one line session start prints. `projects` lists every project with its note count. The project is the git top-level folder name, lowercased. |
 | `gain` | `gain [dir]` | Appends one line per run to `gain.tsv` in the plugin data folder: date, project, auto-loaded tokens, session-start hook tokens, change since the last run for that project. Run it before and after a change to the guides. |
+| `stats` | `stats [days]` | Rule hits from `~/.claude/lean-violations.tsv` over the last `days` (default 7): the total, then hits per rule (split by block, warn and allow-once) and per project folder, most first. The old rule id `lean-project-first` counts as `lean-gate-first`; retired rules still show. `LEAN_VIOLATIONS` points it at another log. Example: `lean-gate stats 30`. |
 
 ## Hooks and helpers
 

@@ -1,7 +1,7 @@
 {
   "name": "lean-gate",
   "displayName": "lean-gate",
-  "version": "1.0.0-beta.6",
+  "version": "1.0.0-beta.7",
   "description": "A control panel and rule gate for how Claude works on your projects. It checks what Claude does and warns or blocks: model and effort on every agent, agent caps, release reviews, and project habits (state file, tests, PHPCS). Every setting is a button in a docked panel, with an Explain line for each. It carries token-saving project guides (plans, docs, file maps, memory, lessons, a shared agent board), ponytail, the WordPress performance audit, PHPCS with the WordPress standard and the ICM project layout, and registers, detects, starts and adopts projects.",
   "author": {
     "name": "nikola-vladimirov",

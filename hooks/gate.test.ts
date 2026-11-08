@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { isPhpcsCommand, DEFAULTS, parseRegistry, projectAt, projectMentioned, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
+import { isPhpcsCommand, statRules, statsView, DEFAULTS, parseRegistry, projectAt, projectMentioned, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
 
 test('config: project beats global, rules merge per key, bad JSON falls back to defaults', () => {
   const global = parseJson('{"mode":"block","rules":{"tests-before-done":"block"},"context_limit":200000}')
@@ -198,4 +198,11 @@ test('project registry: folder match picks the deepest project, a name in a prom
 test('isPhpcsCommand: phpcs, phpcbf, composer scripts and lean-gate or lean-project phpcs count; mentions do not', () => {
   for (const c of ['vendor/bin/phpcs src', 'phpcbf a.php', 'composer run lint', 'composer phpcs', 'lean-project phpcs', 'lean-gate phpcs', 'php vendor/bin/phpcs']) expect(isPhpcsCommand(c)).toBe(true)
   for (const c of ['cat phpcs.xml', 'git commit -m "run phpcs"', 'composer install', 'lean-project board']) expect(isPhpcsCommand(c)).toBe(false)
+})
+
+test('statRules and statsView: rule rows in order, groups cut to n rows, nothing without a by rule header', () => {
+  const out = ['rule hits in the last 7 days: 6 (log)', 'by rule:', '4  a-rule  (4 warn)', '1  b-rule  (1 block)', '1  c-rule  (1 warn)', 'by project:', '5  one', '1  two']
+  expect(statRules(out)).toEqual([['a-rule', 4], ['b-rule', 1], ['c-rule', 1]])
+  expect(statsView(out, 2)).toEqual(['rule hits in the last 7 days: 6 (log)', 'by rule:', '4  a-rule  (4 warn)', '1  b-rule  (1 block)', 'by project:', '5  one', '1  two'])
+  expect(statRules(['no rule hits logged yet (x)'])).toEqual([])
 })
