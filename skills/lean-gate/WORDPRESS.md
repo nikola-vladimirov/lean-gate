@@ -2,22 +2,23 @@
 
 The wp-* skills are on demand. Before plugin work, run `lean-gate pack status`; if they are off, `lean-gate pack on wp` and start a new session to load them.
 
-Read this before changing code in a WordPress plugin, theme, WooCommerce extension, Bricks element or block. It applies to companion plugins and scripts too. Routing: the session hook points here for any WordPress project; the audit at release is `lean-gate audit security` on the `lean-gate review-scope` list.
+Read this before changing code in a WordPress plugin, theme, WooCommerce extension, Bricks element or block. It applies to companion plugins and scripts too. Routing: the session hook points here for any WordPress project; the audit at release is `lean-gate audit security` on the `lean-gate review-scope` list, plus `lean-gate audit wporg` on the release zip for a WordPress.org plugin (section 7).
 
 Contents table below: open only the section you need.
 
 <!-- toc -->
-- 21-29: Contents
-- 30-43: 1. Read the docs in the right order
-- 44-52: 2. Check changelogs and version compatibility
-- 53-84: 3. Best practices
-- 85-103: 4. Security checklist
-- 104-126: 5. Fixes
-- 127-135: 6. Before calling it done
-- 136-152: WordPress, Page Builder, and Ecosystem Extensions
-  - 140-144: 1. Git-Predictive Dependency Mapping (`lean-gate map predict`)
-  - 145-149: 2. Phase-Gate Defensive Shield (`lean-gate check gate`)
-  - 150-152: 3. Context Waste Hound (`lean-gate audit waste`)
+- 24-32: Contents
+- 33-46: 1. Read the docs in the right order
+- 47-55: 2. Check changelogs and version compatibility
+- 56-87: 3. Best practices
+- 88-106: 4. Security checklist
+- 107-129: 5. Fixes
+- 130-139: 6. Before calling it done
+- 140-170: 7. WordPress.org review
+- 171-187: WordPress, Page Builder, and Ecosystem Extensions
+  - 175-179: 1. Git-Predictive Dependency Mapping (`lean-gate map predict`)
+  - 180-184: 2. Phase-Gate Defensive Shield (`lean-gate check gate`)
+  - 185-187: 3. Context Waste Hound (`lean-gate audit waste`)
 <!-- /toc -->
 
 ## Contents
@@ -134,6 +135,38 @@ After each fix, re-run `lean-gate audit security` on the affected files and conf
 - For WordPress or WooCommerce performance or HPOS risk, `lean-gate audit perf` has been run on the same list; CRITICAL hits are fixed or explained before the card is `done`. Deeper audits go to the `wp-woo-performance-audit` skill.
 - `php -l` and `lean-gate check gate <card>` pass for the changed PHP files.
 - For Bricks, WooCommerce checkout or block changes, the change has been tested in the real builder or site, not only in a mock (see the project's own testing rules).
+- For a plugin that goes to WordPress.org: `lean-gate audit wporg <release zip>` has been run and every finding fixed or explained (section 7).
+
+## 7. WordPress.org review
+
+The plugin review team rejects or closes plugins for the 18 detailed guidelines and a list of common issues. Every rule, distilled from all 102 Plugin Handbook pages with their sources, is in `reference/wp-plugin-handbook.md` (read its contents table, then one section). Writing code for a WordPress.org plugin, follow its Security, Common issues and readme.txt sections from the first line, not only at release.
+
+Before every zip, tag or SVN commit of a WordPress.org plugin, run `lean-gate audit wporg` on the release zip (or the plugin folder) and fix what it finds. The `wporg-audit-before-release` gate rule warns (or blocks, at block) on a zip, tag, GitHub release or `svn commit` of a plugin whose `readme.txt` has a `Stable tag:` when the audit has not run in the session, and on an SVN commit message that says nothing ("update", "cleanup").
+
+| Guideline | `audit wporg` flags | Check by hand |
+| --- | --- | --- |
+| Intro | | Contact email on WordPress.org is current, no auto-reply; security fixes ship fast |
+| G1 GPL | No or non-GPL `License:` in the main file or readme; bundled Composer libraries with a non-GPL license | Fonts, images and copied snippets are GPL-compatible |
+| G2 Responsible | (all checks) | Third-party API terms allow the use; code a reviewer asked to remove stays removed |
+| G3 Stable version | `Stable tag: trunk` | The directory copy is never behind other channels |
+| G4 Readable code | `eval(base64_decode`, packed or hex-escaped code; minified JS with no source in the zip and no source link in the readme | Names mean something |
+| G5 No trialware | Calls like `is_pro()`, `license_is_valid()`, `trial_days()` | Nothing locked, nothing expires; premium code lives in an add-on |
+| G6 SaaS | Every outside host in code must be named in `== External services ==` | The service does real work, not only licence checks |
+| G7 No tracking | Telemetry and analytics code; hosts missing from `== External services ==` | Every outside call is opt-in or part of a documented service |
+| G8 No remote code | Update checkers, upgraders, CDN scripts and styles (fonts excepted), admin iframes | Nothing installs or updates from outside wp.org |
+| G9 Honest | Crypto mining; "GDPR compliant", "guarantees compliance" in the readme | No fake reviews, no traffic promises |
+| G10 No credits | `Powered by` in code | Any front-end credit is opt-in, off by default |
+| G11 Dashboard | `admin_notices` with no dismissal or screen check; `remove_all_actions( 'admin_notices' )` | Upsells only on the plugin's own screens, sparingly |
+| G12 Readme spam | More than 5 tags, repeated tags, affiliate or short links | No competitor names as tags; written for people |
+| G13 Core libraries | Bundled jQuery, jQuery UI, React, Lodash, Underscore, Backbone, Moment, Masonry, PHPMailer, SimplePie, phpass, PclZip, getID3, Requests, sodium_compat | |
+| G14 SVN | Vague SVN commit messages (gate rule) | Commit to SVN only finished releases, not every change |
+| G15 Versions | `Stable tag` differs from `Version:`; version constant differs; no changelog entry for the version | Every release raises the version |
+| G16 Complete | "lorem ipsum", "coming soon" in the readme | The zip works as submitted; no name reserving |
+| G17 Trademarks | Slug or name starting with a brand (WooCommerce, Woo, Google, Temu, PayPal...), `wordpress` anywhere in the slug, `plugin` in the slug, Text Domain not the slug | Brand names only after "for", "with" or "using" |
+| G18 Directory rights | | Reviewers can change the rules or close a plugin: answer review emails in full |
+| Common issues | Inline `<script>`/`<style>`, unsanitized nonces, whole `$_POST` arrays, `json_decode` on request data, file writes outside uploads, code editors and CSS compilers, HEREDOC, short tags, unescaped `_e()`, variable gettext, raw cURL, global PHP settings (`set_time_limit`, `ini_set`), reserved `wp_` prefixes, changing other plugins, `register_setting` with no sanitizer, missing `ABSPATH` guards, dev and hidden files, bundled translations, `.phar`, `core/` block names, readme over 10 KB or missing fields, zip over 10 MB, outdated Composer libraries | Prefix everything with the slug; escape late, sanitize early |
+
+The scan is a heuristic: it finds lines to read, and a clean run does not mean the review will pass.
 
 ## WordPress, Page Builder, and Ecosystem Extensions
 

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { isPhpcsCommand, loweredRules, callText, hasEmDash, releaseActions, shellCommand, toolMatches, statRules, statsView, DEFAULTS, parseRegistry, projectAt, projectMentioned, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
+import { isPhpcsCommand, isWporgAuditCommand, svnCommitMessage, vagueCommitMessage,loweredRules, callText, hasEmDash, releaseActions, shellCommand, toolMatches, statRules, statsView, DEFAULTS, parseRegistry, projectAt, projectMentioned, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
 
 test('config: project beats global, rules merge per key, bad JSON falls back to defaults', () => {
   const global = parseJson('{"mode":"block","rules":{"tests-before-done":"block"},"context_limit":200000}')
@@ -193,6 +193,17 @@ test('project registry: folder match picks the deepest project, a name in a prom
   expect(projectMentioned(reg, 'fix the Nashenski checkout', 'E:/Claude Sessions/nashenski')).toBeUndefined()
   expect(projectMentioned(reg, 'nothing here', 'C:/x')).toBeUndefined()
   expect(parseRegistry('{ nope')).toEqual([])
+})
+
+test('wporg helpers: audit command, svn commit message, vague messages', () => {
+  for (const c of ['lean-gate audit wporg', 'bash bin/lean-gate audit wporg x.zip', 'cd p && lean-project audit wporg .']) expect(isWporgAuditCommand(c)).toBe(true)
+  for (const c of ['lean-gate audit security', 'echo "lean-gate audit wporg"', 'git commit -m "lean-gate audit wporg"']) expect(isWporgAuditCommand(c)).toBe(false)
+  expect(svnCommitMessage('svn ci -m "Release 1.2: maps"')).toBe('Release 1.2: maps')
+  expect(svnCommitMessage('cd trunk && svn commit --message=fix')).toBe('fix')
+  expect(svnCommitMessage('svn commit')).toBe('')
+  expect(svnCommitMessage('svn up')).toBeUndefined()
+  for (const m of ['update', 'Cleanup.', 'fix', '', 'tweak readme']) expect(vagueCommitMessage(m)).toBe(true)
+  expect(vagueCommitMessage('Release 1.2.0: Econt office maps')).toBe(false)
 })
 
 test('isPhpcsCommand: phpcs, phpcbf, composer scripts and lean-gate or lean-project phpcs count; mentions do not', () => {

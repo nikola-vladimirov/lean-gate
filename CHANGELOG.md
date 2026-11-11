@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `lean-gate audit wporg [dir or zip]`: the WordPress.org plugin review checks, one or more per detailed guideline (G1 to G17) plus the review team common issues (inline scripts and styles, unsanitized nonces and JSON, file writes outside uploads, code editors, undocumented external services, dev and translation files, outdated libraries, readme and zip limits).
+- New rule `wporg-audit-before-release` (warn): a zip, tag, GitHub release or SVN commit of a WordPress.org plugin needs `audit wporg` first; vague SVN commit messages are flagged (guideline 14).
+- `reference/wp-plugin-handbook.md`: every rule from the 102 Plugin Handbook pages, with sources; WORDPRESS.md section 7 maps each guideline to its check.
+
 ## 1.0.1 (2026-11-08)
 
 - The selftest runs on macOS too (CI matrix: Linux and macOS).

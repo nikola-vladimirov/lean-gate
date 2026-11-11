@@ -19,6 +19,7 @@
 #   lean-gate audit security [dir or files...]  WordPress anti-patterns in PHP and JS (unescaped output, unprepared SQL, missing nonce or capability checks); files = the release list from review-scope
 #   lean-gate handoff [docs/PLAN.md]  draft of the state file: branch, next tasks, cards in flight (prints only)
 #   lean-gate delegate config | set <key> <value> | check | run <brief> <output>   route bulk work to the project's runner (none, llama, opencode)
+#   lean-gate audit wporg [dir or zip]   WordPress.org review checks: inline script/style, unsanitized nonces and JSON, file writes, code editors, undocumented external services, dev and translation files, outdated libraries
 #   lean-gate audit perf [dir or files...]  performance and HPOS scan of WordPress and WooCommerce code (wp-woo-performance-audit skill); files = the release list from review-scope
 #   lean-gate pack status|on|off <bricks|wp|ui-ux>   skill packs and plugins that stay off until needed; takes effect in the next session
 #   lean-gate icm links|index|viz [folder]   the ICM checks on a hub project: unresolved links, folder indexes, a graph (needs Python 3)
@@ -856,7 +857,8 @@ case "$cmd" in
       waste) shift; cmd_waste "$@" ;;
       security) shift; cmd_audit_security "$@" ;;
       perf) shift; cmd_audit_perf "$@" || exit 1 ;;
-      *) die "audit: 'audit waste [dir] [--apply]', 'audit security [dir or files...]' or 'audit perf [dir or files...]'" ;;
+      wporg) shift; cmd_audit_wporg "$@" ;;
+      *) die "audit: 'audit waste [dir] [--apply]', 'audit security [dir or files...]', 'audit perf [dir or files...]' or 'audit wporg [dir or zip]'" ;;
     esac ;;
   frontier) cmd_frontier "$@" ;;
   lesson) cmd_lesson "$@" ;;

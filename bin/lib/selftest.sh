@@ -236,6 +236,29 @@ cmd_selftest() {
   echo "$sec" | grep -q 'a.php:4: SQL built from a variable' || { echo "FAIL security missed unprepared SQL"; fail=1; }
   echo "$sec" | grep -q 'a.php:5: eval' || { echo "FAIL security missed eval"; fail=1; }
   echo "$sec" | grep -q 'a.php: AJAX, admin-post or REST handler' || { echo "FAIL security missed a handler with no check"; fail=1; }
+  # audit wporg: each guideline and review-email check fires on its line; the safe forms do not
+  wp="$tmp/woocommerce-helper"; mkdir -p "$wp/languages" "$wp/vendor/acme/lib/.idea" "$wp/vendor/composer" "$wp/js"
+  printf '%s\n' '<?php' '/**' ' * Plugin Name: WooCommerce Helper' ' * Version: 1.2.0' ' * License: Proprietary' ' * Text Domain: woocommerce-helper' ' */' \
+    "defined( 'ABSPATH' ) || exit;" "define( 'WCH_VERSION', '1.1.0' );" "echo '<style>.a{}</style>';" "if ( wp_verify_nonce( \$post['_n'], 'a' ) ) {}" \
+    "if ( wp_verify_nonce( sanitize_text_field( wp_unslash( \$_POST['_n'] ) ), 'a' ) ) {}" "\$d = json_decode( wp_unslash( \$_POST['c'] ), true );" \
+    "file_put_contents( __DIR__ . '/x.json', 'a' );" "wp_enqueue_code_editor( array() );" "eval( base64_decode( 'eA==' ) );" "if ( is_pro() ) {}" \
+    "wp_enqueue_script( 'x', 'https://cdn.example.net/x.js' );" "wp_enqueue_style( 'f', 'https://fonts.googleapis.com/css2?family=A' );" \
+    "echo 'Powered by Helper';" "add_action( 'admin_notices', 'wch_nag' );" "\$s = <<<EOT" 'x' 'EOT;' "wp_remote_get( 'https://api.acme.io/v1' );" > "$wp/woocommerce-helper.php"
+  printf '%s\n' '<?php' 'echo 1;' > "$wp/loose.php"
+  printf '%s\n' '=== WooCommerce Helper ===' 'Contributors: me' 'Tags: a, b, c, d, e, f' 'Requires at least: 6.5' 'Tested up to: 6.9' 'Requires PHP: 7.4' 'Stable tag: 1.1.0' 'License: GPLv2 or later' '' 'Short.' '' '== Changelog ==' '= 1.1.0 =' '* x' > "$wp/readme.txt"
+  touch "$wp/languages/woocommerce-helper-bg_BG.mo" "$wp/js/jquery.min.js"
+  printf '%s\n' '[' '{ "name": "acme/lib", "version": "1.0.0", "license": [ "proprietary" ] }' ']' > "$wp/vendor/composer/installed.json"
+  wa=$(cmd_audit_wporg "$wp")
+  for want in 'woocommerce-helper.php:10: inline <script> or <style>' 'woocommerce-helper.php:11: nonce reaches wp_verify_nonce' 'woocommerce-helper.php:13: json_decode on request data' \
+    'woocommerce-helper.php:14: writes a file outside uploads' 'woocommerce-helper.php:15: code editor' 'woocommerce-helper.php:16: G4:' 'woocommerce-helper.php:17: G5:' \
+    'woocommerce-helper.php:18: G8: JS or CSS from a CDN' 'woocommerce-helper.php:20: G10:' 'woocommerce-helper.php:21: G11:' 'woocommerce-helper.php:22: HEREDOC' \
+    'G1: License: Proprietary' 'G15: version constant 1.1.0' 'G15: Stable tag 1.1.0 does not match' 'G12: 6 tags' 'G17: starts with a trademark' 'api.acme.io' \
+    'without a direct-access guard (defined( '"'"'ABSPATH'"'"' ) || exit;): loose.php' 'languages/woocommerce-helper-bg_BG.mo: translation file' 'vendor/acme/lib/.idea: dev or hidden' \
+    'js/jquery.min.js: G13' 'vendor/acme/lib: G1: license proprietary'; do
+    echo "$wa" | grep -qF "$want" || { echo "FAIL audit wporg missed: $want"; fail=1; }
+  done
+  echo "$wa" | grep -q 'woocommerce-helper.php:12: ' && { echo "FAIL audit wporg flagged a sanitized nonce"; fail=1; }
+  echo "$wa" | grep -q 'woocommerce-helper.php:19: G8' && { echo "FAIL audit wporg flagged a font CDN"; fail=1; }
   # gain: each run adds one line to gain.tsv and the second run shows a change figure
   gd="$tmp/gain"; mkdir -p "$gd/proj"
   (cd "$gd/proj" && CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain > /dev/null)

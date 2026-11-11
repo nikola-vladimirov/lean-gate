@@ -24,7 +24,7 @@ export const RULE_GROUPS: readonly (readonly [string, readonly string[]])[] = [
   ['Agents and models', ['agent-needs-model-effort', 'no-haiku-coding', 'free-opencode-only', 'delegate-more', 'max-agents', 'review-edited-files-only', 'distinctive-session-names']],
   ['Every session', ['lean-gate-first', 'ponytail-active', 'state-file-fresh', 'tests-before-done', 'no-em-dashes']],
   ['Releases and git', ['release-needs-review', 'changelog-before-tag', 'push-after-tag', 'one-pr-per-fix', 'no-demo-files-public']],
-  ['WordPress and docs', ['wp-skills-for-wp-code', 'docs-before-builder', 'phpcs-before-done']],
+  ['WordPress and docs', ['wp-skills-for-wp-code', 'docs-before-builder', 'phpcs-before-done', 'wporg-audit-before-release']],
 ]
 export const RULE_INFO: Record<string, string> = {
   'agent-needs-model-effort': 'Agent calls must set a model and effort',
@@ -38,6 +38,7 @@ export const RULE_INFO: Record<string, string> = {
   'state-file-fresh': 'Touch the state file after code edits',
   'tests-before-done': 'Run tests after code edits',
   'phpcs-before-done': 'Run PHPCS after PHP edits',
+  'wporg-audit-before-release': 'WordPress.org audit before a release or SVN commit',
   'no-em-dashes': 'No em dashes in files or commit messages',
   'distinctive-session-names': 'Sub-session titles start with date and time',
   'release-needs-review': 'Review before a release tag',

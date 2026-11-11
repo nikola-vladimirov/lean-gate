@@ -24,6 +24,7 @@ export const RULES = [
   'one-pr-per-fix',
   'distinctive-session-names',
   'phpcs-before-done',
+  'wporg-audit-before-release',
 ] as const
 export type Rule = (typeof RULES)[number]
 // Old rule ids from before the rename to lean-gate, still read from config files.
@@ -107,6 +108,7 @@ export const DEFAULTS: Config = {
     'one-pr-per-fix': 'warn',
     'distinctive-session-names': 'block',
     'phpcs-before-done': 'warn',
+    'wporg-audit-before-release': 'warn',
   },
   max_agents: 0,
   workflow: '',
@@ -667,6 +669,30 @@ export function isPhpcsCommand(command: string): boolean {
     return INTERPRETERS.has(n) && a.some(x => /(^|\/)phpc(s|bf)(\.phar)?$/.test(x))
   })
 }
+
+// lean-gate audit wporg, run directly or through bash.
+export function isWporgAuditCommand(command: string): boolean {
+  return allSegments(command).some(seg => {
+    let a = exe(seg).map(x => x.v)
+    if (INTERPRETERS.has(progName(a[0] ?? ''))) a = a.slice(1).filter(x => !x.startsWith('-'))
+    return ['lean-gate', 'lean-project'].includes(progName(a[0] ?? '')) && a[1] === 'audit' && a[2] === 'wporg'
+  })
+}
+
+// The message of an `svn commit` / `svn ci` in the command: '' when none is given, undefined when there is no svn commit.
+export function svnCommitMessage(command: string): string | undefined {
+  for (const seg of allSegments(command)) {
+    const a = exe(seg).map(x => x.v)
+    if (progName(a[0] ?? '') !== 'svn' || !['commit', 'ci'].includes(a[1] ?? '')) continue
+    const k = a.findIndex(x => x === '-m' || x === '--message')
+    const eq = a.find(x => x.startsWith('--message='))
+    return k > 0 ? (a[k + 1] ?? '') : eq !== undefined ? eq.slice(10) : ''
+  }
+  return undefined
+}
+
+// G14: a WordPress.org SVN commit message that says nothing about the change ("update", "cleanup", one or two words).
+export const vagueCommitMessage = (msg: string) => msg.trim().split(/\s+/).filter(Boolean).length < 3 || /^(update[sd]?|clean ?up|fix(es)?|wip|test|changes|minor( changes)?|commit)\.?$/i.test(msg.trim())
 
 export function isTestCommand(command: string): boolean {
   return allSegments(command).some(seg => {

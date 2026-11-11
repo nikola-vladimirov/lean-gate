@@ -30,6 +30,9 @@ import {
   isStateFile,
   isTestCommand,
   isPhpcsCommand,
+  isWporgAuditCommand,
+  svnCommitMessage,
+  vagueCommitMessage,
   isWpCode,
   isWpSkill,
   reviewUnscoped,
@@ -169,6 +172,8 @@ type Mem = {
   counted: Map<string, RoutingKey[]>
   tagged: boolean
   pushed: boolean
+  // lean-gate audit wporg ran this session (wporg-audit-before-release).
+  wporg: boolean
   // One-shot overrides from the band: the next hit of this rule is allowed (even a block) or blocked (even a warn).
   once: Map<string, 'allow' | 'block'>
   run: number
@@ -503,6 +508,23 @@ async function changelogUnchanged($: EngineInterface, dir: string): Promise<bool
   return names !== undefined && names.exitCode === 0 && changelogMissing(names.stdout.split('\n').filter(f => f.trim() !== ''))
 }
 
+// wporg-audit-before-release: a WordPress.org SVN commit needs a message that says what changed (G14), and an SVN commit,
+// zip or tag of a WordPress.org plugin (readme.txt with a Stable tag) needs lean-gate audit wporg earlier in the session.
+async function wporgCheck($: EngineInterface, mem: Mem, cfg: Config, cmd: string, rel: Release | undefined): Promise<string | undefined> {
+  const msg = svnCommitMessage(cmd)
+  if (msg !== undefined && vagueCommitMessage(msg)) {
+    const deny = await trip($, mem, cfg, 'wporg-audit-before-release', `svn commit message "${cut(msg, 40)}"`, 'lean-gate: WordPress.org SVN is for releases only (G14): commit a finished version with a message that says what changed')
+    if (deny !== undefined) return deny
+  }
+  if (mem.wporg) return undefined
+  if (msg === undefined) {
+    if (rel === undefined || rel.what.startsWith('git push')) return undefined
+    const r = await readFile($, `${rel.dir}/readme.txt`)
+    if (r.kind !== 'ok' || !/^Stable tag:/im.test(r.text)) return undefined
+  }
+  return trip($, mem, cfg, 'wporg-audit-before-release', `${msg === undefined ? rel?.what : 'svn commit'} with no lean-gate audit wporg this session`, 'lean-gate: run lean-gate audit wporg on the release zip (or the plugin folder) and fix what it finds, then release')
+}
+
 // Records a violation and returns the deny text when the rule blocks. Warn: allow and toast once per turn.
 async function trip($: EngineInterface, mem: Mem, cfg: Config, rule: string, detail: string, message: string, canBlock = true): Promise<string | undefined> {
   const level = effective(cfg, rule)
@@ -661,6 +683,10 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
       const deny = await trip($, mem, cfg, 'changelog-before-tag', `${relAny.what} with no changelog or readme change since the last tag`, 'lean-gate: write the changelog (and readme if behaviour changed) before tagging')
       if (deny !== undefined) return deny
     }
+    if (effective(cfg, 'wporg-audit-before-release') !== 'off') {
+      const deny = await wporgCheck($, mem, cfg, cmd, relAny)
+      if (deny !== undefined) return deny
+    }
     const rel = effective(cfg, 'release-needs-review') === 'off' ? undefined : relAny
     if (rel !== undefined) {
       const state = await reviewState($, rel.dir, TOOL_MS)
@@ -710,6 +736,7 @@ async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny
     await patch($, { tests: ran.isError ? 'fail' : 'pass' })
   }
   if (cmd !== undefined && isPhpcsCommand(cmd)) mem.phpcs = true
+  if (cmd !== undefined && isWporgAuditCommand(cmd) && !ran.isError) mem.wporg = true
   if ((e.tool === 'Edit' || e.tool === 'Write') && !ran.isError) {
     const path = norm(e.file_path)
     const now = await $.clock.now()
@@ -726,7 +753,7 @@ async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny
 }
 
 export const register: Register = on => {
-  const mem: Mem = { edited: new Set(), stateTouched: false, tested: false, phpcs: false, php: 0, warned: new Set(), nagged: new Set(), leanLoaded: false, wpSkill: false, draft: { preset: 0, level: 'warn' }, docsRead: false, agents: 0, agentsBy: {}, counted: new Map(), tagged: false, pushed: false, once: new Map(), run: 0, lead: 0, sub: 0, chain: Promise.resolve() }
+  const mem: Mem = { edited: new Set(), stateTouched: false, tested: false, phpcs: false, php: 0, warned: new Set(), nagged: new Set(), leanLoaded: false, wpSkill: false, draft: { preset: 0, level: 'warn' }, docsRead: false, agents: 0, agentsBy: {}, counted: new Map(), tagged: false, pushed: false, wporg: false, once: new Map(), run: 0, lead: 0, sub: 0, chain: Promise.resolve() }
   const resetTurn = () => {
     mem.edited.clear()
     mem.stateTouched = false
@@ -810,7 +837,7 @@ export const register: Register = on => {
   on('session.end', async ($, e, next) => {
     if (e.reason === 'clear') {
       mem.run = mem.lead = mem.sub = 0
-      mem.leanLoaded = mem.wpSkill = mem.docsRead = false
+      mem.leanLoaded = mem.wpSkill = mem.docsRead = mem.wporg = false
       mem.once.clear()
       mem.nagged.clear()
       await patch($, { lead: 0, sub: 0, run: 0, violations: [] }).catch(() => undefined)

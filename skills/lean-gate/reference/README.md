@@ -5,6 +5,7 @@ These files are not installed skills. Nothing loads them at session start, so th
 | File | Use it for | Source |
 |---|---|---|
 | wordpress-agent-skills/wp-plugin-directory-guidelines.md | Checking a plugin against the WordPress.org rules (GPL, naming, upsells, Plugin Check) | WordPress/agent-skills, GPL-2.0-or-later |
+| wp-plugin-handbook.md | Every rule from the 102 Plugin Handbook pages (basics, security, hooks, settings, REST, i18n, privacy, readme.txt, SVN, the 18 guidelines, the review team's common issues), with machine-checkable patterns | developer.wordpress.org, distilled 2026-11-11 (rules in our own words, sources per section) |
 | wordpress-agent-skills/wp-phpstan.md | Setting up and fixing PHPStan in a WordPress project | WordPress/agent-skills, GPL-2.0-or-later |
 | guard-skills/docs-guard.md | Checking docs against the code they describe | amElnagdy/guard-skills, MIT |
 | guard-skills/test-guard.md | Reviewing tests for bloat and weak assertions | amElnagdy/guard-skills, MIT |

@@ -396,6 +396,20 @@ test('rule 8 delegate-more: warn toasts once at the threshold and allows', async
   expect(lines(w.files).filter(l => l.includes('\tdelegate-more\twarn\t')).length).toBe(1)
 })
 
+test('wporg-audit-before-release: a wp.org plugin zip or svn commit needs lean-gate audit wporg first; vague svn messages are refused', async ($, on) => {
+  const off = { 'lean-gate-first': 'off', 'ponytail-active': 'off', 'release-needs-review': 'off', 'changelog-before-tag': 'off', 'wporg-audit-before-release': 'block' }
+  const w = world(on, config({ mode: 'block', rules: off }))
+  // No readme.txt with a Stable tag: not a WordPress.org plugin, so a zip is not judged.
+  expect((await $.tool.call(BASH('php nashenski-tools/zip.php'))).deny).toBeUndefined()
+  w.files['C:/proj/readme.txt'] = '=== P ===\nStable tag: 1.0.0\n'
+  expect((await $.tool.call(BASH('php nashenski-tools/zip.php'))).deny).toContain('lean-gate audit wporg')
+  expect((await $.tool.call(BASH('svn ci -m "Release 1.0.0: new tracking map"'))).deny).toContain('lean-gate audit wporg')
+  await $.tool.call(BASH('bash bin/lean-gate audit wporg releases/p.zip'))
+  expect((await $.tool.call(BASH('php nashenski-tools/zip.php'))).deny).toBeUndefined()
+  expect((await $.tool.call(BASH('svn ci -m "Release 1.0.0: new tracking map"'))).deny).toBeUndefined()
+  expect((await $.tool.call(BASH('svn commit -m "update"'))).deny).toContain('G14')
+})
+
 test('phpcs-before-done: PHP edited and no PHPCS run is logged at turn end, a PHPCS run clears it', async ($, on) => {
   const w = world(on, config({ mode: 'warn', rules: { 'lean-gate-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off', 'state-file-fresh': 'off', 'tests-before-done': 'off' } }))
   w.dirs['C:/proj'] = ['.git']
