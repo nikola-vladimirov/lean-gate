@@ -31,7 +31,7 @@ import {
   isTestCommand,
   isPhpcsCommand,
   isWporgAuditCommand,
-  svnCommitMessage,
+  svnCommit,
   vagueCommitMessage,
   isWpCode,
   isWpSkill,
@@ -508,21 +508,27 @@ async function changelogUnchanged($: EngineInterface, dir: string): Promise<bool
   return names !== undefined && names.exitCode === 0 && changelogMissing(names.stdout.split('\n').filter(f => f.trim() !== ''))
 }
 
-// wporg-audit-before-release: a WordPress.org SVN commit needs a message that says what changed (G14), and an SVN commit,
-// zip or tag of a WordPress.org plugin (readme.txt with a Stable tag) needs lean-gate audit wporg earlier in the session.
+// wporg-audit-before-release, one trip per command: a zip, tag, GitHub release or SVN commit of a WordPress.org plugin
+// (readme.txt with a Stable tag) needs lean-gate audit wporg earlier in the session or in the same command, and an SVN
+// commit needs a message that says what changed (G14).
+// shortcut: an svn commit is judged from the session folder and its trunk/; a cd inside the command is not followed.
 async function wporgCheck($: EngineInterface, mem: Mem, cfg: Config, cmd: string, rel: Release | undefined): Promise<string | undefined> {
-  const msg = svnCommitMessage(cmd)
-  if (msg !== undefined && vagueCommitMessage(msg)) {
-    const deny = await trip($, mem, cfg, 'wporg-audit-before-release', `svn commit message "${cut(msg, 40)}"`, 'lean-gate: WordPress.org SVN is for releases only (G14): commit a finished version with a message that says what changed')
-    if (deny !== undefined) return deny
+  const svn = svnCommit(cmd)
+  if (svn === undefined && (rel === undefined || !/^(zip\.php|git tag|gh release (create|upload))/.test(rel.what))) return undefined
+  const cwd = norm(await $.session.cwd())
+  let wporg = false
+  for (const d of svn !== undefined ? [cwd, `${cwd}/trunk`] : [rel?.dir ?? cwd]) {
+    const r = await readFile($, `${d}/readme.txt`)
+    if (r.kind === 'ok' && /^Stable tag:/im.test(r.text)) wporg = true
   }
-  if (mem.wporg) return undefined
-  if (msg === undefined) {
-    if (rel === undefined || rel.what.startsWith('git push')) return undefined
-    const r = await readFile($, `${rel.dir}/readme.txt`)
-    if (r.kind !== 'ok' || !/^Stable tag:/im.test(r.text)) return undefined
-  }
-  return trip($, mem, cfg, 'wporg-audit-before-release', `${msg === undefined ? rel?.what : 'svn commit'} with no lean-gate audit wporg this session`, 'lean-gate: run lean-gate audit wporg on the release zip (or the plugin folder) and fix what it finds, then release')
+  if (!wporg) return undefined
+  const what = svn !== undefined ? 'svn commit' : (rel?.what ?? '')
+  const vague = svn?.message !== undefined && vagueCommitMessage(svn.message)
+  const unaudited = !mem.wporg && !isWporgAuditCommand(cmd)
+  if (!vague && !unaudited) return undefined
+  const detail = [vague ? `${what} message "${cut(svn?.message ?? '', 40)}"` : '', unaudited ? `${what} with no lean-gate audit wporg this session` : ''].filter(Boolean).join('; ')
+  const why = [vague ? 'WordPress.org SVN is for releases only (G14): commit a finished version with a message that says what changed' : '', unaudited ? 'run lean-gate audit wporg on the release zip (or the plugin folder) and fix what it finds, then release' : ''].filter(Boolean).join('; ')
+  return trip($, mem, cfg, 'wporg-audit-before-release', detail, `lean-gate: ${why}`)
 }
 
 // Records a violation and returns the deny text when the rule blocks. Warn: allow and toast once per turn.
@@ -736,7 +742,11 @@ async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny
     await patch($, { tests: ran.isError ? 'fail' : 'pass' })
   }
   if (cmd !== undefined && isPhpcsCommand(cmd)) mem.phpcs = true
-  if (cmd !== undefined && isWporgAuditCommand(cmd) && !ran.isError) mem.wporg = true
+  if (cmd !== undefined && isWporgAuditCommand(cmd) && !ran.isError) {
+    // Only a finished scan counts: its summary line is in the output (a pipe can hide a failed run's exit status).
+    const out = (ran as { result?: { stdout?: unknown } }).result?.stdout
+    if (typeof out !== 'string' || /WPORG AUDIT: \d+ finding/.test(out)) mem.wporg = true
+  }
   if ((e.tool === 'Edit' || e.tool === 'Write') && !ran.isError) {
     const path = norm(e.file_path)
     const now = await $.clock.now()
@@ -745,6 +755,8 @@ async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny
       await patch($, { stateAt: now })
     } else if (CODE_EDITED.test(path)) {
       mem.edited.add(path)
+      // Code changed after the audit: the release needs a fresh one.
+      mem.wporg = false
       // PHPCS is for WordPress code only: a WordPress PHP edit, or any PHP once the WordPress skills are loaded.
       if (/\.php$/i.test(path) && (mem.wpSkill || isWpCode(path, callText(e.tool, e as unknown as Record<string, unknown>)))) mem.php++
       await patch($, { codeAt: now })

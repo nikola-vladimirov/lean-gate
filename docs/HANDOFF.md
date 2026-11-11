@@ -1,6 +1,6 @@
 # lean-gate hub: handoff
 
-Updated 2026-11-08. Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). `1.0.1` released: tag `v1.0.1` on `main` and `hub` (same commit, CI green on Linux and macOS), GitHub release page published, pushed and installed as `lean-gate@lean-gate` from the default branch (the `hub` ref is gone from `~/.claude/settings.json` and `plugins/known_marketplaces.json`; backups `*.bak-before-1.0.0`). The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). Work continues on `hub`; release by fast-forwarding `main`.
+Updated 2026-11-11. `1.1.0` released (see below). Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08; GitHub redirects the old URL). `1.0.1` released: tag `v1.0.1` on `main` and `hub` (same commit, CI green on Linux and macOS), GitHub release page published, pushed and installed as `lean-gate@lean-gate` from the default branch (the `hub` ref is gone from `~/.claude/settings.json` and `plugins/known_marketplaces.json`; backups `*.bak-before-1.0.0`). The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). Work continues on `hub`; release by fast-forwarding `main`.
 
 Guides: `docs/HUB.md` (start here), `docs/MANUAL.md` (every button, rule, setting and command; update it with every feature or fix, `lean-gate selftest` checks it), `skills/lean-gate/STRUCTURE.md` (project layout), `CHANGELOG.md` (every version).
 
@@ -25,15 +25,17 @@ Release steps (used for 1.0.0 and 1.0.1): commit on `hub`, `git fetch . hub:main
 - The GitHub page looked broken in the app browser pane: GitHub loaded without its styles and scripts there (no githubassets.com requests). The manual itself renders fine (checked with the GitHub API).
 - Lessons review: none older than 14 days; two newer lessons that repeat existing rules were dropped to `LESSONS-ARCHIVE.md`.
 
-## Unreleased: WordPress.org review safeguards (2026-11-11, uncommitted on `hub`)
+## 1.1.0: WordPress.org review safeguards (2026-11-11)
 
 Prompted by two WordPress.org review emails (Nashenski Commerce, TokenForge). New `bin/lib/wporg.sh` (`lean-gate audit wporg <dir or zip>`): checks per detailed guideline G1 to G17 plus the review team common issues. New gate rule `wporg-audit-before-release` (warn): zip, tag, gh release or svn commit of a plugin with `Stable tag:` needs the audit in the session; vague svn messages flagged (G14). `reference/wp-plugin-handbook.md`: all 102 Plugin Handbook pages plus the Common APIs security pages, distilled by two Sonnet agents from the REST API text (`/wp-json/wp/v2/plugin-handbook`, `apis-handbook`), 843 lines. WORDPRESS.md section 7 maps guidelines to checks.
 - Tried on the real code: every item in both emails is flagged on the Nashenski 0.21.4 zip (TokenForge wporg code was already fixed). False positives removed: cache-folder writes (uploads resolved plugin-wide), `*_MIN_PHP_VERSION` constants, Silence is golden `index.php`, XML namespaces.
-- Checks: 82 tests, selftest (new wporg fixture), validate, tsc (old errors only). Not committed, not released.
+- Release review (one Opus reviewer, code changed since v1.0.1): 12 findings, all fixed with a failing-first test. Highest: `composer outdated` ran inside an untrusted zip (Composer plugins could run code); now never on a zip and always `--no-plugins`. Also: `build/` and `dist/` were not scanned, two trips per svn commit spent an allow-once, svn parsing (global options, `-F`, `-mX`), the audit counted when it died behind a pipe, `__MACOSX` and `.git` in zips, no-license packages, API version constants, zip cap and cleanup trap, no whole-file strings in awk. Zip checks run in CI (zip installed); locally verified through a bsdtar shim.
+- Fixed in passing: `review-scope` kept one `last-full-review` for all projects (TokenForge's v0.54.2 had replaced lean-gate's); now one line per repo. lean-gate's record restored to v1.0.0 (old file backed up as `last-full-review.bak-before-1.1.0`).
+- Checks: 82 tests, selftest, validate, tsc (old errors only).
 
 ## Next
 
-Commit and release the wporg safeguards (needs the user's OK to push). Ideas: stats over a longer window; why the migration lock let several Linux hooks through (harmless now).
+Nothing in progress. Ideas: stats over a longer window; why the migration lock let several Linux hooks through (harmless now).
 
 ## Commands
 

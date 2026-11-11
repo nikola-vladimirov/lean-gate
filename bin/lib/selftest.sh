@@ -121,6 +121,10 @@ cmd_selftest() {
   echo "$rsout" | grep -q 'Full review due: yes: no full review recorded' || { echo "FAIL review-scope did not ask for a first full review"; fail=1; }
   (cd "$rs" && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope --full-done > /dev/null)
   (cd "$rs" && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope) | grep -q 'Full review due: no: 0 release' || { echo "FAIL review-scope after a full review"; fail=1; }
+  # review scope: a full review recorded in another repo does not replace this repo's record
+  ro="$tmp/ro"; mkdir -p "$ro"
+  (cd "$ro" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m a && git tag v0.5.0 && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope --full-done > /dev/null)
+  (cd "$rs" && CLAUDE_PLUGIN_DATA="$tmp/rsd" bash "$self" review-scope) | grep -q 'Full review due: no: 0 release' || { echo "FAIL review-scope record overwritten by another repo"; fail=1; }
   # review scope: a beta sorts before its release, so v1.0.0 counts as one release after v1.0.0-beta.2
   rb="$tmp/rb"; mkdir -p "$rb"
   (cd "$rb" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m a && git tag v1.0.0-beta.1 \
@@ -237,9 +241,9 @@ cmd_selftest() {
   echo "$sec" | grep -q 'a.php:5: eval' || { echo "FAIL security missed eval"; fail=1; }
   echo "$sec" | grep -q 'a.php: AJAX, admin-post or REST handler' || { echo "FAIL security missed a handler with no check"; fail=1; }
   # audit wporg: each guideline and review-email check fires on its line; the safe forms do not
-  wp="$tmp/woocommerce-helper"; mkdir -p "$wp/languages" "$wp/vendor/acme/lib/.idea" "$wp/vendor/composer" "$wp/js"
+  wp="$tmp/woocommerce-helper"; mkdir -p "$wp/languages" "$wp/vendor/acme/lib/.idea" "$wp/vendor/composer" "$wp/js" "$wp/build/blk"
   printf '%s\n' '<?php' '/**' ' * Plugin Name: WooCommerce Helper' ' * Version: 1.2.0' ' * License: Proprietary' ' * Text Domain: woocommerce-helper' ' */' \
-    "defined( 'ABSPATH' ) || exit;" "define( 'WCH_VERSION', '1.1.0' );" "echo '<style>.a{}</style>';" "if ( wp_verify_nonce( \$post['_n'], 'a' ) ) {}" \
+    "defined( 'ABSPATH' ) || exit; define( 'WCH_API_VERSION', 'v2' );" "define( 'WCH_VERSION', '1.1.0' );" "echo '<style>.a{}</style>';" "if ( wp_verify_nonce( \$post['_n'], 'a' ) ) {}" \
     "if ( wp_verify_nonce( sanitize_text_field( wp_unslash( \$_POST['_n'] ) ), 'a' ) ) {}" "\$d = json_decode( wp_unslash( \$_POST['c'] ), true );" \
     "file_put_contents( __DIR__ . '/x.json', 'a' );" "wp_enqueue_code_editor( array() );" "eval( base64_decode( 'eA==' ) );" "if ( is_pro() ) {}" \
     "wp_enqueue_script( 'x', 'https://cdn.example.net/x.js' );" "wp_enqueue_style( 'f', 'https://fonts.googleapis.com/css2?family=A' );" \
@@ -247,17 +251,35 @@ cmd_selftest() {
   printf '%s\n' '<?php' 'echo 1;' > "$wp/loose.php"
   printf '%s\n' '=== WooCommerce Helper ===' 'Contributors: me' 'Tags: a, b, c, d, e, f' 'Requires at least: 6.5' 'Tested up to: 6.9' 'Requires PHP: 7.4' 'Stable tag: 1.1.0' 'License: GPLv2 or later' '' 'Short.' '' '== Changelog ==' '= 1.1.0 =' '* x' > "$wp/readme.txt"
   touch "$wp/languages/woocommerce-helper-bg_BG.mo" "$wp/js/jquery.min.js"
-  printf '%s\n' '[' '{ "name": "acme/lib", "version": "1.0.0", "license": [ "proprietary" ] }' ']' > "$wp/vendor/composer/installed.json"
+  printf '%s\n' '[' '{ "name": "acme/lib", "version": "1.0.0", "license": [ "proprietary" ] },' '{ "name": "acme/nolic", "version": "2.0.0" }' ']' > "$wp/vendor/composer/installed.json"
+  printf '%s\n' '<?php' "echo '<script>x</script>';" > "$wp/build/blk/render.php"
   wa=$(cmd_audit_wporg "$wp")
   for want in 'woocommerce-helper.php:10: inline <script> or <style>' 'woocommerce-helper.php:11: nonce reaches wp_verify_nonce' 'woocommerce-helper.php:13: json_decode on request data' \
     'woocommerce-helper.php:14: writes a file outside uploads' 'woocommerce-helper.php:15: code editor' 'woocommerce-helper.php:16: G4:' 'woocommerce-helper.php:17: G5:' \
     'woocommerce-helper.php:18: G8: JS or CSS from a CDN' 'woocommerce-helper.php:20: G10:' 'woocommerce-helper.php:21: G11:' 'woocommerce-helper.php:22: HEREDOC' \
     'G1: License: Proprietary' 'G15: version constant 1.1.0' 'G15: Stable tag 1.1.0 does not match' 'G12: 6 tags' 'G17: starts with a trademark' 'api.acme.io' \
-    'without a direct-access guard (defined( '"'"'ABSPATH'"'"' ) || exit;): loose.php' 'languages/woocommerce-helper-bg_BG.mo: translation file' 'vendor/acme/lib/.idea: dev or hidden' \
-    'js/jquery.min.js: G13' 'vendor/acme/lib: G1: license proprietary'; do
+    'without a direct-access guard (defined( '"'"'ABSPATH'"'"' ) || exit;): build/blk/render.php loose.php' 'languages/woocommerce-helper-bg_BG.mo: translation file' 'vendor/acme/lib/.idea: dev or hidden' \
+    'js/jquery.min.js: G13' 'vendor/acme/lib: G1: license proprietary' 'vendor/acme/nolic: G1: license (none declared)' 'build/blk/render.php:2: inline'; do
     echo "$wa" | grep -qF "$want" || { echo "FAIL audit wporg missed: $want"; fail=1; }
   done
   echo "$wa" | grep -q 'woocommerce-helper.php:12: ' && { echo "FAIL audit wporg flagged a sanitized nonce"; fail=1; }
+  echo "$wa" | grep -q 'version constant v2' && { echo "FAIL audit wporg took an API version constant for the plugin version"; fail=1; }
+  mkdir -p "$tmp/wpjs" && echo 'var a = 1;' > "$tmp/wpjs/a.js"
+  cmd_audit_wporg "$tmp/wpjs" | grep -q 'standard input' && { echo "FAIL audit wporg grepped stdin when no PHP file was left"; fail=1; }
+  # A release zip: the __MACOSX folder Finder adds is skipped, a .git inside the zip is reported, Composer never runs on it, a zip over the cap is refused.
+  if command -v zip >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
+    zd="$tmp/wpzip"; mkdir -p "$zd/zp/.git" "$zd/__MACOSX/zp" "$zd/bin"
+    cp "$wp/readme.txt" "$zd/zp/readme.txt"; echo x > "$zd/zp/.git/config"; echo x > "$zd/__MACOSX/zp/._a"; echo '{}' > "$zd/zp/composer.lock"
+    printf '%s\n' '<?php' '/* Plugin Name: ZP */' > "$zd/zp/zp.php"
+    printf '%s\n' '#!/bin/sh' "touch '$zd/composer-ran'" > "$zd/bin/composer"; chmod +x "$zd/bin/composer"
+    (cd "$zd" && zip -qr zp.zip zp __MACOSX)
+    wz=$(PATH="$zd/bin:$PATH" cmd_audit_wporg "$zd/zp.zip")
+    echo "$wz" | grep -q 'no PHP file in the root' && { echo "FAIL audit wporg missed the plugin folder next to __MACOSX"; fail=1; }
+    echo "$wz" | grep -q '^\.git: dev or hidden' || { echo "FAIL audit wporg hid a .git inside the zip"; fail=1; }
+    (cd "$zd" && zip -qr zp1.zip zp); PATH="$zd/bin:$PATH" cmd_audit_wporg "$zd/zp1.zip" > /dev/null
+    [ -f "$zd/composer-ran" ] && { echo "FAIL audit wporg ran composer on a zip"; fail=1; }
+    (WPORG_ZIP_MAX=10 cmd_audit_wporg "$zd/zp.zip" 2>&1) | grep -q 'over the 100 MB limit' || { echo "FAIL audit wporg unpacked a zip over the size cap"; fail=1; }
+  else echo "note: zip is not installed; the audit wporg zip checks were skipped"; fi
   echo "$wa" | grep -q 'woocommerce-helper.php:19: G8' && { echo "FAIL audit wporg flagged a font CDN"; fail=1; }
   # gain: each run adds one line to gain.tsv and the second run shows a change figure
   gd="$tmp/gain"; mkdir -p "$gd/proj"

@@ -36,6 +36,8 @@ function world(on: On, files: Record<string, string>) {
     stdout: (_cmd: string) => '',
     gitSilent: false,
     failing: undefined as RegExp | undefined,
+    // Bash stdout the mock returns (undefined: a result with no stdout).
+    stdout: undefined as string | undefined,
     bottom: 0,
     // What `gh repo view` says about the repo: true = public.
     ghPublic: false,
@@ -103,7 +105,7 @@ function world(on: On, files: Record<string, string>) {
   })
   on('tool.call', (_, e) => {
     ctx.bottom++
-    return ctx.failing !== undefined && e.tool === 'Bash' && ctx.failing.test(e.command) ? { result: {}, isError: true as const } : { result: {} }
+    return ctx.failing !== undefined && e.tool === 'Bash' && ctx.failing.test(e.command) ? { result: {}, isError: true as const } : { result: ctx.stdout === undefined ? {} : { stdout: ctx.stdout } }
   })
   on('turn.complete', (_, e) => {
     ctx.order.push('engine')
@@ -396,18 +398,36 @@ test('rule 8 delegate-more: warn toasts once at the threshold and allows', async
   expect(lines(w.files).filter(l => l.includes('\tdelegate-more\twarn\t')).length).toBe(1)
 })
 
-test('wporg-audit-before-release: a wp.org plugin zip or svn commit needs lean-gate audit wporg first; vague svn messages are refused', async ($, on) => {
+test('wporg-audit-before-release: a wp.org plugin zip or svn commit needs a finished audit first; vague svn messages are refused once', async ($, on) => {
   const off = { 'lean-gate-first': 'off', 'ponytail-active': 'off', 'release-needs-review': 'off', 'changelog-before-tag': 'off', 'wporg-audit-before-release': 'block' }
   const w = world(on, config({ mode: 'block', rules: off }))
-  // No readme.txt with a Stable tag: not a WordPress.org plugin, so a zip is not judged.
+  // No readme.txt with a Stable tag: not a WordPress.org plugin, so neither a zip nor an svn commit is judged.
   expect((await $.tool.call(BASH('php nashenski-tools/zip.php'))).deny).toBeUndefined()
+  expect((await $.tool.call(BASH('svn ci -m "update"'))).deny).toBeUndefined()
   w.files['C:/proj/readme.txt'] = '=== P ===\nStable tag: 1.0.0\n'
   expect((await $.tool.call(BASH('php nashenski-tools/zip.php'))).deny).toContain('lean-gate audit wporg')
-  expect((await $.tool.call(BASH('svn ci -m "Release 1.0.0: new tracking map"'))).deny).toContain('lean-gate audit wporg')
+  expect((await $.tool.call(BASH('gh release delete v1'))).deny).toBeUndefined()
+  // Both problems in one command: one hit, one message.
+  const both = (await $.tool.call(BASH('svn ci -m "update"'))).deny ?? ''
+  expect(both).toContain('G14')
+  expect(both).toContain('lean-gate audit wporg')
+  // An audit in the same command counts for that command (its output here has no summary, so it does not count later).
+  w.stdout = 'lean-gate: audit wporg: give a plugin folder or its release zip'
+  expect((await $.tool.call(BASH('lean-gate audit wporg p.zip && svn ci -m "Release 1.0.0: maps"'))).deny).toBeUndefined()
+  // A run whose output has no summary line (it died behind a pipe) does not count; a finished one does.
+  w.stdout = 'lean-gate: audit wporg: give a plugin folder or its release zip'
+  await $.tool.call(BASH('lean-gate audit wporg typo.zip | tail -5'))
+  expect((await $.tool.call(BASH('php nashenski-tools/zip.php'))).deny).toContain('lean-gate audit wporg')
+  w.stdout = 'WPORG AUDIT: 0 finding(s) in 3 file(s).'
   await $.tool.call(BASH('bash bin/lean-gate audit wporg releases/p.zip'))
+  w.stdout = undefined
   expect((await $.tool.call(BASH('php nashenski-tools/zip.php'))).deny).toBeUndefined()
-  expect((await $.tool.call(BASH('svn ci -m "Release 1.0.0: new tracking map"'))).deny).toBeUndefined()
-  expect((await $.tool.call(BASH('svn commit -m "update"'))).deny).toContain('G14')
+  expect((await $.tool.call(BASH('svn ci -m "Release 1.0.0"'))).deny).toBeUndefined()
+  expect((await $.tool.call(BASH('svn ci -F msg.txt'))).deny).toBeUndefined()
+  expect((await $.tool.call(BASH('svn --username me commit -m "update"'))).deny).toContain('G14')
+  // A code edit after the audit asks for a fresh one.
+  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/a.php', old_string: 'a', new_string: 'b' })
+  expect((await $.tool.call(BASH('php nashenski-tools/zip.php'))).deny).toContain('lean-gate audit wporg')
 })
 
 test('phpcs-before-done: PHP edited and no PHPCS run is logged at turn end, a PHPCS run clears it', async ($, on) => {

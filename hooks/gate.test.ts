@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { isPhpcsCommand, isWporgAuditCommand, svnCommitMessage, vagueCommitMessage,loweredRules, callText, hasEmDash, releaseActions, shellCommand, toolMatches, statRules, statsView, DEFAULTS, parseRegistry, projectAt, projectMentioned, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
+import { isPhpcsCommand, isWporgAuditCommand, svnCommit, vagueCommitMessage, loweredRules, callText, hasEmDash, releaseActions, shellCommand, toolMatches, statRules, statsView, DEFAULTS, parseRegistry, projectAt, projectMentioned, agentProblems, effective, isTestCommand, mergeConfig, opencodeProblem, parseJson, parseStrict, regexOk, releaseAction, segments } from './gate'
 
 test('config: project beats global, rules merge per key, bad JSON falls back to defaults', () => {
   const global = parseJson('{"mode":"block","rules":{"tests-before-done":"block"},"context_limit":200000}')
@@ -198,12 +198,15 @@ test('project registry: folder match picks the deepest project, a name in a prom
 test('wporg helpers: audit command, svn commit message, vague messages', () => {
   for (const c of ['lean-gate audit wporg', 'bash bin/lean-gate audit wporg x.zip', 'cd p && lean-project audit wporg .']) expect(isWporgAuditCommand(c)).toBe(true)
   for (const c of ['lean-gate audit security', 'echo "lean-gate audit wporg"', 'git commit -m "lean-gate audit wporg"']) expect(isWporgAuditCommand(c)).toBe(false)
-  expect(svnCommitMessage('svn ci -m "Release 1.2: maps"')).toBe('Release 1.2: maps')
-  expect(svnCommitMessage('cd trunk && svn commit --message=fix')).toBe('fix')
-  expect(svnCommitMessage('svn commit')).toBe('')
-  expect(svnCommitMessage('svn up')).toBeUndefined()
-  for (const m of ['update', 'Cleanup.', 'fix', '', 'tweak readme']) expect(vagueCommitMessage(m)).toBe(true)
-  expect(vagueCommitMessage('Release 1.2.0: Econt office maps')).toBe(false)
+  expect(svnCommit('svn ci -m "Release 1.2: maps"')).toEqual({ message: 'Release 1.2: maps' })
+  expect(svnCommit('cd trunk && svn commit --message=fix')).toEqual({ message: 'fix' })
+  expect(svnCommit('svn ci -m"Release 1.2.0: maps"')).toEqual({ message: 'Release 1.2.0: maps' })
+  expect(svnCommit('svn --username me --non-interactive commit -m "Release 2"')).toEqual({ message: 'Release 2' })
+  expect(svnCommit('svn ci -F msg.txt')).toEqual({})
+  expect(svnCommit('svn commit')).toEqual({ message: '' })
+  expect(svnCommit('svn up')).toBeUndefined()
+  for (const m of ['update', 'Cleanup.', 'fix', '', 'minor changes', 'small fix']) expect(vagueCommitMessage(m)).toBe(true)
+  for (const m of ['Release 1.2.0', 'tweak readme', 'Release 1.2.0: Econt office maps']) expect(vagueCommitMessage(m)).toBe(false)
 })
 
 test('isPhpcsCommand: phpcs, phpcbf, composer scripts and lean-gate or lean-project phpcs count; mentions do not', () => {

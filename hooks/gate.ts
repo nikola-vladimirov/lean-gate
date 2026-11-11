@@ -679,20 +679,34 @@ export function isWporgAuditCommand(command: string): boolean {
   })
 }
 
-// The message of an `svn commit` / `svn ci` in the command: '' when none is given, undefined when there is no svn commit.
-export function svnCommitMessage(command: string): string | undefined {
+// svn global options that take a value (they can come before the subcommand).
+const SVN_VALUE_OPTS = new Set(['--username', '--password', '--config-dir', '--config-option'])
+
+// An `svn commit` / `svn ci` in the command: its message ('' when none is given), or no message when it comes from a file (-F).
+// undefined when the command has no svn commit.
+export function svnCommit(command: string): { message?: string } | undefined {
   for (const seg of allSegments(command)) {
     const a = exe(seg).map(x => x.v)
-    if (progName(a[0] ?? '') !== 'svn' || !['commit', 'ci'].includes(a[1] ?? '')) continue
-    const k = a.findIndex(x => x === '-m' || x === '--message')
-    const eq = a.find(x => x.startsWith('--message='))
-    return k > 0 ? (a[k + 1] ?? '') : eq !== undefined ? eq.slice(10) : ''
+    if (progName(a[0] ?? '') !== 'svn') continue
+    let i = 1
+    while ((a[i] ?? '').startsWith('-')) i += SVN_VALUE_OPTS.has(a[i] ?? '') ? 2 : 1
+    if (!['commit', 'ci'].includes(a[i] ?? '')) continue
+    const rest = a.slice(i + 1)
+    if (rest.some(x => x === '--file' || x.startsWith('--file=') || x.startsWith('-F'))) return {}
+    for (let k = 0; k < rest.length; k++) {
+      const x = rest[k] ?? ''
+      if (x === '-m' || x === '--message') return { message: rest[k + 1] ?? '' }
+      if (x.startsWith('--message=')) return { message: x.slice(10) }
+      if (x.startsWith('-m')) return { message: x.slice(2) }
+    }
+    return { message: '' }
   }
   return undefined
 }
 
-// G14: a WordPress.org SVN commit message that says nothing about the change ("update", "cleanup", one or two words).
-export const vagueCommitMessage = (msg: string) => msg.trim().split(/\s+/).filter(Boolean).length < 3 || /^(update[sd]?|clean ?up|fix(es)?|wip|test|changes|minor( changes)?|commit)\.?$/i.test(msg.trim())
+// G14: a WordPress.org SVN commit message that says nothing about the change: empty, one word, or a stock phrase.
+export const vagueCommitMessage = (msg: string) =>
+  msg.trim().split(/\s+/).filter(Boolean).length < 2 || /^(update[sd]?|clean ?up|fix(es)?|wip|test|changes|minor( changes| fix(es)?)?|small fix(es)?|commit|tweaks?)\.?$/i.test(msg.trim())
 
 export function isTestCommand(command: string): boolean {
   return allSegments(command).some(seg => {

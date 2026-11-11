@@ -7,16 +7,15 @@
 
 # Line checks on the plugin's own PHP and JS (vendor is third-party code: only its files, licenses and versions are judged).
 WPORG_AWK='
-  { sub(/\r$/, ""); line[NR] = $0; all = all $0 "\n" }
   function out(i, msg) { printf "%s:%d: %s\n", rel, i, msg }
   function once(k, i, msg) { if (!(k in done)) { done[k] = 1; out(i, msg) } }
-  END {
-    # A write is judged when the plugin never resolves uploads, a WP-CLI file never does (a user-given path), or the path is named on the line.
-    loose = !uploads_any || (all ~ /WP_CLI/ && all !~ /wp_upload_dir/)
-    notices_ok = all ~ /is-dismissible|get_current_screen|\$hook_suffix|\$pagenow|\$_GET\[["\047]page["\047]\]|dismiss/
-    for (i = 1; i <= NR; i++) {
-      l = line[i]
-      if (l ~ /^[ \t]*(\/\/|#|\*|\/\*)/) continue
+  # First pass (awk gets the file twice): facts about the whole file, without holding the file in memory.
+  FNR == NR { if (/WP_CLI/) cli = 1; if (/wp_upload_dir/) upl = 1; if (/is-dismissible|get_current_screen|\$hook_suffix|\$pagenow|\$_GET\[["\047]page["\047]\]|dismiss/) notices_ok = 1; next }
+  {
+      # A write is judged when the plugin never resolves uploads, a WP-CLI file never does (a user-given path), or the path is named on the line.
+      loose = !uploads_any || (cli && !upl)
+      sub(/\r$/, ""); l = $0; i = FNR
+      if (l ~ /^[ \t]*(\/\/|#|\*|\/\*)/) next
       if (l ~ /wp_enqueue_code_editor|wp\.codeEditor|CodeMirror|ScssPhp|scssphp|Less_Parser|->compileString[ \t]*\(/) once("editor", i, "code editor or CSS compiler: wp.org forbids saving user CSS, JS or PHP; ask for values in fields and generate the code, or keep it out of the wp.org build")
       # G4: obfuscated code.
       t = l; hex = gsub(/\\x[0-9a-fA-F][0-9a-fA-F]/, "", t)
@@ -36,7 +35,7 @@ WPORG_AWK='
       # G11: notices that hijack the dashboard.
       if (l ~ /add_action[ \t]*\([ \t]*["\047](admin_notices|all_admin_notices|network_admin_notices)["\047]/ && !notices_ok) once("notice", i, "G11: admin notice on every screen: make it dismissible (is-dismissible plus a stored dismissal) or show it only on the plugin screens")
       if (l ~ /remove_all_actions[ \t]*\([ \t]*["\047](admin_notices|all_admin_notices)["\047]/) out(i, "G11: removes every other plugin notice: hide only your own")
-      if (lang == "js") continue
+      if (lang == "js") next
       # Plugin Handbook common review issues.
       if (l ~ /<<<[ \t]*["\047]?[A-Za-z_]/) once("heredoc", i, "HEREDOC or NOWDOC: reviewers reject it (escaping cannot be checked); build the string with escaped parts")
       if (l ~ /<\?([ \t]|$)/) out(i, "short open tag: use <?php")
@@ -56,7 +55,6 @@ WPORG_AWK='
       if (l ~ /file_put_contents[ \t]*\(|->put_contents[ \t]*\(|fopen[ \t]*\(.*["\047][waxc]b?\+?["\047]|(^|[^a-z_])(mkdir|wp_mkdir_p|copy|move_uploaded_file)[ \t]*\(/) {
         if (loose || l ~ /__DIR__|__FILE__|plugin_dir_path|WP_PLUGIN_DIR|ABSPATH|WP_CONTENT_DIR|get_template_directory|get_stylesheet_directory|\$assoc_args|\$args\[/) out(i, "writes a file outside uploads: write only under wp_upload_dir()[\"basedir\"] . \"/<plugin-slug>/\" (never the plugin folder, wp-content root or a user-given path); prefer options")
       }
-    }
   }'
 
 # Hosts the plugin's own code links to or calls: each must be in the readme's == External services == section (G6, G7).
@@ -94,7 +92,7 @@ wporg_meta() {
     [ -n "$ver" ] || echo "${main#"$dir"/}: G15: no Version: header"
     [ -n "$td" ] || echo "${main#"$dir"/}: no Text Domain: header (it must equal the plugin slug)"
     # A version constant in the main file must follow the header.
-    const=$(tr -d '\r' < "$main" | grep -Ev "define\([[:space:]]*['\"]([A-Z0-9_]*(PHP|MIN|REQUIRE|DB|TESTED)[A-Z0-9_]*|(WP|WC)_[A-Z0-9_]*|[A-Z0-9_]*_(WP|WC)_[A-Z0-9_]*)['\"]" | sed -n "s/.*define([[:space:]]*['\"][A-Z0-9_]*VERSION['\"][[:space:]]*,[[:space:]]*['\"]\([^'\"]*\)['\"].*/\1/p" | head -n 1)
+    const=$(tr -d '\r' < "$main" | grep -Ev "define\([[:space:]]*['\"]([A-Z0-9_]*(PHP|MIN|REQUIRE|DB|TESTED|API|SCHEMA|REST)[A-Z0-9_]*|(WP|WC)_[A-Z0-9_]*|[A-Z0-9_]*_(WP|WC)_[A-Z0-9_]*)['\"]" | sed -n "s/.*define([[:space:]]*['\"][A-Z0-9_]*VERSION['\"][[:space:]]*,[[:space:]]*['\"]\([^'\"]*\)['\"].*/\1/p" | head -n 1)
     [ -n "$const" ] && [ -n "$ver" ] && [ "$const" != "$ver" ] && echo "${main#"$dir"/}: G15: version constant $const does not match Version: $ver"
     # G17: trademarks and project names may not start the slug or the name; the slug may never contain wordpress.
     slug="${td:-$(basename "$dir")}"
@@ -136,7 +134,7 @@ wporg_meta() {
   short=$(tr -d '\r' < "$readme" | awk 'NR > 1 && !body && /^[ \t]*$/ { body = 1; next } body && /[^ \t]/ { print; exit }')
   [ "${#short}" -gt 150 ] && echo "readme.txt: short description is ${#short} characters; the directory cuts it at 150"
   # G4: minified JS needs its source in the package or a link to it in the readme.
-  min=$(find_files "$dir" -name '*.js' | while IFS= read -r f; do
+  min=$(wporg_find "$dir" -name '*.js' | while IFS= read -r f; do
     [ -f "${f%.min.js}.js" ] && [ "${f%.min.js}" != "$f" ] && continue
     awk 'length > 5000 { found = 1; exit } END { exit !found }' "$f" && echo "${f#"$dir"/}"
   done | head -n 5 | tr '\n' ' ')
@@ -144,41 +142,61 @@ wporg_meta() {
   return 0
 }
 
-cmd_audit_wporg() {
-  local src="${1:-.}" dir tmp="" lang out files readme sub host where dom libs main ups ext f
-  tmpdir_slug=""
+# Files the scan reads: everything that ships, so build/ and dist/ too; vendor is third-party code and is judged by its
+# files, licenses and versions only.
+wporg_find() { local d="$1"; shift; find "$d" \( -name .git -o -name node_modules -o -name vendor -o -name __MACOSX -o -name '.?*' \) -prune -o -type f "$@" -print 2>/dev/null; }
+
+WPORG_ZIP_MAX=${WPORG_ZIP_MAX:-104857600} # 100 MB unpacked: a crafted zip cannot fill the disk
+
+# The scan runs in a subshell, so its trap removes the unpacked zip on every exit (die, Ctrl-C) without touching the caller's traps.
+cmd_audit_wporg() { ( wporg_run "$@" ); }
+
+wporg_run() {
+  local src="${1:-.}" dir lang out files php readme sub host where dom libs main ups ext f gitp size
+  tmp=""; tmpdir_slug=""
+  trap '[ -n "$tmp" ] && rm -rf "$tmp"' EXIT
+  trap 'exit 130' INT TERM
   if [ -f "$src" ] && [ "${src%.zip}" != "$src" ]; then
+    if command -v unzip >/dev/null 2>&1; then
+      size=$(unzip -l "$src" 2>/dev/null | tail -n 1 | awk '{ print $1 + 0 }')
+      [ "${size:-0}" -le "$WPORG_ZIP_MAX" ] || die "audit wporg: $src unpacks to $size bytes, over the 100 MB limit"
+    fi
     tmp=$(mktemp -d)
-    unzip -q "$src" -d "$tmp" 2>/dev/null || tar -xf "$src" -C "$tmp" 2>/dev/null || { rm -rf "$tmp"; die "audit wporg: cannot unzip $src (needs unzip or bsdtar)"; }
+    unzip -q "$src" -d "$tmp" 2>/dev/null || tar -xf "$src" -C "$tmp" 2>/dev/null || die "audit wporg: cannot unzip $src (needs unzip or bsdtar)"
     dir="$tmp"
   else
     [ -d "$src" ] || die "audit wporg: give a plugin folder or its release zip"
     dir=$(cd "$src" && pwd -P)
   fi
-  # A zip holds one plugin folder: the plugin root is that folder, and its name is the slug.
-  if [ ! -f "$dir/readme.txt" ]; then
-    sub=$(find "$dir" -mindepth 1 -maxdepth 1 -type d ! -name '.*' | head -n 2)
-    [ "$(printf '%s\n' "$sub" | grep -c .)" = 1 ] && [ -f "$sub/readme.txt" ] && dir="$sub"
+  # A zip holds one plugin folder (Finder adds __MACOSX): the plugin root is that folder, and its name is the slug.
+  if [ ! -f "$dir/readme.txt" ] && ! grep -qs 'Plugin Name:' "$dir"/*.php; then
+    sub=$(find "$dir" -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name __MACOSX | head -n 2)
+    [ "$(printf '%s\n' "$sub" | grep -c .)" = 1 ] && dir="$sub"
   fi
   [ -n "$tmp" ] && [ "$dir" != "$tmp" ] && tmpdir_slug=$(basename "$dir")
+  # A plugin folder's own .git is not shipped; a .git inside a zip is, and is reported.
+  gitp="$dir/.git"; [ -n "$tmp" ] && gitp="$tmp/.not-a-path"
   readme="$dir/readme.txt"
   main=$(grep -l 'Plugin Name:' "$dir"/*.php 2>/dev/null | head -n 1)
-  files=$(find_files "$dir" \( -name '*.php' -o -name '*.js' \) | sort)
-  ups=0; printf '%s\n' "$files" | tr '\n' '\0' | xargs -0 grep -l wp_upload_dir 2>/dev/null | grep -q . && ups=1
+  files=$(wporg_find "$dir" \( -name '*.php' -o -name '*.js' \) | sort)
+  ups=0; [ -n "$files" ] && printf '%s\n' "$files" | tr '\n' '\0' | xargs -0 grep -l wp_upload_dir 2>/dev/null | grep -q . && ups=1
   # The External services section, lowercased: hosts must be named there, not anywhere in the readme.
   ext=""; [ -f "$readme" ] && ext=$(awk '/^== *[Ee]xternal [Ss]ervices *==/ { on = 1; print "x"; next } /^== / { on = 0 } on { print tolower($0) }' "$readme")
   out=$(
     while IFS= read -r f; do
       [ -n "$f" ] || continue
       lang=js; [ "${f%.php}" = "$f" ] || lang=php
-      awk -v rel="${f#"$dir"/}" -v lang="$lang" -v uploads_any="$ups" "$WPORG_AWK" "$f"
+      awk -v rel="${f#"$dir"/}" -v lang="$lang" -v uploads_any="$ups" "$WPORG_AWK" "$f" "$f"
     done <<EOF
 $files
 EOF
     # Direct file access: every PHP file stops when loaded outside WordPress.
     # An index.php that only says "Silence is golden" and translation files have nothing to run.
-    f=$(printf '%s\n' "$files" | grep '\.php$' | grep -v '/languages/' | tr '\n' '\0' | xargs -0 grep -L 'ABSPATH\|WPINC\|WP_UNINSTALL_PLUGIN\|Silence is golden' 2>/dev/null | sed "s|^$dir/||")
-    [ -n "$f" ] && echo "$(printf '%s\n' "$f" | grep -c .) PHP file(s) without a direct-access guard (defined( 'ABSPATH' ) || exit;): $(printf '%s\n' "$f" | head -n 5 | tr '\n' ' ')"
+    php=$(printf '%s\n' "$files" | grep '\.php$' | grep -v '/languages/')
+    if [ -n "$php" ]; then
+      f=$(printf '%s\n' "$php" | tr '\n' '\0' | xargs -0 grep -L 'ABSPATH\|WPINC\|WP_UNINSTALL_PLUGIN\|Silence is golden' 2>/dev/null | sed "s|^$dir/||")
+      [ -n "$f" ] && echo "$(printf '%s\n' "$f" | grep -c .) PHP file(s) without a direct-access guard (defined( 'ABSPATH' ) || exit;): $(printf '%s\n' "$f" | head -n 5 | tr '\n' ' ')"
+    fi
     wporg_meta "$dir" "$main" "$readme"
     # G6 and G7: every outside host in code is named in == External services == (what, which data, when, terms, privacy).
     # Translation files are reported below as a whole; their strings are not scanned for hosts.
@@ -191,38 +209,41 @@ EOF
       fi
     done
     # Package contents: dev folders and files, and bundled translations (translate.wordpress.org serves those).
-    find "$dir" \( -path "$dir/.git" -prune \) -o \( -name '.?*' -o -name node_modules -o -name bower_components -o -name tests -o -name test -o -name __tests__ \
+    find "$dir" \( -path "$gitp" -prune \) -o \( -name '.?*' -o -name __MACOSX -o -name node_modules -o -name bower_components -o -name tests -o -name test -o -name __tests__ \
       -o -name 'phpunit.xml*' -o -name '*.log' -o -name '*.sql' -o -name '*.zip' -o -name Thumbs.db \) -print -prune 2>/dev/null \
       | sed "s|^$dir/||" | sort | sed 's/$/: dev or hidden file in the package: leave it out of the wp.org zip (composer.json and package.json may stay)/'
-    find "$dir" -path "$dir/.git" -prune -o -type f \( -name '*.po' -o -name '*.mo' -o -name '*.l10n.php' -o -path '*/languages/*_[A-Z][A-Z]*.php' -o -path '*/languages/*_[A-Z][A-Z]*.json' \) -print 2>/dev/null \
+    find "$dir" -path "$gitp" -prune -o -type f \( -name '*.po' -o -name '*.mo' -o -name '*.l10n.php' -o -path '*/languages/*_[A-Z][A-Z]*.php' -o -path '*/languages/*_[A-Z][A-Z]*.json' \) -print 2>/dev/null \
       | sed "s|^$dir/||" | sort | sed 's/$/: translation file in the package: drop it from the wp.org build (translate.wordpress.org serves translations; .pot may stay)/'
     [ -n "$tmp" ] && [ "$(wc -c < "$src")" -gt 10485760 ] && echo "$(basename "$src"): over 10 MB; the directory takes 10 MB at most"
-    find "$dir" -path "$dir/.git" -prune -o -name '*.phar' -print 2>/dev/null | sed "s|^$dir/||;s/$/: .phar archive in the package: ship readable source/"
-    find "$dir" -path "$dir/.git" -prune -o -path '*/node_modules' -prune -o -name block.json -print 2>/dev/null | while IFS= read -r f; do
+    find "$dir" -path "$gitp" -prune -o -name '*.phar' -print 2>/dev/null | sed "s|^$dir/||;s/$/: .phar archive in the package: ship readable source/"
+    find "$dir" -path "$gitp" -prune -o -path '*/node_modules' -prune -o -name block.json -print 2>/dev/null | while IFS= read -r f; do
       grep -Eq '"name"[[:space:]]*:[[:space:]]*"(core|wordpress)/' "$f" && echo "${f#"$dir"/}: block name uses the reserved core/ or wordpress/ namespace"
     done
     # G13: copies of libraries WordPress already ships.
-    find "$dir" -path "$dir/.git" -prune -o -path '*/node_modules' -prune -o -type f \( -iname 'jquery.js' -o -iname 'jquery.min.js' -o -iname 'jquery-[0-9]*.js' -o -iname 'jquery-ui*.js' \
+    find "$dir" -path "$gitp" -prune -o -path '*/node_modules' -prune -o -type f \( -iname 'jquery.js' -o -iname 'jquery.min.js' -o -iname 'jquery-[0-9]*.js' -o -iname 'jquery-ui*.js' \
       -o -iname 'jquery-migrate*.js' -o -iname 'react.production*.js' -o -iname 'react-dom*.js' -o -iname 'lodash*.js' -o -iname 'underscore*.js' -o -iname 'backbone*.js' \
       -o -iname 'moment.js' -o -iname 'moment.min.js' -o -iname 'masonry*.js' -o -iname 'imagesloaded*.js' -o -iname 'hoverIntent*.js' -o -iname 'PHPMailer.php' \
       -o -iname 'SimplePie.php' -o -iname 'class-phpass.php' -o -iname 'PasswordHash.php' -o -iname 'pclzip*.php' -o -iname 'getid3.php' \) -print 2>/dev/null \
       | sed "s|^$dir/||" | sort | sed 's/$/: G13: WordPress ships this library: enqueue or use the core copy instead of bundling it/'
-    # Bundled Composer libraries: list them with versions, flag core duplicates and non-GPL licenses; with Composer and a lock file, ask which are behind.
+    # Bundled Composer libraries: list them with versions, flag core duplicates and non-GPL licenses (a package with no license too).
     if [ -f "$dir/vendor/composer/installed.json" ]; then
       libs=$(tr -d '\r' < "$dir/vendor/composer/installed.json" | awk '
-        /"name"[ \t]*:[ \t]*"[^"]*\/[^"]*"/ { n = $0; sub(/.*"name"[ \t]*:[ \t]*"/, "", n); sub(/".*/, "", n); v = ""; lic = "" }
+        function flush() { if (n != "") printf "%s\t%s\t%s\n", n, v, lic; n = "" }
+        /"name"[ \t]*:[ \t]*"[^"]*\/[^"]*"/ { flush(); n = $0; sub(/.*"name"[ \t]*:[ \t]*"/, "", n); sub(/".*/, "", n); v = ""; lic = "" }
         /"version"[ \t]*:/ && n != "" && v == "" { v = $0; sub(/.*"version"[ \t]*:[ \t]*"/, "", v); sub(/".*/, "", v) }
         /"license"[ \t]*:/ && n != "" { inl = 1 }
-        inl { s = $0; sub(/.*"license"[ \t]*:/, "", s); while (match(s, /"[A-Za-z0-9.+ -]+"/)) { t = substr(s, RSTART + 1, RLENGTH - 2); s = substr(s, RSTART + RLENGTH); if (t != "license") lic = lic (lic == "" ? "" : "/") t } if ($0 ~ /\]/) { inl = 0; printf "%s\t%s\t%s\n", n, v, lic; n = "" } }')
+        inl { s = $0; sub(/.*"license"[ \t]*:/, "", s); while (match(s, /"[A-Za-z0-9.+ -]+"/)) { lic = lic (lic == "" ? "" : "/") substr(s, RSTART + 1, RLENGTH - 2); s = substr(s, RSTART + RLENGTH) }
+              if ($0 ~ /\]/ || ($0 ~ /"license"/ && $0 !~ /\[/)) { inl = 0; flush() } }
+        END { flush() }')
       printf '%s\n' "$libs" | awk -F'\t' 'NF { printf "%s%s %s", (c++ ? ", " : "vendor: bundled "), $1, $2 } END { if (c) print ". Each must be the latest stable release (composer outdated --direct)" }'
       printf '%s\n' "$libs" | awk -F'\t' -v ok="$GPL_OK" 'NF && (toupper($3) !~ toupper(ok) || $3 ~ /proprietary/) { printf "vendor/%s: G1: license %s is not GPL-compatible\n", $1, ($3 == "" ? "(none declared)" : $3) }'
       printf '%s\n' "$libs" | awk -F'\t' '$1 ~ /^(phpmailer\/phpmailer|simplepie\/simplepie|rmccue\/requests|paragonie\/sodium_compat|paragonie\/random_compat|james-heinrich\/getid3)$/ { printf "vendor/%s: G13: WordPress ships this library: use the core copy\n", $1 }'
     fi
-    if [ -f "$dir/composer.lock" ] && command -v composer >/dev/null 2>&1; then
-      (cd "$dir" && composer outdated --locked --direct --no-dev --no-interaction 2>/dev/null) | grep -E '^[a-z0-9_.-]+/' | sed 's/^/outdated library: /'
+    # Composer only on the project's own folder, never on an unpacked zip, and never with plugins: a zip's composer.json could run code.
+    if [ -z "$tmp" ] && [ -f "$dir/composer.lock" ] && command -v composer >/dev/null 2>&1; then
+      (cd "$dir" && composer --no-plugins outdated --locked --direct --no-dev --no-interaction 2>/dev/null) | grep -E '^[a-z0-9_.-]+/' | sed 's/^/outdated library: /'
     fi
   )
-  [ -n "$tmp" ] && rm -rf "$tmp"
   [ -n "$out" ] && printf '%s\n' "$out"
   echo "WPORG AUDIT: $(printf '%s' "$out" | grep -c .) finding(s) in $(printf '%s\n' "$files" | grep -c .) file(s). Heuristic: run it on the release zip, read each line. Rules and fixes: skills/lean-gate/WORDPRESS.md, WordPress.org review."
   return 0

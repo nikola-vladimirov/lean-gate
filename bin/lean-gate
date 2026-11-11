@@ -572,14 +572,18 @@ sessions_dir() {
 # A full review is due on a new major version or 5 or more minor releases after the last full review.
 # --full-done records the current tag as the last full review.
 cmd_review_scope() {
-  local last base full_file n due
+  local last base full_file n due top
   last=$(git describe --tags --abbrev=0 2>/dev/null) || die "review-scope: no release tag yet; give audit security a folder instead"
+  # One line per repository (top folder, tab, tag): one shared line let another project's release overwrite this one's.
   full_file="$(data_dir)/last-full-review"
+  top=$(git rev-parse --show-toplevel)
   if [ "${1:-}" = --full-done ]; then
-    mkdir -p "$(dirname "$full_file")"; printf '%s\n' "$last" > "$full_file"
+    mkdir -p "$(dirname "$full_file")"
+    { awk -F'\t' -v t="$top" 'NF > 1 && $1 != t' "$full_file" 2>/dev/null; printf '%s\t%s\n' "$top" "$last"; } > "$full_file.tmp" && mv "$full_file.tmp" "$full_file"
     echo "full review recorded at $last"; return 0
   fi
-  base=$(cat "$full_file" 2>/dev/null)
+  # A file from before 1.1.0 holds a bare tag: it counts only when this repo has that tag (checked below).
+  base=$(awk -F'\t' -v t="$top" 'NF > 1 && $1 == t { b = $2 } NF == 1 && o == "" { o = $1 } END { print (b != "" ? b : o) }' "$full_file" 2>/dev/null)
   if [ -z "$base" ] || ! git rev-parse -q --verify "refs/tags/$base" > /dev/null; then
     due="yes: no full review recorded yet"
   elif [ "${base%%.*}" != "${last%%.*}" ]; then
@@ -857,7 +861,7 @@ case "$cmd" in
       waste) shift; cmd_waste "$@" ;;
       security) shift; cmd_audit_security "$@" ;;
       perf) shift; cmd_audit_perf "$@" || exit 1 ;;
-      wporg) shift; cmd_audit_wporg "$@" ;;
+      wporg) shift; cmd_audit_wporg "$@" || exit 1 ;;
       *) die "audit: 'audit waste [dir] [--apply]', 'audit security [dir or files...]', 'audit perf [dir or files...]' or 'audit wporg [dir or zip]'" ;;
     esac ;;
   frontier) cmd_frontier "$@" ;;

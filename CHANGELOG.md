@@ -1,10 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (2026-11-11)
 
 - `lean-gate audit wporg [dir or zip]`: the WordPress.org plugin review checks, one or more per detailed guideline (G1 to G17) plus the review team common issues (inline scripts and styles, unsanitized nonces and JSON, file writes outside uploads, code editors, undocumented external services, dev and translation files, outdated libraries, readme and zip limits).
-- New rule `wporg-audit-before-release` (warn): a zip, tag, GitHub release or SVN commit of a WordPress.org plugin needs `audit wporg` first; vague SVN commit messages are flagged (guideline 14).
+- New rule `wporg-audit-before-release` (warn): a zip, tag, GitHub release or SVN commit of a WordPress.org plugin needs a finished `audit wporg` first (after the last code edit, or in the same command); vague SVN commit messages are flagged (guideline 14).
+- Hardened by the release review: zips are capped at 100 MB unpacked and always cleaned up, Composer never runs on a zip and never with plugins, `build/` and `dist/` are scanned, `__MACOSX` and a `.git` inside a zip are handled, and the scan no longer holds whole files in memory.
 - `reference/wp-plugin-handbook.md`: every rule from the 102 Plugin Handbook pages, with sources; WORDPRESS.md section 7 maps each guideline to its check.
+- Fix: `review-scope` kept one full-review record for all projects, so a release in one project could reset another project's count. It now keeps one line per repository (an old one-line file still counts for the repo that has that tag).
 
 ## 1.0.1 (2026-11-08)
 
