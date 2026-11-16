@@ -173,6 +173,12 @@ cmd_selftest() {
   # guard hint: the doc guard is named once per session (the em dash check belongs to lean-gate)
   gh="$tmp/gh"; mkdir -p "$gh"; : > "$gh/x.md"
   echo "{\"session_id\":\"s1\",\"file_path\":\"$gh/x.md\"}" | CLAUDE_PLUGIN_DATA="$gh/d" bash "$(dirname "$0")/../scripts/guard-hint.sh" | grep -q "docs-guard" || { echo "FAIL guard hint did not name the docs guard"; fail=1; }
+  # pending note: the gate's end-of-turn misses reach Claude once, with quotes escaped, then the file is gone
+  pn="$tmp/pn"; mkdir -p "$pn/lean-gate/pending"; printf 'lean-gate, last turn: state-file-fresh: "x"\n' > "$pn/lean-gate/pending/s1.txt"
+  out=$(echo '{"session_id":"s1"}' | CLAUDE_CONFIG_DIR="$pn" bash "$(dirname "$0")/../scripts/pending-note.sh")
+  printf '%s' "$out" | grep -q 'additionalContext":"lean-gate, last turn: state-file-fresh: \\"x\\""' || { echo "FAIL pending note was: $out"; fail=1; }
+  [ -e "$pn/lean-gate/pending/s1.txt" ] && { echo "FAIL pending note was not removed"; fail=1; }
+  [ -z "$(echo '{"session_id":"s1"}' | CLAUDE_CONFIG_DIR="$pn" bash "$(dirname "$0")/../scripts/pending-note.sh")" ] || { echo "FAIL pending note repeated"; fail=1; }
   # delegation: the chain puts the chosen runner first and never repeats one; an unknown runner or a missing model fails
   dl="$tmp/dl"; mkdir -p "$dl"; printf 'runner=llama\nfallback=opencode,llama\n' > "$dl/.lean-project"
   chain=$(cd "$dl" && delegate_chain)

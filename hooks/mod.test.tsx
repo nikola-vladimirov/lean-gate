@@ -49,6 +49,7 @@ function world(on: On, files: Record<string, string>) {
   mock.env(on, { HOME: 'C:/home' })
   mock.clock(on, { now: 1_700_000_000_000 })
   on('session.cwd', () => (ctx.cwdFails ? { deny: 'boom' } : { value: ctx.cwd }))
+  on('session.id', () => ({ value: 'sess-1' }))
   // The engine hands paths over with backslashes on Windows.
   on('fs.exists', (_, e) => ({ value: slash(e.path) in ctx.files || slash(e.path) in ctx.dirs }))
   on('fs.read', (_, e) => {
@@ -194,7 +195,7 @@ const reviewed = async (w: ReturnType<typeof world>, repo: string, v: { sha: str
 test('rule 4 release-needs-review: real release actions are denied until the repo is reviewed, other commands pass', async ($, on) => {
   const w = world(on, config({ mode: 'block' }))
   w.repos['C:/proj'] = clean('aaaaaaa1')
-  for (const c of REAL) expect((await $.tool.call(BASH(c))).deny).toContain('review the changed code')
+  for (const c of REAL) expect((await $.tool.call(BASH(c))).deny).toContain('Do not retry this command')
   for (const c of NOT_RELEASE) expect((await $.tool.call(BASH(c))).deny).toBeUndefined()
 
   // Reviewed clean at aaaaaaa1: docs-only commits pass, committed or uncommitted code changes do not.
@@ -461,6 +462,12 @@ test('rules 6 and 7 at turn.complete: code edited with no state file and no test
   expect(rules).toContain('state-file-fresh')
   expect(rules).toContain('tests-before-done')
   expect(w.toasts.length).toBeGreaterThan(0)
+  // Claude gets the same misses with its next prompt (scripts/pending-note.sh reads this file).
+  const PENDING = 'C:/home/.claude/lean-gate/pending/sess-1.txt'
+  expect(w.files[PENDING]).toContain('state-file-fresh: 1 code file(s) edited, no state file touched')
+  expect(w.files[PENDING]).toContain('tests-before-done')
+  expect(w.files[PENDING]).not.toContain('set to block')
+  delete w.files[PENDING]
 
   // Warned once per session: the next turn with the same gap stays quiet until a turn fixes it.
   const once = lines(w.files).length
@@ -468,6 +475,7 @@ test('rules 6 and 7 at turn.complete: code edited with no state file and no test
   await $.turn.complete({ ...DONE, turnId: 't1b' })
   await settle()
   expect(lines(w.files).length).toBe(once)
+  expect(w.files[PENDING]).toBeUndefined()
 
   // A turn that touches the state file and runs a test adds nothing.
   const before = lines(w.files).length
@@ -499,6 +507,21 @@ test('rules 6 and 7 at turn.complete: code edited with no state file and no test
   await $.turn.complete({ ...DONE, turnId: 't5' })
   await settle()
   expect(lines(w.files).length).toBe(scratch)
+})
+
+test('a turn-end rule at block cannot deny, so Claude is told it is a must-fix', async ($, on) => {
+  const w = world(on, config({ mode: 'block', rules: { 'lean-gate-first': 'off', 'ponytail-active': 'off', 'wp-skills-for-wp-code': 'off', 'phpcs-before-done': 'off', 'tests-before-done': 'off', 'state-file-fresh': 'block' } }))
+  w.dirs['C:/proj'] = ['.git']
+  // A note not yet read by the next prompt is kept, the new one appended.
+  w.files['C:/home/.claude/lean-gate/pending/sess-1.txt'] = 'lean-gate, last turn: push-after-tag: earlier.'
+  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.php', old_string: 'a', new_string: 'b' })
+  await $.turn.complete({ ...DONE })
+  await settle()
+  const note = w.files['C:/home/.claude/lean-gate/pending/sess-1.txt'] ?? ''
+  expect(note).toStartWith('lean-gate, last turn: push-after-tag: earlier. lean-gate, last turn: state-file-fresh')
+  expect(note).toContain('state-file-fresh')
+  expect(note).toContain('set to block')
+  expect(note).not.toContain('tests-before-done')
 })
 
 test('turn.complete answers before any git work or turn-end rule runs', async ($, on) => {

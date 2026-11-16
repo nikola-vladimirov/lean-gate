@@ -59,6 +59,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/pending-note.sh\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-vendor.sh\" ponytail ponytail/hooks/ponytail-mode-tracker.js",
             "timeout": 15
           }

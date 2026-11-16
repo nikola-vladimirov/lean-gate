@@ -702,7 +702,7 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
         if (deny !== undefined) return deny
       } else if (state === 'silent') await trip($, mem, cfg, 'release-needs-review', `git did not answer for ${cut(rel.dir, 60)} (${rel.what})`, '', false)
       else if (state === 'due') {
-        const deny = await trip($, mem, cfg, 'release-needs-review', `${rel.what} in ${cut(rel.dir, 50)}`, 'lean-gate: review the changed code first (press Reviewed in the band after lean-gate review-scope), then release')
+        const deny = await trip($, mem, cfg, 'release-needs-review', `${rel.what} in ${cut(rel.dir, 50)}`, `lean-gate: ${rel.what} is blocked until the code changed since the last release is reviewed. Do not retry this command or reword it. Run lean-gate review-scope in \`${rel.dir}\`, review the files it lists (lean-gate audit security and audit perf on them), report the findings, then ask the person to press Reviewed in the lean-gate panel. Only the person can press it; release after they say it is done.`)
         if (deny !== undefined) return deny
       }
     }
@@ -825,7 +825,16 @@ export const register: Register = on => {
       resetTurn()
       void (async () => {
         const cfg = await loadConfig($)
-        if (unpushed) await trip($, mem, cfg, 'push-after-tag', 'a tag was made this turn and nothing was pushed', '', false)
+        // These rules run after the turn, so they cannot deny anything; Claude reads them with its next prompt instead
+        // (scripts/pending-note.sh), since a toast only reaches the person.
+        const notes: string[] = []
+        const miss = async (rule: string, detail: string) => {
+          const level = effective(cfg, rule)
+          if (level === 'off') return
+          await trip($, mem, cfg, rule, detail, '', false)
+          notes.push(`${rule}: ${detail}${level === 'block' ? ' (set to block: fix this before you report the work done)' : ''}`)
+        }
+        if (unpushed) await miss('push-after-tag', 'a tag was made this turn and nothing was pushed')
         // Warned once, then quiet until a turn fixes it (touches the state file, runs tests or PHPCS), which re-arms it.
         // A folder that is not a project (a scratch chat) has no state file or tests to keep, so it is never judged.
         const project = n > 0 && (await inProject($))
@@ -835,11 +844,18 @@ export const register: Register = on => {
           const every = cfg.reminders[rule] === 'every'
           if (!broken || !project || (!every && mem.nagged.has(rule))) return
           if (!every) mem.nagged.add(rule)
-          await trip($, mem, cfg, rule, detail, '', false)
+          await miss(rule, detail)
         }
         await nag('state-file-fresh', !stateTouched, stateTouched, `${n} code file(s) edited, no state file touched`)
         await nag('tests-before-done', !tested, tested, `${n} code file(s) edited, no test command ran`)
         await nag('phpcs-before-done', php && !phpcsRan, phpcsRan, 'PHP files edited, PHPCS did not run')
+        // Appended, so a note still unread when the next turn ends is kept (each rule nags once per session).
+        if (notes.length > 0)
+          await (async () => {
+            const file = `${await claudeDir($)}/lean-gate/pending/${await $.session.id()}.txt`
+            const old = (await readText($, file)) ?? ''
+            await $.fs.write(file, `${old}${old === '' ? '' : ' '}lean-gate, last turn: ${notes.join('; ')}.`)
+          })().catch(() => undefined)
         await refreshRelease($)
       })().catch(() => undefined)
     }
@@ -1096,6 +1112,7 @@ export const register: Register = on => {
         <Box flexDirection="column" flexShrink={1}>
           <Text>{rule}</Text>
           <Text dimColor>{info}</Text>
+          {WARN_ONLY.has(rule) ? <Text dimColor>checked after the turn, so it cannot stop a tool: Claude is told with its next prompt, and block makes it a must-fix</Text> : null}
         </Box>
       </Box>
     )

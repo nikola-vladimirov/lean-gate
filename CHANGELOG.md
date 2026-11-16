@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1 (2026-11-16)
+
+- End-of-turn rules (`state-file-fresh`, `tests-before-done`, `phpcs-before-done`, `push-after-tag`) now reach Claude: they run after the turn and cannot stop a tool, so before only the person saw a toast. The miss is saved and the new `pending-note.sh` hook hands it to Claude with the next prompt, once. At block, the note says to fix it before reporting the work done; the panel row explains this.
+- The `release-needs-review` block now tells Claude what to do (run `review-scope`, review and audit the files, report, ask the person to press Reviewed) and not to retry or reword the command. Before, Claude retried the same tag several times.
+
 ## 1.1.0 (2026-11-11)
 
 - `lean-gate audit wporg [dir or zip]`: the WordPress.org plugin review checks, one or more per detailed guideline (G1 to G17) plus the review team common issues (inline scripts and styles, unsanitized nonces and JSON, file writes outside uploads, code editors, undocumented external services, dev and translation files, outdated libraries, readme and zip limits).
