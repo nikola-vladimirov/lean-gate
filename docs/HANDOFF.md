@@ -1,6 +1,6 @@
 # lean-gate hub: handoff
 
-Updated 2026-11-26. `2.0.0` built on `hub`, not committed, tagged or pushed yet (see "2.0.0" below). Last release `1.1.1` (tag `v1.1.1` on `main` and `hub`, installed as lean-gate@lean-gate 1.1.1). Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08). The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). Work continues on `hub`; release by fast-forwarding `main`.
+Updated 2026-11-26. `2.0.0` released (tag `v2.0.0` on `main` and `hub`, GitHub release page, full review recorded at v2.0.0, installed as lean-gate@lean-gate 2.0.0; see "2.0.0" below). Repo `nikola-vladimirov/lean-gate` (renamed from lean-project 2026-11-08). The local folder stays `E:\Claude Sessions\lean-project` (sessions and memory are keyed by it). Work continues on `hub`; release by fast-forwarding `main`.
 
 Guides: `docs/HUB.md` (start here), `docs/MANUAL.md` (every button, rule, setting and command; update it with every feature or fix, `lean-gate selftest` checks it), `skills/lean-gate/STRUCTURE.md` (project layout), `CHANGELOG.md` (every version), `docs/PLAN-2.0.md` (the 2.0 spec).
 
@@ -21,7 +21,8 @@ Asked for by the user: make lean-gate fit the Nashenski hub's Planka workflow, r
 
 ## Next
 
-1. With the user's OK: release 2.0.0 (steps above; press Reviewed, then `review-scope --full-done`), push the Pro (`70972a1`) and hub (`c49c393`) commits, run `node planka/sync.mjs` for each hub project, then remove the `secrets-in-files` custom rule from the global config.
+Nothing in progress. Released 2026-11-26 with the user's OK: tag, GitHub release, plugin updated; Pro (`70972a1`) and hub (`c49c393`) commits pushed; `sync.mjs all --only=Rules` ran (every Rules card got an "updated" comment, since sync works per file); the `secrets-in-files` custom rule is out of the global config (`no-secrets-outward` replaces it; the old rule stays in `lean-gate.json.bak-before-2.0.0`).
+1. In the first 2.0 session: confirm the session-start skill load is counted by `lean-gate-first` (no skill-first warning before the first edit), and that a Nashenski session gets the tracker note.
 
 ## Commands
 
