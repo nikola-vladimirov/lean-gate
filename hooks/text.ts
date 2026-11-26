@@ -22,8 +22,9 @@ export const PRESETS = [
 // The details view lists rules by group, each with a one-line meaning.
 export const RULE_GROUPS: readonly (readonly [string, readonly string[]])[] = [
   ['Agents and models', ['agent-needs-model-effort', 'no-haiku-coding', 'free-opencode-only', 'delegate-more', 'max-agents', 'review-edited-files-only', 'distinctive-session-names']],
-  ['Every session', ['lean-gate-first', 'ponytail-active', 'state-file-fresh', 'tests-before-done', 'no-em-dashes']],
-  ['Releases and git', ['release-needs-review', 'changelog-before-tag', 'push-after-tag', 'one-pr-per-fix', 'no-demo-files-public']],
+  ['Every session', ['lean-gate-first', 'ponytail-active', 'state-file-fresh', 'tests-before-done', 'no-em-dashes', 'no-secrets-outward']],
+  ['Releases and git', ['release-needs-review', 'changelog-before-tag', 'push-after-tag', 'no-demo-files-public']],
+  ['Tracker rules', ['tracker-card-first', 'tracker-git-codes', 'tracker-sync-after-push', 'tracker-brief']],
   ['WordPress and docs', ['wp-skills-for-wp-code', 'docs-before-builder', 'phpcs-before-done', 'wporg-audit-before-release']],
 ]
 export const RULE_INFO: Record<string, string> = {
@@ -44,8 +45,12 @@ export const RULE_INFO: Record<string, string> = {
   'release-needs-review': 'Review before a release tag',
   'changelog-before-tag': 'Changelog or readme change before a tag',
   'push-after-tag': 'Push the tag in the same turn',
-  'one-pr-per-fix': 'Listed repos take PRs, not pushes to main',
   'no-demo-files-public': 'No demo files in a push to a public repo',
+  'no-secrets-outward': 'No keys or tokens in files, commands or commits',
+  'tracker-card-first': 'Start and claim a card before editing in a tracker folder',
+  'tracker-git-codes': 'Commits on a card branch, subject starts with the card code',
+  'tracker-sync-after-push': 'Sync the tracker after pushing mirrored docs',
+  'tracker-brief': 'Agent briefs name the card and AGENT_NAME',
   'wp-skills-for-wp-code': 'Load the wp-* skills for WordPress code',
   'docs-before-builder': 'Read the docs before builder or WordPress code',
 }
@@ -65,17 +70,18 @@ export const DEMO_PRESETS = [
 export const SECTION_COLOR: Record<string, string> = {
   project: 'suggestion', rules: 'warning', builder: 'claude', routing: 'permission', workflow: 'permission', settings: 'suggestion',
   helpers: 'inactive', memory: 'success', board: 'success', lessons: 'success', review: 'error', ponytail: 'claude',
-  wpdev: 'suggestion', packs: 'inactive', stats: 'warning', violations: 'error',
+  wpdev: 'suggestion', packs: 'inactive', stats: 'warning', violations: 'error', tracker: 'permission',
 }
-export const GROUP_COLOR: Record<string, string> = { 'Agents and models': 'permission', 'Every session': 'suggestion', 'Releases and git': 'claude', 'WordPress and docs': 'success', 'Your rules': 'warning' }
+export const GROUP_COLOR: Record<string, string> = { 'Agents and models': 'permission', 'Every session': 'suggestion', 'Releases and git': 'claude', 'Tracker rules': 'permission', 'WordPress and docs': 'success', 'Your rules': 'warning' }
 export const LEVEL_COLOR: Record<string, string> = { off: 'inactive', warn: 'warning', block: 'error' }
 export const MODEL_COLOR: Record<string, string> = { haiku: 'success', sonnet: 'suggestion', opus: 'permission', fable: 'claude', free: 'inactive' }
 
 // Hover help on the info icons (desktop app only; the terminal has Explain instead).
 export const GROUP_HELP: Record<string, string> = {
   'Agents and models': 'Checked on every Agent call: model and effort set, no Haiku for code, free OpenCode models only, agent caps, scoped reviews, session names.',
-  'Every session': 'Checked as a session works: the lean-gate skill first, ponytail on, the state file and tests kept current, no em dashes.',
-  'Releases and git': 'Checked on tags, pushes and pull requests: review before release, a changelog before a tag, a push after a tag, one PR per fix, no demo files public.',
+  'Every session': 'Checked as a session works: the lean-gate skill first, ponytail on, the state file and tests kept current, no em dashes, no secrets in files, commands or commits.',
+  'Releases and git': 'Checked on tags and pushes: review before release, a changelog before a tag, a push after a tag, no demo files public.',
+  'Tracker rules': 'Checked in folders a tracker in the global config covers: a card started and claimed before edits, card branches and codes in commits, a sync after pushing mirrored docs, card briefs for agents.',
   'WordPress and docs': 'Checked on WordPress code: WordPress skills and docs read first, PHPCS on WordPress PHP before done.',
   'Your rules': 'Rules you added with the Rule builder or in custom_rules.',
 }
@@ -123,6 +129,10 @@ export const EXPLAIN: Record<string, string> = {
   'proj-attach': 'Reads the mentioned project\'s entry and state file into this chat, without editing there.',
   'proj-switch': 'Moves this session to the mentioned project\'s folder.',
   'proj-ignore': 'Dismisses the project mention.',
+  // Tracker
+  'tr-start': "Asks Claude to run this tracker's start command and say which cards are yours.",
+  'tr-cards': 'Asks Claude to list your cards in this tracker.',
+  'tr-review': 'Asks Claude to move the card in progress to In Review with a short comment.',
   // Rules and the rule builder
   rule: 'Press to cycle the rule: off, warn, block.',
   'rb-pattern': 'Steps through ready-made patterns for a new rule.',
@@ -183,7 +193,6 @@ export const EXPLAIN: Record<string, string> = {
   'set-quiet': 'On: warnings are counted and listed without a pop-up. Blocks still show.',
   'set-panel': 'How the panel opens at session start: with details, compact, or closed.',
   'set-statefile': 'The state file the gate watches in this project (saved in this project\'s file).',
-  'set-pr': 'On: this repo takes pull requests only, so a push to main is refused.',
   'set-demo': 'What a push to a public repo must not carry: demo folders, also zip, sql, log and env files.',
   'set-reset': 'Backs up the global settings, then sets every value back to its default.',
   'set-undo': 'Puts back the settings saved by the last reset.',

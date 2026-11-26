@@ -27,6 +27,18 @@ import {
   shellCommand,
   releaseActions,
   isLeanSkill,
+  LEAN_MARKER,
+  trackerAt,
+  trackerRe,
+  briefProblems,
+  secretKind,
+  outwardText,
+  gitCalls,
+  commitArgs,
+  newBranch,
+  MATCH_CHARS,
+  heredocSubject,
+  unknownNames,
   isStateFile,
   isTestCommand,
   isPhpcsCommand,
@@ -96,7 +108,7 @@ const SECTION_CAPS = [0, 1, 2, 3, 4, 6] as const
 const DELEGATE_AFTER = [4, 6, 8, 12, 16] as const
 const CONTEXT_LIMITS = [200000, 300000, 500000, 1000000] as const
 // Rules that only ever warn (they run after the work), so a block override has nothing to act on.
-const WARN_ONLY = new Set(['state-file-fresh', 'tests-before-done', 'phpcs-before-done', 'push-after-tag'])
+const WARN_ONLY = new Set(['state-file-fresh', 'tests-before-done', 'phpcs-before-done', 'push-after-tag', 'tracker-sync-after-push'])
 // Rule 8 counts reading tools only: Bash is neither counted nor ever denied.
 const DELEGATE = new Set(['Read', 'Grep', 'Glob'])
 const TOOL_MS = 3000
@@ -174,6 +186,15 @@ type Mem = {
   pushed: boolean
   // lean-gate audit wporg ran this session (wporg-audit-before-release).
   wporg: boolean
+  // Tracker facts by tracker name: when its start ran and whether a card was claimed (this session), the card codes seen, the
+  // mirrored docs edited since the last sync that followed a push, the pushes this turn not yet followed by a sync, and the
+  // trackers a past turn pushed to without a sync (a sync in any later turn settles them).
+  started: Map<string, number>
+  claimed: Set<string>
+  codes: Set<string>
+  mirrored: Set<string>
+  trPushed: Set<string>
+  unsynced: Set<string>
   // One-shot overrides from the band: the next hit of this rule is allowed (even a block) or blocked (even a warn).
   once: Map<string, 'allow' | 'block'>
   run: number
@@ -213,37 +234,36 @@ const readText = async ($: EngineInterface, path: string) => {
   return r.kind === 'ok' ? r.text : undefined
 }
 
-// lean-project is the old name: its file is read while the new one is missing (the session start copies it over once).
-const readNewOrOld = async ($: EngineInterface, dir: string, name: string): Promise<Read> => {
-  const r = await readFile($, `${dir}/${name.replace('lean-project', 'lean-gate')}`)
-  return r.kind === 'missing' ? readFile($, `${dir}/${name}`) : r
-}
-const configText = async ($: EngineInterface, dir: string, name: string) => {
-  const r = await readNewOrOld($, dir, name)
-  return r.kind === 'ok' ? r.text : ''
+// The global file and the session project's file as JSON objects; a missing or bad file reads as {} (defaults).
+const layers = async ($: EngineInterface) => {
+  const text = async (path: string) => readText($, path).then(t => t ?? '')
+  return { global: parseJson(await text(`${await claudeDir($)}/lean-gate.json`)), project: parseJson(await text(`${norm(await $.session.cwd())}/.lean-gate.json`)) }
 }
 
-// Global file, then the session project's file; a missing or bad file reads as defaults.
 async function loadConfig($: EngineInterface): Promise<Config> {
-  const global = parseJson(await configText($, await claudeDir($), 'lean-project.json'))
-  const project = parseJson(await configText($, norm(await $.session.cwd()), '.lean-project.json'))
+  const { global, project } = await layers($)
   return mergeConfig(global, projectLayer(project))
 }
 
 // The rules this folder's .lean-gate.json turns down against the global file; a repo can ship that file, so it is shown, never silent.
 async function projectLowers($: EngineInterface): Promise<string[]> {
-  const global = parseJson(await configText($, await claudeDir($), 'lean-project.json'))
-  const project = parseJson(await configText($, norm(await $.session.cwd()), '.lean-project.json'))
+  const { global, project } = await layers($)
   return loweredRules(mergeConfig(global), mergeConfig(global, projectLayer(project)))
+}
+
+// Rule ids and retired keys in either file that the gate ignores, so a typo or a 1.x leftover is not silent.
+async function unknownConfig($: EngineInterface): Promise<string[]> {
+  const { global, project } = await layers($)
+  return unknownNames(mergeConfig(global, projectLayer(project)), global, project)
 }
 
 // Read-modify-write of one config file, keeping unknown keys. A file that is unreadable or not a JSON object is never written.
 // The edit also gets the merged config read inside the queue, so two quick presses build on each other.
 type Edit = (json: Record<string, unknown>, now: Config) => void
-function editFile($: EngineInterface, mem: Mem, dir: string, oldName: string, label: string, edit: Edit): Promise<void> {
+function editFile($: EngineInterface, mem: Mem, dir: string, name: string, label: string, edit: Edit): Promise<void> {
   return enqueue(mem, async () => {
-    const file = `${dir}/${oldName.replace('lean-project', 'lean-gate')}`
-    const r = await readNewOrOld($, dir, oldName)
+    const file = `${dir}/${name}`
+    const r = await readFile($, file)
     let json: Record<string, unknown> | undefined = {}
     if (r.kind === 'ok' && r.text.trim() !== '') json = parseStrict(r.text)
     if (r.kind === 'error' || json === undefined) return $.ui.toast(`lean-gate: ${label} config unreadable, not changed`)
@@ -252,8 +272,8 @@ function editFile($: EngineInterface, mem: Mem, dir: string, oldName: string, la
     $.ui.invalidate('ui.render')
   }).catch(() => undefined)
 }
-const editGlobal = async ($: EngineInterface, mem: Mem, edit: Edit) => editFile($, mem, await claudeDir($), 'lean-project.json', 'global', edit)
-const editProject = async ($: EngineInterface, mem: Mem, edit: Edit) => editFile($, mem, norm(await $.session.cwd()), '.lean-project.json', 'project', edit)
+const editGlobal = async ($: EngineInterface, mem: Mem, edit: Edit) => editFile($, mem, await claudeDir($), 'lean-gate.json', 'global', edit)
+const editProject = async ($: EngineInterface, mem: Mem, edit: Edit) => editFile($, mem, norm(await $.session.cwd()), '.lean-gate.json', 'project', edit)
 // A panel press saves where the Settings switch points. A project file cannot set these keys (it may arrive with a cloned repo), so they go global.
 const GLOBAL_ONLY = /^(mode|workflow|custom_rules|demo_pattern)$/
 async function editConfig($: EngineInterface, mem: Mem, key: string, edit: Edit): Promise<void> {
@@ -281,8 +301,10 @@ function trimLog($: EngineInterface, mem: Mem): Promise<void> {
   }).catch(() => undefined)
 }
 
+// File names unquoted (a name with non-ASCII letters reads as itself), and a diff the gate reads is plain git output: no external
+// diff tool, no colour, whatever the repo or user config says.
 const git = ($: EngineInterface, dir: string, ms: number, args: string[], env?: Record<string, string>) =>
-  $.process.run(['git', ...args], { cwd: dir, timeoutMs: ms, ...(env ? { env } : {}) }).catch(() => undefined)
+  $.process.run(['git', '-c', 'core.quotepath=off', ...(args[0] === 'diff' ? ['diff', '--no-ext-diff', '--no-color', ...args.slice(1)] : args)], { cwd: dir, timeoutMs: ms, ...(env ? { env } : {}) }).catch(() => undefined)
 const CODE_GLOBS = ['*.php', '*.js', '*.jsx', '*.ts', '*.tsx', '*.py', '*.sh']
 
 // Git Bash when it is installed (plain `bash` on Windows may be WSL's), else whatever `bash` is on PATH. Git Bash is found at its
@@ -481,11 +503,22 @@ async function inProject($: EngineInterface): Promise<boolean> {
   return projectAt(await loadRegistry($), cwd) !== undefined || (await $.fs.list(cwd).catch(() => [])).some(f => PROJECT_MARKERS.includes(f.name))
 }
 
-// A skill load is kept in this module's memory, which a reload (plugin update, resume) empties; the transcript still has it.
+// A skill load is kept in this module's memory, which a reload (plugin update, resume) empties; the transcript still has it,
+// as a Skill call or, for lean-gate, the session-start marker in a user row (the prompt.attachment hook catches it as it is sent).
 // shortcut: after a compaction the old Skill call may be gone from the transcript, so the rule asks for one more load.
-async function skillInTranscript($: EngineInterface, matches: (name: string) => boolean): Promise<boolean> {
+async function skillInTranscript($: EngineInterface, matches: (name: string) => boolean, marker?: string): Promise<boolean> {
   const rows: unknown = await $.session.messages().catch(() => [])
-  return Array.isArray(rows) && (rows as SessionMessage[]).some(r => r.role === 'assistant' && r.toolUses.some(u => u.tool === 'Skill' && matches(String(u.input.skill ?? ''))))
+  return Array.isArray(rows) && (rows as SessionMessage[]).some(r => (marker !== undefined && r.role === 'user' && r.text.includes(marker)) || (r.role === 'assistant' && r.toolUses.some(u => u.tool === 'Skill' && matches(String(u.input.skill ?? '')))))
+}
+
+// A note Claude reads with its next prompt (scripts/pending-note.sh). Appended inside the write queue, so one still unread when the
+// next comes is kept, even when two are written at once.
+function pendingNote($: EngineInterface, mem: Mem, text: string): Promise<void> {
+  return enqueue(mem, async () => {
+    const file = `${await claudeDir($)}/lean-gate/pending/${await $.session.id()}.txt`
+    const old = (await readText($, file)) ?? ''
+    await $.fs.write(file, `${old}${old === '' ? '' : ' '}${text}`)
+  })
 }
 
 // no-demo-files-public: demo-like paths in the commits a push would send, only when the repo is public. Any failure reads as "none".
@@ -599,6 +632,34 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
     if (deny !== undefined) return deny
   }
 
+  // Key-shaped strings never leave in a file, a command or a commit; the message names the kind, never the secret.
+  const outward = outwardText(tool, rec)
+  if (outward !== undefined && effective(cfg, 'no-secrets-outward') !== 'off') {
+    const isShell = shellCommand(tool, rec) !== undefined
+    let kind = secretKind(outward)
+    let where = isShell ? 'a shell command' : base(String(rec.file_path ?? tool))
+    // With -a or a `git add` in the same command (which has not run yet), the unstaged tracked changes are read as well.
+    // shortcut: a new file that such a `git add` would stage is not read; untracked files have no diff.
+    const calls = isShell && kind === undefined ? gitCalls(outward, await $.session.cwd(), (await home($)) ?? '') : []
+    const adds = calls.some(g => g.sub === 'add')
+    for (const g of calls) {
+      if (g.sub !== 'commit') continue
+      for (const args of [['diff', '--cached', '-U0'], ...(adds || commitArgs(g.rest).all ? [['diff', '-U0']] : [])]) {
+        const diff = await git($, g.dir, TOOL_MS, args)
+        kind = secretKind((diff?.stdout ?? '').slice(0, 2_000_000).split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).join('\n'))
+        if (kind !== undefined) {
+          where = args.includes('--cached') ? 'the staged changes' : 'the changes this commit stages'
+          break
+        }
+      }
+      if (kind !== undefined) break
+    }
+    if (kind !== undefined) {
+      const deny = await trip($, mem, cfg, 'no-secrets-outward', `${kind} in ${where}`, `lean-gate: ${kind} in ${where}: keep secrets out of files, commands and commits; read it from an environment variable or a file outside the repo, or write a placeholder`)
+      if (deny !== undefined) return deny
+    }
+  }
+
   // A new session must be findable later: its title starts with the date and time. A card the user accepts (proposal_id) keeps its own title.
   if ((tool === 'mcp__ccd_session__start_session' || tool === 'mcp__ccd_session__hand_off_to_session') && rec.proposal_id === undefined && !/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}|\d{2}:\d{2} \d{2}-\d{2}-\d{4}) \S/.test(String(rec.title ?? ''))) {
     const deny = await trip($, mem, cfg, 'distinctive-session-names', 'sub-session title lacks a date and time', 'lean-gate: name the session distinctively: start the title with the date and time (HH:MM DD-MM-YYYY, or YYYY-MM-DD HH:MM), then what it is about')
@@ -607,7 +668,7 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
 
   if (isLead && (tool === 'Edit' || tool === 'Write')) {
     const path = norm(String(rec.file_path ?? ''))
-    if (CODE_EDITED.test(path) && !mem.leanLoaded && (await inProject($)) && !(mem.leanLoaded = await skillInTranscript($, isLeanSkill))) {
+    if (CODE_EDITED.test(path) && !mem.leanLoaded && (await inProject($)) && !(mem.leanLoaded = await skillInTranscript($, isLeanSkill, LEAN_MARKER))) {
       const deny = await trip($, mem, cfg, 'lean-gate-first', `code edit before the lean-gate skill: ${base(path)}`, 'lean-gate: load the lean-gate skill before editing code')
       if (deny !== undefined) return deny
     }
@@ -621,6 +682,17 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
     }
     if (!mem.docsRead && !mem.wpSkill && isBuilderCode(path, callText(tool, rec))) {
       const deny = await trip($, mem, cfg, 'docs-before-builder', `builder or WordPress code edited before reading its docs: ${base(path)}`, 'lean-gate: read the official docs for the part you are changing first (only that part), and note the page')
+      if (deny !== undefined) return deny
+    }
+  }
+
+  // Card work starts on the tracker: any code edit in a tracker folder but a docs file, by the lead or a subagent.
+  if ((tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit') && effective(cfg, 'tracker-card-first') !== 'off') {
+    const path = norm(String(rec.file_path ?? ''))
+    const tr = trackerAt(cfg, path)
+    const missing = tr === undefined || !CODE_EDITED.test(path) || trackerRe(tr.docs)?.test(path) === true ? [] : [tr.start_match !== '' && !mem.started.has(tr.name) ? 'start' : '', tr.claim_match !== '' && !mem.claimed.has(tr.name) ? 'card claim' : ''].filter(Boolean)
+    if (tr !== undefined && missing.length > 0) {
+      const deny = await trip($, mem, cfg, 'tracker-card-first', `${base(path)} edited before the ${tr.name} ${missing.join(' and ')}`, `lean-gate: start the card first: run ${tr.start || 'the tracker start'}, create the card or move it to In Progress, then edit`)
       if (deny !== undefined) return deny
     }
   }
@@ -651,6 +723,12 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
       const deny = await trip($, mem, cfg, 'review-edited-files-only', cut(String(rec.description ?? 'review agent'), 60), 'lean-gate: scope the review to the edited files (list them or run lean-gate review-scope)')
       if (deny !== undefined) return deny
     }
+    const tr = effective(cfg, 'tracker-brief') === 'off' ? undefined : trackerAt(cfg, await $.session.cwd())
+    const brief = tr === undefined ? [] : briefProblems(tr, rec)
+    if (brief.length > 0) {
+      const deny = await trip($, mem, cfg, 'tracker-brief', brief.join('; '), "lean-gate: brief the agent for its card: put the card code and AGENT_NAME in the prompt, and keep any AGENT_MODEL= or AGENT_EFFORT= equal to the call's model and effort")
+      if (deny !== undefined) return deny
+    }
     const msg = {
       'agent-needs-model-effort': `lean-gate: set model and effort on every subagent (routing: ${ROUTING_KEYS.map(k => `${k}=${cfg.routing[k]}`).join(', ')})`,
       'no-haiku-coding': 'lean-gate: never use Haiku for coding, pick sonnet or opus',
@@ -670,12 +748,32 @@ async function gate($: EngineInterface, mem: Mem, e: ToolCallInput): Promise<str
         if (deny !== undefined) return deny
       }
     }
-    if (cfg.pr_repos.length > 0 && isGitPush(cmd)) {
-      const cwd = norm(await $.session.cwd())
-      const [top, branch] = await Promise.all([git($, cwd, TOOL_MS, ['rev-parse', '--show-toplevel']), git($, cwd, TOOL_MS, ['rev-parse', '--abbrev-ref', 'HEAD'])])
-      const name = base(top?.stdout.trim() ?? '')
-      if (cfg.pr_repos.includes(name) && /^(main|master)$/.test(branch?.stdout.trim() ?? '')) {
-        const deny = await trip($, mem, cfg, 'one-pr-per-fix', `push to ${branch?.stdout.trim()} in ${name}`, `lean-gate: ${name} takes pull requests only: push a branch and open one PR per fix, merge after the owner's go-ahead`)
+    if (effective(cfg, 'tracker-git-codes') !== 'off' && cfg.trackers.length > 0) {
+      const calls = gitCalls(cmd, await $.session.cwd(), (await home($)) ?? '')
+      // `git add x && git commit`: the add has not run yet, so the tracked changes count as staged.
+      const adds = calls.some(g => g.sub === 'add')
+      // `git checkout -b <branch> && git commit`: the commit lands on the new branch, by folder.
+      const made = new Map<string, string>()
+      for (const g of calls) {
+        const nb = newBranch(g)
+        if (nb !== undefined) made.set(g.dir, nb)
+        const tr = g.sub === 'commit' ? trackerAt(cfg, g.dir) : undefined
+        if (tr === undefined) continue
+        const { subject, all, paths } = commitArgs(g.rest)
+        // A commit with pathspecs takes only those paths; otherwise the staged files (and the tracked changes with -a or an add).
+        const lists = paths.length > 0 ? [] : await Promise.all([['diff', '--cached', '--name-only'], ...(all || adds ? [['diff', '--name-only']] : [])].map(args => git($, g.dir, TOOL_MS, args)))
+        const files = paths.length > 0 ? paths : lists.flatMap(r => (r?.exitCode === 0 ? r.stdout.split('\n') : [])).map(f => f.trim()).filter(Boolean)
+        const docs = trackerRe(tr.docs)
+        if (docs !== undefined && files.length > 0 && files.every(f => docs.test(f))) continue
+        const problems: string[] = []
+        const branch = trackerRe(tr.branch) === undefined ? '' : (made.get(g.dir) ?? (await git($, g.dir, TOOL_MS, ['rev-parse', '--abbrev-ref', 'HEAD']))?.stdout.trim() ?? '')
+        const shape = `${cfg.person || '<person>'}/<CODE>-<slug>`
+        if (branch !== '' && trackerRe(tr.branch)?.test(branch) === false) problems.push(/^(main|master)$/.test(branch) ? `commit on ${branch}: card work goes on ${shape}` : `branch ${branch} is not ${shape}`)
+        const s = (subject === '' ? heredocSubject(cmd) : subject)?.slice(0, MATCH_CHARS)
+        // A subject the shell builds from a variable ($MSG) is not known here, so it is not judged.
+        if (tr.code !== '' && s !== undefined && s !== '' && !s.startsWith('$') && !new RegExp(`^(?:${tr.code})`, 'i').test(s)) problems.push('the commit subject does not start with a card code')
+        if (problems.length === 0) continue
+        const deny = await trip($, mem, cfg, 'tracker-git-codes', `${tr.name}: ${problems.join('; ')}`, `lean-gate: ${tr.name} card work: ${problems.join('; ')}. Commit on the card's branch with its code first in the subject; a docs-only commit needs neither`)
         if (deny !== undefined) return deny
       }
     }
@@ -736,6 +834,31 @@ async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny
       // Only a push that sends tags publishes the release; a plain push leaves the tag local.
       if (rel?.what === 'git push of tags') mem.pushed = true
     }
+    const cfg = await loadConfig($)
+    if (cfg.trackers.length > 0) {
+      const cwd = await $.session.cwd()
+      const now = await $.clock.now()
+      // Pushes first, so `git push && <sync>` in one command counts as a sync after the push.
+      for (const g of gitCalls(cmd, cwd, (await home($)) ?? '')) {
+        const tr = g.sub === 'push' && !g.rest.some(v => v === '--delete' || v === '-d') ? trackerAt(cfg, g.dir) : undefined
+        if (tr !== undefined) mem.trPushed.add(tr.name)
+      }
+      // The patterns come from the config, so they run on capped text, as custom rules do.
+      const text = cmd.slice(0, MATCH_CHARS)
+      for (const t of cfg.trackers) {
+        if (trackerRe(t.start_match)?.test(text)) mem.started.set(t.name, now)
+        if (trackerRe(t.claim_match)?.test(text)) mem.claimed.add(t.name)
+        // A sync after a push (this turn's, or an earlier turn's left unsynced) settles it and the mirrored edits it carried.
+        if (trackerRe(t.sync_match)?.test(text)) {
+          const pushed = mem.trPushed.delete(t.name)
+          if (mem.unsynced.delete(t.name) || pushed) mem.mirrored.delete(t.name)
+        }
+      }
+      // Card codes named in commands from a tracker folder, for the panel (whole words, as written).
+      const here = trackerAt(cfg, cwd)
+      for (const m of here === undefined || here.code === '' ? [] : text.matchAll(new RegExp(`\\b(?:${here.code})\\b`, 'g'))) if (mem.codes.size < 12) mem.codes.add(m[0])
+      $.ui.invalidate('ui.render')
+    }
   }
   if (cmd !== undefined && isTestCommand(cmd)) {
     mem.tested = true
@@ -747,10 +870,14 @@ async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny
     const out = (ran as { result?: { stdout?: unknown } }).result?.stdout
     if (typeof out !== 'string' || /WPORG AUDIT: \d+ finding/.test(out)) mem.wporg = true
   }
-  if ((e.tool === 'Edit' || e.tool === 'Write') && !ran.isError) {
-    const path = norm(e.file_path)
+  const tool = String(e.tool)
+  if ((tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit') && !ran.isError) {
+    const path = norm(String((e as unknown as Record<string, unknown>).file_path ?? ''))
     const now = await $.clock.now()
-    if (isStateFile(path, (await loadConfig($)).state_file)) {
+    const cfg = await loadConfig($)
+    const tr = trackerAt(cfg, path)
+    if (tr !== undefined && trackerRe(tr.mirrored)?.test(path)) mem.mirrored.add(tr.name)
+    if (isStateFile(path, cfg.state_file)) {
       mem.stateTouched = true
       await patch($, { stateAt: now })
     } else if (CODE_EDITED.test(path)) {
@@ -758,14 +885,14 @@ async function after($: EngineInterface, mem: Mem, e: ToolCallInput, ran: { deny
       // Code changed after the audit: the release needs a fresh one.
       mem.wporg = false
       // PHPCS is for WordPress code only: a WordPress PHP edit, or any PHP once the WordPress skills are loaded.
-      if (/\.php$/i.test(path) && (mem.wpSkill || isWpCode(path, callText(e.tool, e as unknown as Record<string, unknown>)))) mem.php++
+      if (/\.php$/i.test(path) && (mem.wpSkill || isWpCode(path, callText(tool, e as unknown as Record<string, unknown>)))) mem.php++
       await patch($, { codeAt: now })
     }
   }
 }
 
 export const register: Register = on => {
-  const mem: Mem = { edited: new Set(), stateTouched: false, tested: false, phpcs: false, php: 0, warned: new Set(), nagged: new Set(), leanLoaded: false, wpSkill: false, draft: { preset: 0, level: 'warn' }, docsRead: false, agents: 0, agentsBy: {}, counted: new Map(), tagged: false, pushed: false, wporg: false, once: new Map(), run: 0, lead: 0, sub: 0, chain: Promise.resolve() }
+  const mem: Mem = { edited: new Set(), stateTouched: false, tested: false, phpcs: false, php: 0, warned: new Set(), nagged: new Set(), leanLoaded: false, wpSkill: false, draft: { preset: 0, level: 'warn' }, docsRead: false, agents: 0, agentsBy: {}, counted: new Map(), tagged: false, pushed: false, wporg: false, started: new Map(), claimed: new Set(), codes: new Set(), mirrored: new Set(), trPushed: new Set(), unsynced: new Set(), once: new Map(), run: 0, lead: 0, sub: 0, chain: Promise.resolve() }
   const resetTurn = () => {
     mem.edited.clear()
     mem.stateTouched = false
@@ -774,6 +901,7 @@ export const register: Register = on => {
     mem.php = 0
     mem.tagged = false
     mem.pushed = false
+    mem.trPushed.clear()
     mem.warned.clear()
   }
 
@@ -822,6 +950,8 @@ export const register: Register = on => {
       const php = mem.php > 0
       const phpcsRan = mem.phpcs
       const unpushed = mem.tagged && !mem.pushed
+      const unsynced = [...mem.trPushed].filter(n => mem.mirrored.has(n))
+      for (const name of unsynced) mem.unsynced.add(name)
       resetTurn()
       void (async () => {
         const cfg = await loadConfig($)
@@ -835,6 +965,7 @@ export const register: Register = on => {
           notes.push(`${rule}: ${detail}${level === 'block' ? ' (set to block: fix this before you report the work done)' : ''}`)
         }
         if (unpushed) await miss('push-after-tag', 'a tag was made this turn and nothing was pushed')
+        for (const name of unsynced) await miss('tracker-sync-after-push', `pushed to a ${name} repo after editing mirrored docs, and ${cfg.trackers.find(t => t.name === name)?.sync || 'the tracker sync'} did not run after the push`)
         // Warned once, then quiet until a turn fixes it (touches the state file, runs tests or PHPCS), which re-arms it.
         // A folder that is not a project (a scratch chat) has no state file or tests to keep, so it is never judged.
         const project = n > 0 && (await inProject($))
@@ -849,13 +980,7 @@ export const register: Register = on => {
         await nag('state-file-fresh', !stateTouched, stateTouched, `${n} code file(s) edited, no state file touched`)
         await nag('tests-before-done', !tested, tested, `${n} code file(s) edited, no test command ran`)
         await nag('phpcs-before-done', php && !phpcsRan, phpcsRan, 'PHP files edited, PHPCS did not run')
-        // Appended, so a note still unread when the next turn ends is kept (each rule nags once per session).
-        if (notes.length > 0)
-          await (async () => {
-            const file = `${await claudeDir($)}/lean-gate/pending/${await $.session.id()}.txt`
-            const old = (await readText($, file)) ?? ''
-            await $.fs.write(file, `${old}${old === '' ? '' : ' '}lean-gate, last turn: ${notes.join('; ')}.`)
-          })().catch(() => undefined)
+        if (notes.length > 0) await pendingNote($, mem, `lean-gate, last turn: ${notes.join('; ')}.`).catch(() => undefined)
         await refreshRelease($)
       })().catch(() => undefined)
     }
@@ -868,6 +993,11 @@ export const register: Register = on => {
       mem.leanLoaded = mem.wpSkill = mem.docsRead = mem.wporg = false
       mem.once.clear()
       mem.nagged.clear()
+      mem.started.clear()
+      mem.claimed.clear()
+      mem.codes.clear()
+      mem.mirrored.clear()
+      mem.unsynced.clear()
       await patch($, { lead: 0, sub: 0, run: 0, violations: [] }).catch(() => undefined)
     }
     return next(e)
@@ -884,6 +1014,11 @@ export const register: Register = on => {
     }
     // Log housekeeping and git work run after the session has started, not in front of it.
     void (async () => {
+      // In a tracker folder the cards say what to do: Claude is told to start there (the session-start hook cannot reach the prompt
+      // from here, so it goes through the pending note the next prompt hands over). Written first, so the slow reads cannot delay it.
+      const cfg = await loadConfig($)
+      const tr = cfg.mode === 'off' ? undefined : trackerAt(cfg, await $.session.cwd())
+      if (tr !== undefined && tr.start !== '') await pendingNote($, mem, `lean-gate, session start: this folder is in the ${tr.name} tracker: run ${tr.start} first and work from its cards, instead of reading the index and state file.`).catch(() => undefined)
       await trimLog($, mem)
       await refreshRelease($)
       // The panel can open with its details already showing, so these are read now, not only when Details is pressed.
@@ -895,8 +1030,16 @@ export const register: Register = on => {
       await detectProject($)
       const lowered = await projectLowers($)
       if (lowered.length > 0) $.ui.toast(`lean-gate: this project's .lean-gate.json turns down: ${cut(lowered.join(', '), 120)}`)
+      const unknown = await unknownConfig($)
+      if (unknown.length > 0) $.ui.toast(`lean-gate: unknown or retired config names, ignored: ${cut(unknown.join(', '), 120)}`)
     })().catch(() => undefined)
     return result
+  }).catch(($, e, next) => next(e))
+
+  // The session-start hook loads the lean-gate skill body under LEAN_MARKER (again after a compaction): that counts as a load.
+  on('prompt.attachment', async ($, e, next) => {
+    if (e.agentId === undefined && e.origin.kind !== 'engine' && e.text.includes(LEAN_MARKER)) mem.leanLoaded = true
+    return next(e)
   }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'lean-gate' }, async $ => {
@@ -946,6 +1089,8 @@ export const register: Register = on => {
     const b = await load($)
     const cfg = await loadConfig($)
     const lowered = await projectLowers($)
+    const unknown = await unknownConfig($)
+    const tracker = trackerAt(cfg, await $.session.cwd())
     const now = await $.clock.now()
     const tokens = (await $.session.usage().catch(() => undefined))?.context.tokens
     const els = $.ui.resolve(e)
@@ -1200,6 +1345,12 @@ export const register: Register = on => {
     const reviewLessons = ask('Run lean-gate lessons review, then rewrite each old lesson into a rule (record it again) or drop it with lean-gate lessons drop.', 'Ask Claude: review old lessons')
     const remember = ask('Add a project memory note for what we decided or did in this session: lean-gate memory add "<one line>" --tag decision|state|link|note.', 'Ask Claude: add a project memory note')
     const recall = ask('Run lean-gate memory recall and tell me in a few lines where this project stands.', 'Ask Claude: recall project memory')
+    // Tracker buttons ask Claude, since the tracker's own commands (start, card moves) are Claude's to run.
+    const trName = tracker?.name ?? 'the tracker'
+    const trStart = ask(`Run the ${trName} start for this folder (${tracker?.start || 'its start command'}) and tell me in a few lines which cards are mine and what is next.`, 'Ask Claude: start the tracker')
+    const trCards = ask(`List my cards in ${trName}${cfg.person ? ` (${cfg.person})` : ''}: code, title and list, in a few lines.`, 'Ask Claude: list my cards')
+    const trReview = ask(`Move the card I am working on in ${trName} to In Review with a short comment of what was done (lean-gate board export can draft it). Ask me which card if it is not clear.`, 'Ask Claude: move the card to In Review')
+    const trStarted = tracker === undefined ? undefined : mem.started.get(tracker.name)
     const forgetLast = () => memShell(String.raw`n=$(lean-gate memory list | tail -n 1 | cut -d" " -f1); case "$n" in ''|*[!0-9]*) echo "memory: nothing to forget" ;; *) lean-gate memory forget "$n" ;; esac`)
 
     // Model routing and the workflow limits: each button steps through a short list and writes the global config.
@@ -1240,18 +1391,6 @@ export const register: Register = on => {
     const PANEL_STARTS = ['details', 'compact', 'closed'] as const
     const stateFile = cfg.state_file
     const stepStateFile = () => editProject($, mem, (j, c) => (j.state_file = cycle<string>(STATE_FILES, c.state_file)))
-    // shortcut: the label names the folder of this session, the press checks git's top level; they differ only in a subfolder.
-    const repoName = base(cwd)
-    const togglePr = async () => {
-      const top = await git($, cwd, TOOL_MS, ['rev-parse', '--show-toplevel'])
-      if (top === undefined || top.exitCode !== 0) return $.ui.toast('lean-gate: this folder is not a git repo')
-      const name = base(top.stdout.trim())
-      // The target file's own list: the merged one would copy the project's list into the global file and drop the global entries.
-      await editConfig($, mem, 'pr_repos', j => {
-        const own = Array.isArray(j.pr_repos) ? j.pr_repos.filter((n): n is string => typeof n === 'string') : []
-        j.pr_repos = own.includes(name) ? own.filter(n => n !== name) : [...own, name]
-      })
-    }
     const demoIndex = DEMO_PRESETS.findIndex(p => p.pattern === cfg.demo_pattern)
     const stepDemo = () => editGlobal($, mem, (j, c) => (j.demo_pattern = (DEMO_PRESETS[(DEMO_PRESETS.findIndex(p => p.pattern === c.demo_pattern) + 1) % DEMO_PRESETS.length] ?? DEMO_PRESETS[0]).pattern))
     // Reset keeps one backup (the last reset); Undo reset puts it back. Import backs up first too.
@@ -1334,6 +1473,17 @@ export const register: Register = on => {
             </Box>
           )
         )}
+        {tracker !== undefined &&
+          section(
+            'tracker', 'Tracker',
+            note(<Text dimColor wrap="truncate-end">{`${tracker.name}: start ${trStarted === undefined ? 'not run' : `${age(now - trStarted)} ago`} this session`}</Text>),
+            note(<Text dimColor wrap="truncate-end">{`cards seen this session: ${mem.codes.size === 0 ? 'none' : [...mem.codes].join(', ')}`}</Text>),
+            <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
+              {gb('tr-start', 'Start', trStart, trStarted === undefined)}
+              {gb('tr-cards', 'My cards', trCards)}
+              {gb('tr-review', 'To In Review', trReview)}
+            </Box>
+          )}
         {section('rules', 'Rules', note(<Text dimColor>press a level to cycle off, warn, block</Text>), ...ruleRows)}
         {section(
           'builder', 'Rule builder',
@@ -1388,6 +1538,7 @@ export const register: Register = on => {
         {section(
           'settings', 'Settings',
           note(<Text dimColor>presses save to the global file, or to this project's .lean-gate.json while the switch says so</Text>),
+          unknown.length > 0 && note(<Text color="warning" wrap="wrap">{`unknown or retired config names, ignored: ${unknown.join(', ')}`}</Text>),
           <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
             {gb('set-target', `saving to: ${b.target === 'global' ? 'global' : 'this project'}`, flipTarget, true)}
           </Box>,
@@ -1401,7 +1552,6 @@ export const register: Register = on => {
           </Box>,
           <Box flexDirection={rowDir} gap={1} flexWrap="wrap">
             {gb('set-statefile', `state file: ${stateFile === '' ? 'HANDOFF or STATE' : stateFile}`, stepStateFile)}
-            {gb('set-pr', `PR only for ${repoName}: ${cfg.pr_repos.includes(repoName) ? 'on' : 'off'}`, togglePr)}
             {gb('set-demo', `public push blocks: ${demoIndex < 0 ? 'custom pattern' : DEMO_PRESETS[demoIndex]?.label}`, stepDemo)}
           </Box>,
           <Box flexDirection={rowDir} gap={1} flexWrap="wrap">

@@ -7,7 +7,7 @@ cmd_stats() {
   [ -f "$log" ] || { echo "no rule hits logged yet ($log)"; return 0; }
   # GNU date, then BSD date; the log's ISO times compare as text.
   since=$(date -u -d "-$days days" +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -v-"$days"d +%Y-%m-%dT%H:%M:%S)
-  # Old rule ids count under their new name (RENAMED_RULES in hooks/gate.ts).
+  # Old log rows count under the rule's new name: lean-project-first is now lean-gate-first.
   awk -F'\t' -v since="$since" -v days="$days" -v file="$log" '
     $1 >= since && NF >= 4 {
       r = $3; if (r == "lean-project-first") r = "lean-gate-first"

@@ -7,8 +7,10 @@
 #   lean-gate map predict <file>      files that changed with <file> in the last 10 commits, with their maps
 #   lean-gate toc <file>... [--force] build or refresh a "<!-- toc -->" table inside markdown docs
 #   lean-gate cost [dir]              auto-loaded files, startup baseline, every doc with flags, duplicated lines
+#   lean-gate ignore [dir] [--apply]  .ignore lines for big unregistered folders, backups, archives, releases, zips (dry run unless --apply)
 #   lean-gate board [id]              shared task board (all cards, or one card's history)
 #   lean-gate board add|move|note|files <id> ...   add <id> <title> | move <id> todo|doing|blocked|done [why] | note <id> <text> | files <id> <paths>
+#   lean-gate board archive [--force] | export [ids]   move the board to BOARD-ARCHIVE.md | a markdown summary for a tracker comment
 #   lean-gate check gate <id> [files...]   php syntax and WordPress standards on a card's files; failure sends the card back to todo
 #   lean-gate audit waste [dir] [--apply]  comment blocks, debug logs, repeated hooks; dry run unless --apply
 #   lean-gate frontier [docs/PLAN.md]      decisions to ask now (open, prerequisites decided) and what waits on them
@@ -18,7 +20,7 @@
 #   lean-gate lessons drop "<text>"        move every entry with this text to LESSONS-ARCHIVE.md, marked superseded (never deleted)
 #   lean-gate audit security [dir or files...]  WordPress anti-patterns in PHP and JS (unescaped output, unprepared SQL, missing nonce or capability checks); files = the release list from review-scope
 #   lean-gate handoff [docs/PLAN.md]  draft of the state file: branch, next tasks, cards in flight (prints only)
-#   lean-gate delegate config | set <key> <value> | check | run <brief> <output>   route bulk work to the project's runner (none, llama, opencode)
+#   lean-gate delegate config | set <key> <value> | check | run <brief> <output>   route bulk work to the project's runner (none, opencode)
 #   lean-gate audit wporg [dir or zip]   WordPress.org review checks: inline script/style, unsanitized nonces and JSON, file writes, code editors, undocumented external services, dev and translation files, outdated libraries
 #   lean-gate audit perf [dir or files...]  performance and HPOS scan of WordPress and WooCommerce code (wp-woo-performance-audit skill); files = the release list from review-scope
 #   lean-gate pack status|on|off <bricks|wp|ui-ux>   skill packs and plugins that stay off until needed; takes effect in the next session
@@ -32,7 +34,7 @@ set -u
 # Command groups live in bin/lib; sourcing them defines their functions before the dispatch below runs.
 LIB="$(cd "$(dirname "$0")/.." && pwd)/bin/lib"
 for part in "$LIB"/*.sh; do . "$part"; done
-# Copies settings and memory from the old lean-project names once, also when no hook has run yet.
+# Shared config helpers: gate_val, gate_project_file, gate_projects.
 . "$LIB/../../scripts/gate-on.sh"
 
 TOC_MIN=80        # below this a table costs more than it saves
@@ -187,6 +189,16 @@ auto_loaded() {
     done; } | while IFS= read -r f; do realpath "$f" 2>/dev/null || echo "$f"; done | awk '!seen[$0]++'
 }
 
+# Bytes the session-start hook prints in a folder: "<hook text> <skill block>", split at the skill marker line.
+# stdin is closed: the hook reads one line from it (up to 2 s) and would eat the caller's input.
+start_bytes() {
+  local root tdata
+  root=$(cd "$(dirname "$0")/.." && pwd); tdata=$(mktemp -d)
+  (cd "$1" && CLAUDE_PLUGIN_DATA="$tdata" CLAUDE_PLUGIN_ROOT="$root" bash "$root/scripts/session-start.sh" </dev/null 2>/dev/null) \
+    | LC_ALL=C awk '$0 == "[lean-gate skill loaded at session start]" { s = 1 } { b[s + 0] += length($0) + 1 } END { print b[0] + 0, b[1] + 0 }'
+  rm -rf "$tdata"
+}
+
 cmd_cost() {
   local dir="${1:-.}" sum=0 t f n flags auto
   [ -d "$dir" ] || die "cost: $dir is not a folder"
@@ -200,14 +212,13 @@ EOF
   # Measured from this folder's recent transcripts: context of each session's first reply.
   local slug tdir
   slug=$(cd "$dir" && { pwd -W 2>/dev/null || pwd; } | sed 's/[^A-Za-z0-9]/-/g'); tdir="$HOME/.claude/projects/$slug"
-  # The session-start hook is paid on every session: warn when its output passes the 400-token budget (bytes / 4).
-  local root hook_bytes
-  root=$(cd "$(dirname "$0")/.." && pwd)
-  local tdata; tdata=$(mktemp -d)
-  hook_bytes=$(cd "$dir" && CLAUDE_PLUGIN_DATA="$tdata" CLAUDE_PLUGIN_ROOT="$root" bash "$root/scripts/session-start.sh" 2>/dev/null | wc -c | tr -d ' ')
-  rm -rf "$tdata"
+  # The session-start hook is paid on every session: warn when its own text passes the 400-token budget (bytes / 4).
+  # The lean-gate skill block it adds in project folders is the skill itself, so it is shown apart and never over budget.
+  local hook_bytes skill_bytes
+  read -r hook_bytes skill_bytes < <(start_bytes "$dir")
   echo "SESSION-START HOOK: about $((hook_bytes / 4)) tokens ($hook_bytes bytes; budget 400 tokens)"
   [ $((hook_bytes / 4)) -le 400 ] || echo "  over budget: shorten the hook text, or move detail into a file the hook names"
+  [ "$skill_bytes" = 0 ] || echo "  plus the lean-gate skill block: about $((skill_bytes / 4)) tokens ($skill_bytes bytes; the skill itself, loaded at session start in project folders)"
   echo "STARTUP BASELINE (context of the first reply, last 5 sessions here; the CLAUDE.md chain is a small part):"
   ls -t "$tdir"/*.jsonl 2>/dev/null | head -n 5 | while IFS= read -r f; do
     grep -m 1 '"usage"' "$f" | grep -o '"\(input_tokens\|cache_creation_input_tokens\|cache_read_input_tokens\)":[0-9]*' | awk -F: -v d="$(date -r "$f" +%F 2>/dev/null)" '!seen[$1]++ { s += $2 } END { if (s) printf "  %6d  %s\n", s, d }'
@@ -250,11 +261,73 @@ EOF
   fi
 }
 
-# Board: one append-only log shared by the lead and its subagents ($LEAN_BOARD, default docs/BOARD.md).
+# Ignore: .ignore lines (ripgrep reads them, so Grep and Glob skip those paths) for child folders that are not registered
+# projects and hold over 5000 files, plus backups/, archive/, releases/ and *.zip. Dry run unless --apply (appends missing lines).
+cmd_ignore() {
+  local dir=. apply="" kids add f
+  while [ $# -gt 0 ]; do case "$1" in --apply) apply=1 ;; *) dir="$1" ;; esac; shift; done
+  [ -d "$dir" ] || die "ignore: $dir is not a folder"
+  dir=$(cd "$dir" && pwd); f="$dir/.ignore"
+  # A registered project, or a folder holding one (TokenForge/ holds tokenforge-wporg), stays searchable. C locale: tolower
+  # changes A-Z only, as gate_norm's tr does. backups, archive and releases have their own lines below.
+  kids=$(cd "$dir" && for c in */; do [ -d "$c" ] && printf '%s\n' "${c%/}"; done \
+    | LG_REG="$(gate_projects)" LG_DIR="$(printf '%s\n' "$dir" | gate_norm)" LC_ALL=C awk '
+      BEGIN { n = split(ENVIRON["LG_REG"], r, "\n") }
+      $0 ~ /^(backups|archive|releases)$/ { next }
+      { c = ENVIRON["LG_DIR"] "/" tolower($0); for (i = 1; i <= n; i++) if (r[i] == c || index(r[i], c "/") == 1) next; print }')
+  # Counting stops at 5001 (head closes the pipe), so a 250k-file folder costs no more than a small one.
+  # rg and git run from inside the folder: Git Bash does not convert a path with [ or ' for native programs.
+  add=$({ printf '%s\n' "$kids" | while IFS= read -r b; do
+      [ -n "$b" ] || continue
+      if command -v rg > /dev/null 2>&1; then n=$(( $( (cd "$dir/$b" && rg --files 2>/dev/null) | head -n 5001 | wc -l) ))
+      else n=$(( $( (cd "$dir/$b" && find_files .) | head -n 5001 | wc -l) )); fi
+      [ "$n" -le 5000 ] || printf '/%s/\n' "$b" | sed 's/[][*?\\]/\\&/g'
+    done
+    # A repo of its own that the folder's .gitignore hides (a whitelist hub repo) is put back: ripgrep reads .ignore over
+    # .gitignore, so Grep and Glob see its code again. Worktrees (.git is a file) stay out: they repeat their main checkout.
+    for c in "$dir"/*/; do c=${c%/}
+      [ -d "$c/.git" ] && (cd "$dir" && git check-ignore -q "${c##*/}/" 2>/dev/null) && printf '!/%s/\n' "${c##*/}" | sed 's/[][*?\\]/\\&/g'
+    done; printf '%s\n' 'backups/' 'archive/' 'releases/' '*.zip'; } \
+    | LG_HAVE="$(tr -d '\r' 2>/dev/null < "$f")" awk 'BEGIN { n = split(ENVIRON["LG_HAVE"], h, "\n"); for (i = 1; i <= n; i++) have[h[i]] = 1 } !have[$0]++')
+  if [ -z "$add" ]; then echo "ignore: $f already has every line"; return 0; fi
+  if [ -z "$apply" ]; then echo "ignore: dry run; lean-gate ignore --apply appends these lines to $f:"; printf '%s\n' "$add" | sed 's/^/  /'; return 0; fi
+  # A file with no final newline would glue the first new line onto its last one
+  [ ! -s "$f" ] || [ -z "$(tail -c 1 "$f")" ] || echo >> "$f"
+  printf '%s\n' "$add" >> "$f" || die "ignore: cannot write $f"
+  echo "ignore: appended to $f:"; printf '%s\n' "$add" | sed 's/^/  /'
+}
+
+# Board: one append-only log shared by the lead and its subagents ($LEAN_BOARD, default docs/BOARD.md of the main checkout).
 # Writers only append one line each, so parallel agents never clobber each other; readers get it folded into columns.
 # Line: "- <date time> | <who> | add|move|note | <id> | <text>"; who = $LEAN_AS (default lead).
+board_file() {
+  local c
+  if [ -n "${LEAN_BOARD:-}" ]; then printf '%s\n' "$LEAN_BOARD"; return 0; fi
+  # The main checkout's board, so every worktree of a repo shares one; outside git, docs/ here.
+  c=$(git rev-parse --git-common-dir 2>/dev/null) && c=$(cd "$c" 2>/dev/null && pwd) || c=""
+  case "$c" in
+    '') echo docs/BOARD.md ;;
+    */.git) printf '%s/docs/BOARD.md\n' "${c%/.git}" ;;
+    *) printf '%s/docs/BOARD.md\n' "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" ;;   # a submodule or bare repo
+  esac
+}
+
+# Cards in flight (doing or blocked), sorted, one per line: "  <id> [<status>] <title>". Nothing when there is no board.
+board_flight() {
+  [ -f "$1" ] || return 0
+  awk -F ' [|] ' '
+    function rest(   t, k) { t = $5; for (k = 6; k <= NF; k++) t = t " | " $k; return t }
+    { sub(/\r$/, "") }
+    /^- [0-9]/ && NF >= 5 {
+      if ($3 == "add") { ttl[$4] = rest(); if (!($4 in st)) st[$4] = "todo" }
+      if ($3 == "move") { s = $5; sub(/ .*/, "", s); st[$4] = s }
+    }
+    END { for (id in st) if (st[id] == "doing" || st[id] == "blocked") printf "  %s [%s] %s\n", id, st[id], ttl[id] }' "$1" | sort
+}
+
 cmd_board() {
-  local f="${LEAN_BOARD:-docs/BOARD.md}" who verb="${1:-}" id text
+  local f who verb="${1:-}" id text arch fl
+  f=$(board_file)
   who=$(printf '%s' "${LEAN_AS:-lead}" | tr -d '|\r\n')
   case "$verb" in
     add|move|note|files)
@@ -276,8 +349,26 @@ cmd_board() {
       fi
       board_append "$verb" "$id" "$text"
       ;;
+    archive)
+      [ -f "$f" ] || die "board archive: $f not found"
+      fl=$(board_flight "$f")
+      if [ -n "$fl" ] && [ "${2:-}" != --force ]; then
+        printf '%s\n' "$fl" >&2; die "board archive: the cards above are doing or blocked; finish them first, or archive anyway with --force"
+      fi
+      arch="$(dirname "$f")/BOARD-ARCHIVE.md"
+      # Moved aside first, so a line another agent appends meanwhile starts the next board instead of being lost
+      mv "$f" "$f.arch.$$" || die "board archive: cannot move $f aside"
+      if ! { [ -f "$arch" ] || printf '# Board archive\n'; printf '\n## Archived %s\n\n' "$(date '+%Y-%m-%d %H:%M')"; cat "$f.arch.$$"; } >> "$arch"; then
+        # Put it back, with any lines appended meanwhile after it
+        { [ ! -f "$f" ] || cat "$f" >> "$f.arch.$$"; } && mv -f "$f.arch.$$" "$f"
+        die "board archive: cannot write $arch; the board is left in place"
+      fi
+      rm -f "$f.arch.$$" && echo "board archived to $arch; the next card starts a fresh board"
+      ;;
     *)
       [ -f "$f" ] || die "board: $f not found (set LEAN_BOARD, or add a card first)"
+      # export [ids]: a markdown summary for a tracker card comment (every card when no id is given); writes nothing.
+      if [ "$verb" = export ]; then shift; verb="export $*"; fi
       awk -F ' [|] ' -v want="$verb" '
         { sub(/\r$/, "") }
         !/^- [0-9]/ || NF < 5 { next }
@@ -286,10 +377,22 @@ cmd_board() {
           if (!(id in st)) { order[++n] = id; st[id] = "todo" }
           if (v == "add") title[id] = x
           else if (v == "move") { s = x; sub(/ .*/, "", s); st[id] = s; owner[id] = w; r = x; why[id] = sub(/^[^ ]+ /, "", r) ? r : "" }
-          else if (v == "note") nt[++nn] = substr(t, 6) " " w " " id ": " x
+          else if (v == "note") { nt[++nn] = substr(t, 6) " " w " " id ": " x; gsub(/\t/, ", ", x); cn[id, ++cc[id]] = w ": " x }
           if (id == want) hist[++h] = "  " t "  " w "  " v "  " x
         }
+        function line(i) { return title[i] ": " st[i] (owner[i] != "" ? " (" owner[i] ")" : "") (why[i] != "" ? ": " why[i] : "") }
         END {
+          if (want ~ /^export /) {
+            m = split(substr(want, 8), ids, " ")
+            if (!m) for (k = 1; k <= n; k++) ids[++m] = order[k]
+            for (k = 1; k <= m; k++) {
+              i = ids[k]
+              if (!(i in st)) { print "no card " i > "/dev/stderr"; bad = 1; continue }
+              print "- **" i "** " line(i)
+              for (c = 1; c <= cc[i]; c++) print "  - " cn[i, c]
+            }
+            exit bad
+          }
           if (want != "") {
             if (!h) { print "no card " want; exit 1 }
             print want ": " title[want] " [" st[want] "]"; for (k = 1; k <= h; k++) print hist[k]; exit
@@ -304,6 +407,8 @@ cmd_board() {
             print "NOTES (latest " (nn > 10 ? 10 : nn) " of " nn "; one card in full: lean-gate board <id>)"
             for (k = (nn > 10 ? nn - 9 : 1); k <= nn; k++) print "  " nt[k]
           }
+          if (NR > 60 || (n && shown[4] == n))
+            print "Archive hint: " (n && shown[4] == n ? "every card is done" : "the board is " NR " lines") ". Run lean-gate board archive (it appends this board to BOARD-ARCHIVE.md and removes it)."
         }' "$f"
       ;;
   esac
@@ -313,7 +418,8 @@ cmd_board() {
 
 # Append one board line: board_append <verb> <id> <text>. Creates the board on first use.
 board_append() {
-  local f="${LEAN_BOARD:-docs/BOARD.md}" who text
+  local f who text
+  f=$(board_file)
   who=$(printf '%s' "${LEAN_AS:-lead}" | tr -d '|\r\n')
   text=$(printf '%s' "$3" | tr '\r\n' '  ' | sed 's/ *$//')
   if [ ! -f "$f" ]; then
@@ -331,7 +437,8 @@ board_append() {
 
 # The newest "files:" note on a card (written by: board files <id> <paths>).
 card_files() {
-  local f="${LEAN_BOARD:-docs/BOARD.md}"
+  local f
+  f=$(board_file)
   [ -f "$f" ] || return 0
   awk -F ' [|] ' -v id="$1" '
     { sub(/\r$/, "") }
@@ -480,7 +587,7 @@ data_dir() {
   if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then printf '%s\n' "$CLAUDE_PLUGIN_DATA"; return 0; fi
   # No CLAUDE_PLUGIN_DATA outside a hook. Exact names first: a plain glob sorts a test install (lean-*-inline) ahead.
   local d g=""
-  for d in lean-gate-lean-gate 'lean-gate-*' lean-project-lean-project 'lean-project-*'; do
+  for d in lean-gate-lean-gate 'lean-gate-*'; do
     g=$(ls -d "$HOME"/.claude/plugins/data/$d/ 2>/dev/null | head -n 1); [ -n "$g" ] && break
   done
   g=${g:-$HOME/.claude/plugins/data/lean-gate/}
@@ -572,7 +679,7 @@ sessions_dir() {
 # A full review is due on a new major version or 5 or more minor releases after the last full review.
 # --full-done records the current tag as the last full review.
 cmd_review_scope() {
-  local last base full_file n due top
+  local last base full_file n due top cards
   last=$(git describe --tags --abbrev=0 2>/dev/null) || die "review-scope: no release tag yet; give audit security a folder instead"
   # One line per repository (top folder, tab, tag): one shared line let another project's release overwrite this one's.
   full_file="$(data_dir)/last-full-review"
@@ -595,6 +702,12 @@ cmd_review_scope() {
     else due="no: $n release(s) since the full review at $base"; fi
   fi
   echo "Full review due: $due"
+  # Tracker card codes that start a commit subject since the tag (CM12, EN8), deduped, sorted by prefix then number.
+  cards=$(git log --format=%s "$last..HEAD" | awk '
+    match($0, /^[A-Z][A-Z][A-Z]?[A-Z]?[0-9]+/) && substr($0, RLENGTH + 1, 1) !~ /[A-Za-z0-9_]/ {
+      c = substr($0, 1, RLENGTH); p = c; sub(/[0-9]+$/, "", p); print p, substr(c, length(p) + 1) }' \
+    | sort -u -k1,1 -k2,2n | awk '{ printf "%s%s%s", (NR > 1 ? " " : ""), $1, $2 }')
+  [ -z "$cards" ] || echo "Cards in this release: $cards"
   echo "Changed since $last:"
   { git diff --name-only "$last" --; git ls-files --others --exclude-standard; } | sort -u | sed 's/^/  /'
 }
@@ -736,17 +849,11 @@ docs_may_ship() {
 # Handoff: a draft of the state file. Branch, the next open tasks in PLAN.md, and the board cards in flight.
 # Prints the draft for review; writes nothing.
 cmd_handoff() {
-  local plan="${1:-docs/PLAN.md}" board="${LEAN_BOARD:-docs/BOARD.md}" branch next flight
+  local plan="${1:-docs/PLAN.md}" board branch next flight
+  board=$(board_file)
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(not a git repository)")
   next=""; [ -f "$plan" ] && next=$(grep -m 3 '^- \[ \]' "$plan" | sed 's/^- \[ \] /  - /')
-  flight=""
-  [ -f "$board" ] && flight=$(awk -F ' [|] ' '
-    function rest(   t, k) { t = $5; for (k = 6; k <= NF; k++) t = t " | " $k; return t }
-    /^- [0-9]/ && NF >= 5 {
-      if ($3 == "add") { ttl[$4] = rest(); if (!($4 in st)) st[$4] = "todo" }
-      if ($3 == "move") { s = $5; sub(/ .*/, "", s); st[$4] = s }
-    }
-    END { for (id in st) if (st[id] == "doing" || st[id] == "blocked") printf "  %s [%s] %s\n", id, st[id], ttl[id] }' "$board" | sort)
+  flight=$(board_flight "$board")
   echo "HANDOFF DRAFT: review it, add your gotchas, paste it into the state file (20 lines or fewer)"
   echo "Branch: $branch"
   echo "Next tasks:"
@@ -828,18 +935,17 @@ cmd_audit_perf() {
 
 # Gain: one line per run (date, project, auto-loaded tokens, hook tokens) in gain.tsv, with the change since the project's last run.
 cmd_gain() {
-  local dir="${1:-.}" data log auto_t=0 f hook_b tdata root
+  local dir="${1:-.}" data log auto_t=0 f hook_b skill_b
   [ -d "$dir" ] || die "gain: $dir is not a folder"
   data=$(data_dir)
   mkdir -p "$data"; log="$data/gain.tsv"
   while IFS= read -r f; do [ -n "$f" ] || continue; auto_t=$((auto_t + $(tok "$f"))); done <<EOF
 $(auto_loaded "$dir")
 EOF
-  root=$(cd "$(dirname "$0")/.." && pwd); tdata=$(mktemp -d)
-  hook_b=$(cd "$dir" && CLAUDE_PLUGIN_DATA="$tdata" CLAUDE_PLUGIN_ROOT="$root" bash "$root/scripts/session-start.sh" 2>/dev/null | wc -c | tr -d ' ')
-  rm -rf "$tdata"
+  read -r hook_b skill_b < <(start_bytes "$dir")
   printf '%s\t%s\t%s\t%s\n' "$(date +%F)" "$(cd "$dir" && basename "$(pwd)")" "$auto_t" "$((hook_b / 4))" >> "$log"
   echo "GAIN (tokens; change is against the project's previous run; file: $log)"
+  [ "$skill_b" = 0 ] || echo "The hook column leaves out the lean-gate skill block loaded at session start: about $((skill_b / 4)) tokens."
   echo "date	project	auto_loaded	hook	change"
   awk -F'\t' '{ d = ($2 in prev) ? $3 - prev[$2] : 0; prev[$2] = $3; printf "%s\t%s\t%s\t%s\t%+d\n", $1, $2, $3, $4, d }' "$log" | tail -n 10
 }
@@ -850,6 +956,7 @@ case "$cmd" in
     if [ "${1:-}" = predict ]; then shift; [ $# -gt 0 ] || die "map predict: give a file"; cmd_predict "$@"; else cmd_map "$@"; fi ;;
   toc) [ $# -gt 0 ] || die "toc: give one or more .md files"; cmd_toc "$@" ;;
   cost) cmd_cost "${1:-.}" ;;
+  ignore) cmd_ignore "$@" ;;
   selftest) cmd_selftest ;;
   sessions) cmd_sessions "$@" ;;
   review-scope) cmd_review_scope "$@" ;;

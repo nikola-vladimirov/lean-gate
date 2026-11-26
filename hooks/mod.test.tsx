@@ -10,7 +10,8 @@ const T0 = 'a'.repeat(40)
 const T1 = 'b'.repeat(40)
 const W0 = 'c'.repeat(40)
 
-type Repo = { head: string; tree: string; workTree?: string; codeTree?: string; changed: string[]; dirty: string; untracked: string[]; branch?: string }
+// staged: `git diff --cached --name-only`; stagedDiff: `git diff --cached -U0`; modified: `git diff --name-only`; unstagedDiff: `git diff -U0`.
+type Repo = { head: string; tree: string; workTree?: string; codeTree?: string; changed: string[]; dirty: string; untracked: string[]; branch?: string; staged?: string[]; stagedDiff?: string; modified?: string[]; unstagedDiff?: string }
 
 const slash = (p: string) => p.replaceAll('\\', '/')
 const markerFile = async (repo: string) => `${CLAUDE}/lean-review/${await repoKey(repo)}.json`
@@ -26,9 +27,13 @@ function world(on: On, files: Record<string, string>) {
     repos: {} as Record<string, Repo>,
     dirs: {} as Record<string, string[]>,
     unreadable: new Set<string>(),
+    // A file whose reads take 40 ms, so two writers of it overlap.
+    slowRead: '',
     messages: undefined as SessionMessage[] | undefined,
     toasts: [] as string[],
-    git: [] as { argv: string[]; cwd: string; env?: Record<string, string> }[],
+    git: [] as { argv: string[]; raw: string[]; cwd: string; env?: Record<string, string> }[],
+    // fs writes and process runs, in the order they happen.
+    seq: [] as string[],
     order: [] as string[],
     noTimeout: [] as string[],
     shells: [] as string[],
@@ -52,12 +57,16 @@ function world(on: On, files: Record<string, string>) {
   on('session.id', () => ({ value: 'sess-1' }))
   // The engine hands paths over with backslashes on Windows.
   on('fs.exists', (_, e) => ({ value: slash(e.path) in ctx.files || slash(e.path) in ctx.dirs }))
-  on('fs.read', (_, e) => {
+  on('fs.read', async (_, e) => {
     const p = slash(e.path)
     if (ctx.unreadable.has(p)) return { deny: 'EIO' }
-    return p in ctx.files ? { value: ctx.files[p] ?? '' } : { deny: 'ENOENT' }
+    // The text the file held when the read began, as a real read that is slow to return.
+    const r = p in ctx.files ? { value: ctx.files[p] ?? '' } : { deny: 'ENOENT' }
+    if (p === ctx.slowRead && later !== undefined) await new Promise<void>(res => later(res, 40))
+    return r
   })
   on('fs.write', (_, e) => {
+    ctx.seq.push(slash(e.path))
     ctx.files[slash(e.path)] = e.text
     return { value: undefined }
   })
@@ -72,6 +81,7 @@ function world(on: On, files: Record<string, string>) {
   on('session.messages', () => (ctx.messages ? { value: ctx.messages } : { deny: 'none' }))
   on('process.run', (_, e) => {
     const cwd = slash(e.init?.cwd ?? ctx.cwd)
+    ctx.seq.push(e.argv.join(' '))
     if (typeof e.init?.timeoutMs !== 'number') ctx.noTimeout.push(e.argv.join(' '))
     const done = (exitCode: number, stdout = '') => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
     if (e.argv[0] === 'gh') return done(0, ctx.ghPublic ? 'false\n' : 'true\n')
@@ -82,18 +92,23 @@ function world(on: On, files: Record<string, string>) {
     ctx.order.push('git')
     // A timeout rejects the call, as the engine does.
     if (ctx.gitSilent) return { deny: 'timeout' }
-    ctx.git.push({ argv: [...e.argv], cwd, env: e.init?.env })
+    // The output flags every call carries are kept in raw and left out of argv, so the cases below read the subcommand's own arguments.
+    const argv = e.argv.filter((x, i, all) => !['--no-ext-diff', '--no-color', 'core.quotepath=off'].includes(x) && !(x === '-c' && all[i + 1] === 'core.quotepath=off'))
+    ctx.git.push({ argv, raw: [...e.argv], cwd, env: e.init?.env })
     // The repo is the longest known path that holds the cwd, as git finds its toplevel.
     const top = Object.keys(ctx.repos)
       .filter(k => cwd === k || cwd.startsWith(`${k}/`))
       .sort((a, b) => b.length - a.length)[0]
     const repo = top === undefined ? undefined : ctx.repos[top]
-    const [, sub, a, b, c] = e.argv
+    const [, sub, a, b, c] = argv
     if (repo === undefined || top === undefined) return done(128)
     if (sub === 'describe') return ctx.lastTag === '' ? done(128) : done(0, `${ctx.lastTag}\n`)
     if (sub === 'rev-parse' && a === '-q') return done(ctx.tags === undefined || ctx.tags.includes((c ?? '').replace('refs/tags/', '')) ? 0 : 1)
     if (sub === 'rev-parse' && a === '--abbrev-ref') return done(0, `${repo.branch ?? 'main'}\n`)
     if (sub === 'diff' && a === '--name-only' && b !== undefined && b === ctx.lastTag) return done(0, repo.changed.join('\n'))
+    if (sub === 'diff' && a === '--cached') return done(0, b === '-U0' ? (repo.stagedDiff ?? '') : (repo.staged ?? []).join('\n'))
+    if (sub === 'diff' && a === '--name-only' && b === undefined) return done(0, (repo.modified ?? []).join('\n'))
+    if (sub === 'diff' && a === '-U0') return done(0, repo.unstagedDiff ?? '')
     if (sub === 'rev-parse') return done(0, `${a === '--show-toplevel' ? top : a === 'HEAD^{tree}' ? repo.tree : repo.head}\n`)
     // Real git refuses an option-shaped revision here; the mock does too.
     if (sub === 'diff' && a === '--name-only') return /^[0-9a-f]{7,64}$/.test(b ?? '') && c === 'HEAD' ? done(0, repo.changed.join('\n')) : done(129)
@@ -113,6 +128,7 @@ function world(on: On, files: Record<string, string>) {
     return { text: e.answer }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('prompt.attachment', (_, e) => ({ text: e.text }))
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
     return <Text>engine</Text>
@@ -573,20 +589,17 @@ test('config: a project file tunes rules over the global one (but not the mode),
   expect(lines(w.files)[0]).toContain('\tagent-needs-model-effort\twarn\t')
 })
 
-test('config: the old lean-project files are read while the new ones are missing; a press writes the new global file only', async ($, on) => {
+test('config: the old lean-project files are never read; a press writes the lean-gate global file only', async ($, on) => {
   const OLD = `${CLAUDE}/lean-project.json`
-  const w = world(on, { [OLD]: JSON.stringify({ mode: 'block', keep: 1 }) })
-  expect((await $.tool.call({ ...AGENT })).deny).toBeDefined()
-  w.files['C:/proj/.lean-project.json'] = '{"rules":{"agent-needs-model-effort":"off"}}'
+  const w = world(on, { [OLD]: JSON.stringify({ mode: 'block' }), 'C:/proj/.lean-project.json': '{"mode":"block"}' })
+  // Defaults (warn): the old block mode is not read, so the call passes with a logged warning.
   expect((await $.tool.call({ ...AGENT })).deny).toBeUndefined()
-  // A new project file wins over the old one.
-  w.files['C:/proj/.lean-gate.json'] = '{}'
-  expect((await $.tool.call({ ...AGENT })).deny).toBeDefined()
-
+  expect(lines(w.files)[0]).toContain('\tagent-needs-model-effort\twarn\t')
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await ui.press({ key: 'mode' })
-  expect(JSON.parse(w.files[CONFIG] ?? '{}')).toEqual({ mode: 'off', keep: 1 })
-  expect(JSON.parse(w.files[OLD] ?? '{}')).toEqual({ mode: 'block', keep: 1 })
+  expect(JSON.parse(w.files[CONFIG] ?? '{}')).toEqual({ mode: 'block' })
+  expect(JSON.parse(w.files[OLD] ?? '{}')).toEqual({ mode: 'block' })
+  await ui.unmount()
 })
 
 test('config: an unreadable or invalid global file is never overwritten by the band', async ($, on) => {
@@ -731,6 +744,29 @@ test('lean-gate-first and wp-skills: a skill loaded before a module reload still
   expect((await $.tool.call({ ...PHP })).deny).toBeUndefined()
 })
 
+test('lean-gate-first: the session-start marker counts as a load, from the hook context sent or from a transcript row', async ($, on) => {
+  const w = world(on, blockOnly('lean-gate-first'))
+  w.dirs['C:/proj'] = ['.git']
+  const PHP = { tool: 'Edit', file_path: 'C:/proj/a.php', old_string: 'a', new_string: 'b' } as const
+  const MARK = '[lean-gate skill loaded at session start]'
+  // The old skill name no longer counts; the marker in the person's own engine-made text (a mentioned file) does not either.
+  w.messages = [row('user', 'go'), { role: 'assistant', text: '', toolUses: [{ tool_use_id: 's', tool: 'Skill', input: { skill: 'lean-project' } }] }]
+  expect((await $.tool.call({ ...PHP })).deny).toContain('lean-gate skill')
+  await $.prompt.attachment({ type: 'file', text: `docs say ${MARK}`, origin: { kind: 'engine' } })
+  expect((await $.tool.call({ ...PHP })).deny).toContain('lean-gate skill')
+  w.messages = [row('user', `${MARK}\n# lean-gate`)]
+  expect((await $.tool.call({ ...PHP })).deny).toBeUndefined()
+})
+
+test('lean-gate-first: the SessionStart hook context with the marker sets the load as it is sent', async ($, on) => {
+  const w = world(on, blockOnly('lean-gate-first'))
+  w.dirs['C:/proj'] = ['.git']
+  const PHP = { tool: 'Edit', file_path: 'C:/proj/a.php', old_string: 'a', new_string: 'b' } as const
+  expect((await $.tool.call({ ...PHP })).deny).toContain('lean-gate skill')
+  await $.prompt.attachment({ type: 'hook_additional_context', text: '[lean-gate skill loaded at session start]\n# lean-gate', origin: { kind: 'hook', event: 'SessionStart' } })
+  expect((await $.tool.call({ ...PHP })).deny).toBeUndefined()
+})
+
 test('review-edited-files-only: a review agent must be scoped to files', async ($, on) => {
   world(on, blockOnly('review-edited-files-only'))
   const ok = { model: 'opus', effort: 'high' }
@@ -747,6 +783,8 @@ test('distinctive-session-names: a new session title must start with a date and 
   expect((await $.tool.call(S({}))).deny).toContain('date and time')
   expect((await $.tool.call(S({ title: '2026-11-07 14:30 Fix the panel' }))).deny).toBeUndefined()
   expect((await $.tool.call(S({ title: '14:30 07-11-2026 Fix the panel' }))).deny).toBeUndefined()
+  // A card code right after the date and time passes.
+  expect((await $.tool.call(S({ title: '09:30 26-11-2026 EN8 Fibank' }))).deny).toBeUndefined()
   expect((await $.tool.call(S({ title: '07-11-2026 Fix the panel' }))).deny).toContain('date and time')
   expect((await $.tool.call(S({ proposal_id: 'task_1' }))).deny).toBeUndefined()
   expect((await $.tool.call({ tool: 'mcp__ccd_session__hand_off_to_session', title: 'Move it' } as never)).deny).toContain('date and time')
@@ -901,15 +939,138 @@ test('push-after-tag: a tag made in a turn with no push is logged at turn end, a
   expect(lines(w.files).length).toBe(before)
 })
 
-test('one-pr-per-fix: a push to main in a listed repo is refused, a feature branch or another repo is not', async ($, on) => {
-  const w = world(on, config({ mode: 'block', pr_repos: ['proj'], rules: { 'one-pr-per-fix': 'block' } }))
+// ---- Tracker rules: the session folder C:/proj is in this tracker; C:/other is not.
+const TRACKER = {
+  name: 'Hub Planka',
+  paths: ['C:/proj'],
+  start: 'node planka/planka.mjs start commerce',
+  start_match: String.raw`planka\.mjs["']?\s+start\b`,
+  claim_match: String.raw`planka\.mjs["']?\s+(create\b|move\s+\S+\s+["']?In Progress)`,
+  code: String.raw`(CM|PR|EN|BZ)\d+`,
+  branch: '^{person}/{code}-',
+  docs: String.raw`\.md$`,
+  mirrored: String.raw`(^|/)(docs/[^/]+\.md|CLAUDE\.md|[^/]*-(INDEX|HANDOFF|PLAN|RULES)\.md)$`,
+  sync: 'node planka/sync.mjs commerce',
+  sync_match: String.raw`planka/sync\.mjs`,
+}
+const tracked = (rule: string) => config({ mode: 'block', person: 'nick', trackers: [TRACKER], rules: { [rule]: 'block', 'release-needs-review': 'off', 'lean-gate-first': 'off', 'ponytail-active': 'off' } })
+
+test('tracker-git-codes: a commit in a tracker repo needs a card branch and a code-first subject; docs-only and other repos pass', async ($, on) => {
+  const w = world(on, tracked('tracker-git-codes'))
+  w.repos['C:/proj'] = { ...clean('aaaaaaa1'), staged: ['src/a.php'] }
+  w.repos['C:/other'] = { ...clean('aaaaaaa1'), staged: ['src/a.php'] }
+  expect((await $.tool.call(BASH('git commit -m "CM12 Fix refund"'))).deny).toContain('card work goes on nick/<CODE>-<slug>')
+  w.repos['C:/proj'] = { ...clean('aaaaaaa1'), staged: ['src/a.php'], branch: 'nick/CM12-refund' }
+  expect((await $.tool.call(BASH('git commit -m "CM12 Fix refund"'))).deny).toBeUndefined()
+  expect((await $.tool.call(BASH('git commit -m "Fix refund"'))).deny).toContain('does not start with a card code')
+  // The subject of a heredoc message is its first line; -F gives none to check.
+  expect((await $.tool.call(BASH("git commit -m \"$(cat <<'EOF'\nFix refund\nEOF\n)\""))).deny).toContain('card code')
+  expect((await $.tool.call(BASH("git commit -m \"$(cat <<'EOF'\nCM12 Fix refund\nEOF\n)\""))).deny).toBeUndefined()
+  expect((await $.tool.call(BASH('git commit -F msg.txt'))).deny).toBeUndefined()
+  w.repos['C:/proj'] = { ...clean('aaaaaaa1'), staged: ['src/a.php'], branch: 'feature/x' }
+  expect((await $.tool.call(BASH('git commit -m "CM12 x"'))).deny).toContain('branch feature/x is not nick/<CODE>-<slug>')
+  // Docs only: staged files all match docs. With -a the tracked changes count too.
+  w.repos['C:/proj'] = { ...clean('aaaaaaa1'), staged: ['docs/PLAN.md'], modified: ['src/a.php'] }
+  expect((await $.tool.call(BASH('git commit -m "notes"'))).deny).toBeUndefined()
+  expect((await $.tool.call(BASH('git commit -am "notes"'))).deny).toContain('card work goes on')
+  expect((await $.tool.call(BASH('git add src/a.php && git commit -m "notes"'))).deny).toContain('card work goes on')
+  // Another repo, reached with cd or -C, is not in the tracker.
+  expect((await $.tool.call(BASH('cd C:/other && git commit -m "Fix"'))).deny).toBeUndefined()
+  expect((await $.tool.call(BASH('git -C C:/other commit -m "Fix"'))).deny).toBeUndefined()
+  expect(lines(w.files).some(l => l.includes('\ttracker-git-codes\tblock\t'))).toBe(true)
+})
+
+test('tracker-card-first: an edit in a tracker folder needs the start and a claimed card first; docs and other folders pass', async ($, on) => {
+  const w = world(on, tracked('tracker-card-first'))
+  const CODE = { tool: 'Edit', file_path: 'C:/proj/src/a.ts', old_string: 'a', new_string: 'b' } as const
+  expect((await $.tool.call({ ...CODE })).deny).toContain('run node planka/planka.mjs start commerce')
+  expect(lines(w.files).at(-1)).toContain('edited before the Hub Planka start and card claim')
+  expect((await $.tool.call({ ...CODE, file_path: 'C:/proj/docs/PLAN.md' })).deny).toBeUndefined()
+  expect((await $.tool.call({ ...CODE, file_path: 'C:/other/a.ts' })).deny).toBeUndefined()
+  await $.tool.call(BASH('node planka/planka.mjs start commerce'))
+  expect((await $.tool.call({ ...CODE })).deny).toContain('card')
+  // A failed claim does not count.
+  w.failing = /move/
+  await $.tool.call(BASH('node planka/planka.mjs move CM12 "In Progress"'))
+  expect((await $.tool.call({ ...CODE })).deny).toBeDefined()
+  w.failing = undefined
+  await $.tool.call(BASH('node planka/planka.mjs move CM12 "In Progress"'))
+  expect((await $.tool.call({ ...CODE })).deny).toBeUndefined()
+})
+
+test('tracker-sync-after-push: a push after editing mirrored docs needs the sync after it, else Claude is told at turn end', async ($, on) => {
+  const w = world(on, config({ mode: 'warn', person: 'nick', trackers: [TRACKER], rules: { 'release-needs-review': 'off', 'tracker-git-codes': 'off' } }))
+  const PENDING = `${CLAUDE}/lean-gate/pending/sess-1.txt`
   w.repos['C:/proj'] = clean('aaaaaaa1')
-  expect((await $.tool.call(BASH('git push origin main'))).deny).toContain('pull requests only')
-  w.repos['C:/proj'] = { ...clean('aaaaaaa1'), branch: 'fix/refund' }
-  expect((await $.tool.call(BASH('git push origin fix/refund'))).deny).toBeUndefined()
-  w.repos['C:/proj'] = clean('aaaaaaa1')
-  w.files[CONFIG] = JSON.stringify({ mode: 'block', pr_repos: ['other'], rules: { 'one-pr-per-fix': 'block' } })
-  expect((await $.tool.call(BASH('git push origin main'))).deny).toBeUndefined()
+  const turn = async (id: string) => {
+    await $.turn.complete({ ...DONE, turnId: id })
+    await settle()
+  }
+  const synced = () => lines(w.files).filter(l => l.includes('\ttracker-sync-after-push\t')).length
+  // A push with no mirrored edit: nothing to sync.
+  await $.tool.call(BASH('git push origin nick/CM1-x'))
+  await turn('t1')
+  expect(synced()).toBe(0)
+  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/docs/RULES.md', old_string: 'a', new_string: 'b' })
+  // A sync before the push does not count; only one after it does.
+  await $.tool.call(BASH('node planka/sync.mjs commerce'))
+  await $.tool.call(BASH('git push origin nick/CM1-x'))
+  await turn('t2')
+  expect(synced()).toBe(1)
+  expect(w.files[PENDING]).toContain('tracker-sync-after-push: pushed to a Hub Planka repo after editing mirrored docs, and node planka/sync.mjs commerce did not run after the push')
+  await $.tool.call(BASH('git push origin nick/CM1-x && node planka/sync.mjs commerce'))
+  await turn('t3')
+  expect(synced()).toBe(1)
+  // Synced after a push: the mirrored edits are settled, so a later push alone is fine.
+  await $.tool.call(BASH('git push origin nick/CM1-x'))
+  await turn('t4')
+  expect(synced()).toBe(1)
+})
+
+test('tracker-brief: an agent from a tracker folder names its card and AGENT_NAME, and its AGENT_MODEL matches the call', async ($, on) => {
+  const w = world(on, tracked('tracker-brief'))
+  const brief = async (prompt: string) => (await $.tool.call({ ...AGENT, model: 'sonnet', effort: 'high', prompt } as never)).deny
+  expect(await brief('fix it')).toContain('card code and AGENT_NAME')
+  expect(lines(w.files).at(-1)).toContain('no card code; no AGENT_NAME')
+  expect(await brief('EN8 Fibank. AGENT_NAME=fibank AGENT_MODEL=opus')).toBeDefined()
+  expect(await brief('EN8 Fibank. AGENT_NAME=fibank AGENT_MODEL=sonnet AGENT_EFFORT=high')).toBeUndefined()
+  w.cwd = 'C:/other'
+  expect(await brief('fix it')).toBeUndefined()
+})
+
+test('no-secrets-outward: a key in a file, a command or the staged lines of a commit is refused without repeating it', async ($, on) => {
+  const w = world(on, config({ mode: 'block', rules: { 'lean-gate-first': 'off', 'ponytail-active': 'off' } }))
+  const KEY = `sk_live_${'a1B2'.repeat(6)}`
+  const deny = (await $.tool.call({ ...EDIT, new_string: `const k = '${KEY}'` })).deny
+  expect(deny).toContain('a Stripe live key in a.txt')
+  expect(deny).not.toContain(KEY)
+  expect(w.files[TSV]).not.toContain(KEY)
+  // Built from parts, so this file holds no key-shaped string for the rule to find when it is committed.
+  expect((await $.tool.call({ tool: 'Write', file_path: 'C:/proj/k.txt', content: `${'-----BEGIN '}OPENSSH PRIVATE KEY-----\n${'b3BlbnNzaC1rZXktdjEA'.repeat(3)}\n` })).deny).toContain('a private key')
+  expect((await $.tool.call({ tool: 'MultiEdit', file_path: 'C:/proj/a.txt', edits: [{ old_string: 'a', new_string: `ghp_${'Z9'.repeat(16)}` }] } as never)).deny).toContain('a GitHub token')
+  expect((await $.tool.call(BASH(`gh issue comment 1 --body "token ${KEY}"`))).deny).toContain('a shell command')
+  // Placeholders pass.
+  expect((await $.tool.call({ ...EDIT, new_string: 'AKIAIOSFODNN7EXAMPLE' })).deny).toBeUndefined()
+  // At a commit, the staged added lines are read too; removed lines and other commands are not.
+  w.repos['C:/proj'] = { ...clean('aaaaaaa1'), stagedDiff: `+++ b/a.php\n-old ${KEY}\n+new line` }
+  expect((await $.tool.call(BASH('git commit -m "x"'))).deny).toBeUndefined()
+  w.repos['C:/proj'] = { ...clean('aaaaaaa1'), stagedDiff: `+++ b/a.php\n+$k = '${KEY}';` }
+  expect((await $.tool.call(BASH('git commit -m "x"'))).deny).toContain('a Stripe live key in the staged changes')
+  expect((await $.tool.call(BASH('git status'))).deny).toBeUndefined()
+})
+
+test('release review: with -a or a git add before it, a commit also has its unstaged changes read; diffs are plain, names unquoted', async ($, on) => {
+  const w = world(on, config({ mode: 'block', rules: { 'lean-gate-first': 'off', 'ponytail-active': 'off' } }))
+  const KEY = `sk_live_${'a1B2'.repeat(6)}`
+  w.repos['C:/proj'] = { ...clean('aaaaaaa1'), unstagedDiff: `+++ b/a.php\n+$k = '${KEY}';` }
+  expect((await $.tool.call(BASH('git commit -m "x"'))).deny).toBeUndefined()
+  expect((await $.tool.call(BASH('git commit -am "x"'))).deny).toContain('a Stripe live key in the changes this commit stages')
+  expect((await $.tool.call(BASH('git add a.php && git commit -m "x"'))).deny).toContain('a Stripe live key')
+  // A commit hidden in a PowerShell block is still read.
+  expect((await $.tool.call({ tool: 'PowerShell', command: 'npm test; if ($?) { git commit -a -m x }' })).deny).toContain('a Stripe live key')
+  expect(w.git.length).toBeGreaterThan(0)
+  expect(w.git.every(g => g.raw[1] === '-c' && g.raw[2] === 'core.quotepath=off')).toBe(true)
+  expect(w.git.filter(g => g.argv[1] === 'diff').every(g => g.raw.includes('--no-ext-diff') && g.raw.includes('--no-color'))).toBe(true)
 })
 
 test('allow once and block once: the band arms a one-shot override that the next hit spends', async ($, on) => {
@@ -1224,27 +1385,20 @@ test('review fixes: PowerShell releases are gated, a branch named 1.x is not a t
   expect(lines(w.files).some(l => l.includes('\tpush-after-tag\t'))).toBe(false)
 })
 
-test('review fixes: a second Reset keeps the real backup, a broken registry is never rewritten, PR only keeps the global list', async ($, on) => {
-  const w = world(on, config({ mode: 'block', pr_repos: ['a', 'b'] }))
+test('review fixes: a second Reset keeps the real backup, a broken registry is never rewritten', async ($, on) => {
+  const w = world(on, config({ mode: 'block', max_agents: 3 }))
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await ui.press({ key: 'details' })
   await ui.press({ key: 'set-reset' })
   await ui.press({ key: 'set-reset' })
   await settle()
-  expect(JSON.parse(w.files[`${CONFIG}.reset-bak`] ?? '{}').pr_repos).toEqual(['a', 'b'])
+  expect(JSON.parse(w.files[`${CONFIG}.reset-bak`] ?? '{}').max_agents).toBe(3)
   // The registry has a typo: Register this folder must leave it alone.
   const REG = `${CLAUDE}/lean-projects.json`
   w.files[REG] = '[{"name":"x","path":"C:/x"},]'
   await ui.press({ key: 'proj-add' })
   await settle()
   expect(w.files[REG]).toBe('[{"name":"x","path":"C:/x"},]')
-  // PR only, saving to global, toggles the global file's own list.
-  w.files[CONFIG] = JSON.stringify({ mode: 'block', pr_repos: ['a', 'b'] })
-  w.files['C:/proj/.lean-gate.json'] = JSON.stringify({ pr_repos: ['c'] })
-  w.repos['C:/proj'] = clean('aaaaaaa1')
-  await ui.press({ key: 'set-pr' })
-  await settle()
-  expect(JSON.parse(w.files[CONFIG] ?? '{}').pr_repos).toEqual(['a', 'b', 'proj'])
   await ui.unmount()
 })
 
@@ -1256,4 +1410,144 @@ test('a project file that turns rules down is shown at session start and in the 
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /project lowers 1/ })).toBeDefined()
   await ui.unmount()
+})
+
+test('session start names unknown and retired config names once, and the Settings section lists them', async ($, on) => {
+  const w = world(on, { ...config({ mode: 'block', pr_repos: ['a'], rules: { 'lean-project-first': 'block' } }), 'C:/proj/.lean-gate.json': '{"rules":{"test-before-done":"off"}}' })
+  await $.session.start({ cwd: 'C:/proj', surface: 'terminal', isInteractive: true })
+  await settle()
+  expect(w.toasts.filter(t => t.startsWith('lean-gate: unknown or retired config names, ignored: lean-project-first, pr_repos, test-before-done')).length).toBe(1)
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'details' })
+  expect(await ui.find({ type: 'Text', text: /^unknown or retired config names, ignored: lean-project-first, pr_repos, test-before-done/ })).toBeDefined()
+  expect(await ui.find({ key: 'set-pr' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a tracker folder: session start tells Claude to run the tracker start, and the panel shows a Tracker section', async ($, on) => {
+  const w = world(on, config({ mode: 'warn', person: 'nick', trackers: [TRACKER] }))
+  const PENDING = `${CLAUDE}/lean-gate/pending/sess-1.txt`
+  await $.session.start({ cwd: 'C:/proj', surface: 'terminal', isInteractive: true })
+  await settle()
+  expect(w.files[PENDING]).toBe('lean-gate, session start: this folder is in the Hub Planka tracker: run node planka/planka.mjs start commerce first and work from its cards, instead of reading the index and state file.')
+  await $.tool.call(BASH('node planka/planka.mjs start commerce && node planka/planka.mjs move EN8 "In Progress"'))
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'details' })
+  expect(await ui.find({ text: /^▾ Tracker$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Hub Planka: start <1m ago this session/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /cards seen this session: EN8/ })).toBeDefined()
+  for (const key of ['tr-start', 'tr-cards', 'tr-review']) {
+    await ui.press({ key })
+    expect(w.toasts.at(-1)).toContain('Ask Claude')
+  }
+  await ui.unmount()
+
+  // Another folder: no note, no section.
+  delete w.files[PENDING]
+  w.cwd = 'C:/other'
+  await $.session.start({ cwd: 'C:/other', surface: 'terminal', isInteractive: true })
+  await settle()
+  expect(w.files[PENDING]).toBeUndefined()
+  const other = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await other.press({ key: 'details' })
+  expect(await other.find({ text: /^▾ Project/ })).toBeDefined()
+  expect(await other.find({ text: /^▾ Tracker$/ })).toBeUndefined()
+  expect(await other.find({ key: 'tr-start' })).toBeUndefined()
+  await other.unmount()
+})
+
+test('release review: tracker-git-codes follows a branch made in the same command, skips a variable subject and judges pathspecs', async ($, on) => {
+  world(on, tracked('tracker-git-codes')).repos['C:/proj'] = { ...clean('aaaaaaa1'), staged: ['src/a.php'] }
+  const deny = async (command: string, tool = 'Bash') => (await $.tool.call({ tool, command } as never)).deny
+  expect(await deny('git checkout -b nick/CM12-refund && git commit -m "CM12 Fix refund"')).toBeUndefined()
+  expect(await deny('git switch -c nick/CM12-refund; git commit -m "CM12 Fix refund"', 'PowerShell')).toBeUndefined()
+  expect(await deny('git checkout -b feature/x && git commit -m "CM12 x"')).toContain('branch feature/x is not')
+  // The new branch is the commit's only in the folder it was made in.
+  expect(await deny('git -C C:/elsewhere checkout -b nick/CM12-refund && git commit -m "CM12 x"')).toContain('card work goes on')
+  // A subject built from a variable is not known, so it is not judged; the branch still is.
+  expect(await deny('git checkout -b nick/CM12-refund && git commit -m "$MSG"')).toBeUndefined()
+  expect(await deny('git switch -c nick/CM12-refund; git commit -m $msg', 'PowerShell')).toBeUndefined()
+  expect(await deny('git commit -m "$MSG"')).toContain('card work goes on')
+  // Pathspecs: the commit takes only those paths, so README.md alone is docs-only even with code staged.
+  expect(await deny('git commit -m "notes" README.md')).toBeUndefined()
+  expect(await deny('git commit -m "notes" -- src/a.php')).toContain('card work goes on')
+})
+
+test('release review: tracker-card-first fires for code files only, on MultiEdit too, and its patterns read capped text', async ($, on) => {
+  const w = world(on, tracked('tracker-card-first'))
+  expect((await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/notes.txt', old_string: 'a', new_string: 'b' })).deny).toBeUndefined()
+  expect((await $.tool.call({ tool: 'MultiEdit', file_path: 'C:/proj/src/a.ts', edits: [{ old_string: 'a', new_string: 'b' }] } as never)).deny).toContain('start the card first')
+  // A start past MATCH_CHARS is not seen, so the edit still lacks it.
+  await $.tool.call(BASH(`echo ${'x'.repeat(4000)} && node planka/planka.mjs start commerce`))
+  expect((await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.ts', old_string: 'a', new_string: 'b' })).deny).toBeDefined()
+  expect(lines(w.files).at(-1)).toContain('edited before the Hub Planka start and card claim')
+})
+
+test('release review: a sync in a later turn settles an unsynced push, so a later push with no new mirrored edits is quiet', async ($, on) => {
+  const w = world(on, config({ mode: 'warn', person: 'nick', trackers: [TRACKER], rules: { 'release-needs-review': 'off', 'tracker-git-codes': 'off' } }))
+  w.repos['C:/proj'] = clean('aaaaaaa1')
+  const turn = async (id: string) => {
+    await $.turn.complete({ ...DONE, turnId: id })
+    await settle()
+  }
+  const synced = () => lines(w.files).filter(l => l.includes('\ttracker-sync-after-push\t')).length
+  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/docs/RULES.md', old_string: 'a', new_string: 'b' })
+  await $.tool.call(BASH('git push origin nick/CM1-x'))
+  await turn('t1')
+  expect(synced()).toBe(1)
+  await $.tool.call(BASH('node planka/sync.mjs commerce'))
+  await turn('t2')
+  await $.tool.call(BASH('git push origin nick/CM1-x'))
+  await turn('t3')
+  expect(synced()).toBe(1)
+  // A new mirrored edit pushed without a sync is told again.
+  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/CLAUDE.md', old_string: 'a', new_string: 'b' })
+  await $.tool.call(BASH('git push origin nick/CM1-x'))
+  await turn('t4')
+  expect(synced()).toBe(2)
+})
+
+test('release review: the session-start tracker note goes first, and notes written at once are both kept', async ($, on) => {
+  const w = world(on, config({ mode: 'warn', person: 'nick', trackers: [TRACKER], rules: { 'release-needs-review': 'off' } }))
+  const PENDING = `${CLAUDE}/lean-gate/pending/sess-1.txt`
+  w.repos['C:/proj'] = clean('aaaaaaa1')
+  const start = () => $.session.start({ cwd: 'C:/proj', surface: 'terminal', isInteractive: true })
+  await start()
+  await settle()
+  const note = w.seq.indexOf(PENDING)
+  expect(note).toBeGreaterThanOrEqual(0)
+  expect(note).toBeLessThan(w.seq.findIndex(s => s.includes('lean-gate memory')))
+  // A turn-end note and the session-start note at the same moment, the note file slow to read: the write queue keeps both.
+  w.slowRead = PENDING
+  w.files[PENDING] = 'unread.'
+  await $.tool.call(BASH('git tag v9'))
+  await Promise.all([start(), $.turn.complete(DONE)])
+  for (let i = 0; i < 4; i++) await settle()
+  expect(w.files[PENDING]).toContain('session start: this folder is in the Hub Planka tracker')
+  expect(w.files[PENDING]).toContain('push-after-tag')
+})
+
+test('release review: a MultiEdit counts as an edit for the mirrored docs, the code edited this turn and the state file', async ($, on) => {
+  const w = world(on, config({ mode: 'warn', person: 'nick', trackers: [TRACKER], reminders: { 'state-file-fresh': 'every' }, rules: { 'release-needs-review': 'off', 'tracker-git-codes': 'off', 'tracker-card-first': 'off', 'lean-gate-first': 'off', 'ponytail-active': 'off' } }))
+  w.dirs['C:/proj'] = ['.git']
+  w.repos['C:/proj'] = clean('aaaaaaa1')
+  const multi = (file_path: string) => $.tool.call({ tool: 'MultiEdit', file_path, edits: [{ old_string: 'a', new_string: 'b' }] } as never)
+  const turn = async (id: string) => {
+    await $.turn.complete({ ...DONE, turnId: id })
+    await settle()
+  }
+  const count = (rule: string) => lines(w.files).filter(l => l.includes(`\t${rule}\t`)).length
+  await multi('C:/proj/docs/RULES.md')
+  await $.tool.call(BASH('git push origin nick/CM1-x'))
+  await turn('t1')
+  expect(count('tracker-sync-after-push')).toBe(1)
+  await multi('C:/proj/src/a.ts')
+  await turn('t2')
+  expect(count('state-file-fresh')).toBe(1)
+  expect(count('tests-before-done')).toBe(1)
+  // A state file written by MultiEdit counts as touched.
+  await $.tool.call({ tool: 'Edit', file_path: 'C:/proj/src/a.ts', old_string: 'a', new_string: 'b' })
+  await multi('C:/proj/docs/HANDOFF.md')
+  await turn('t3')
+  expect(count('state-file-fresh')).toBe(1)
 })

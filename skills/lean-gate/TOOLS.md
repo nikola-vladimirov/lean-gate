@@ -10,7 +10,7 @@ Read only the command you need. The same commands are listed in the README.
 - `lean-gate map <dir> [min]`: files of `min`+ lines (default 300).
 - `lean-gate toc <file>... [--force]`: build or refresh contents tables in markdown (files under 80 lines are skipped).
 - `lean-gate cost [dir]`: auto-loaded tokens, every doc with flags (NEEDS TOC, STALE TOC, STATE FILE OVER 60 LINES), duplicated lines.
-- `lean-gate board [id]` and `board add|move|note <id> ...`: shared task board so parallel subagents and sessions exchange facts while they run (how: `BUILD.md`, "Board").
+- `lean-gate board [id]` and `board add|move|note|files <id> ...`: shared task board so parallel subagents and sessions exchange facts while they run (how: `BUILD.md`, "Board"). The board is the main checkout's `docs/BOARD.md`, so every worktree shares one. `board archive [--force]` appends it to `BOARD-ARCHIVE.md` and removes it (refused while a card is doing or blocked); `board export [ids]` prints card summaries as markdown for a tracker comment and writes nothing.
 - `lean-gate map predict <file>`: the files that changed in the same commits as `<file>` over the last 10 commits, with their maps. Read those together before editing one of them.
 - `lean-gate check gate <card> [files]`: `php -l` and, when installed, `phpcs` with the WordPress standard (or the project's own `phpcs.xml`). `board move <card> done` runs it on the card's files (`board files <card> <paths>` records them). A failure moves the card back to `todo` with the output on the card.
 - `lean-gate audit waste [dir] [--apply]`: comment blocks of 8+ lines, debug `error_log()` calls and repeated hooks. Dry run by default. `--apply` (git repositories only) moves comment blocks verbatim into `docs/ARCHIVE.md`; debug logs and repeated hooks are reported only, since removing them changes behaviour.
@@ -22,12 +22,18 @@ Read only the command you need. The same commands are listed in the README.
 - `lean-gate lessons review [days]`: unpromoted lessons older than `days` (default 14). Rewrite each into a rule (record it again) or drop it.
 - `lean-gate lessons drop "<text>"`: move the entries with that text to `LESSONS-ARCHIVE.md`, marked superseded. Nothing is deleted.
 - `lean-gate lessons export <file> [--force]`: write the lessons as a markdown note with frontmatter (for example into a vault). An existing note is not replaced without `--force`.
+- `lean-gate ignore [dir] [--apply]`: proposes `.ignore` lines (ripgrep reads them, so Grep and Glob skip those folders) for big unregistered folders, `backups/`, `archive/`, `releases/` and `*.zip`, and puts back a repo of its own that a whitelist `.gitignore` hides. A dry run unless `--apply`.
+- `lean-gate delegate config|set|check|pick|run <brief> <output>`: bulk work to the project's runner, `none` or `opencode` (free models only), saved in `.lean-project`; exit status 3 means no runner is up, so do the work here.
 - `lean-gate sessions [n] [--here]`: the newest session drafts (date, project, path). `--here` keeps only the current project's.
 - `lean-gate board` posts are idempotent: a retried post (same writer, verb, card and text within the last 20 lines) is skipped.
-- `lean-gate memory add|list|recall|forget|link|unlink|index|projects`: per-project notes linked across projects. Session start prints one index line; run `memory recall` when the task touches past work, `memory add "<note>" --tag decision` when something is decided.
+- `lean-gate memory add|list|recall|forget|link|unlink|index|projects`: per-project notes linked across projects. Session start prints one index line; run `memory recall` when the task touches past work, `memory add "<note>" --tag decision` when something is decided (the repo's PLAN file holds the real decision log: when the command names it, record the decision there too).
 - `lean-gate pack status|on|off <bricks|wp|ui-ux>`: the skills and plugins that stay off until a task needs them. `on` brings them back, `off` parks them; both take effect in the next session. Bricks and BricksExtras skills, the WordPress wp-* skills, and the ui-ux plugin.
 - `lean-gate gain`: appends one line per run to `gain.tsv` in the plugin data folder (date, project, auto-loaded tokens, session-start hook tokens, change since the last run for that project). Run it before and after a change to these guides.
 - `lean-gate selftest`.
+
+## Trackers
+
+A tracker is a card board (Planka first) that the gate knows about. Its config is `person` and `trackers` in `~/.claude/lean-gate.json`, global only: a project's `.lean-gate.json` cannot set them. A folder a tracker covers gets four warn rules: a card started and claimed before edits, a card branch and code in commits, a sync after pushing mirrored docs, and a card code and `AGENT_NAME` in agent briefs (the table is in `docs/MANUAL.md`, "Tracker rules"; the field list, "Trackers"). In such a folder, run the tracker's `start` command first and work from its cards instead of reading the index and state file; session start says so. The Nashenski hub's entry, shortened: `{ "name": "Nashenski Planka", "paths": ["E:/Claude Sessions/Nashenski"], "start": "node planka/planka.mjs start <product>", "code": "(CM|PR|EN|BZ)\\d+", "branch": "^{person}/{code}-", "docs": "\\.md$" }`. `lean-gate board export [ids]` prints the board's cards as markdown, which feeds a tracker card comment.
 
 ## Memory layers (which file answers which question)
 

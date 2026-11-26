@@ -51,7 +51,12 @@ cmd_memory() {
       case "$tag" in decision|state|link|note) ;; *) die "memory add: tag is decision, state, link or note" ;; esac
       [ -n "$text" ] || die "memory add: give the note text"
       mkdir -p "$d" && printf -- '- %s [%s] %s\n' "$(date +%F)" "$tag" "$(printf '%s' "$text" | tr '\n' ' ')" >> "$d/notes.md"
-      echo "memory: noted for $key ($(mem_count "$d") notes)" ;;
+      echo "memory: noted for $key ($(mem_count "$d") notes)"
+      # A decision belongs in the repo's PLAN decision log too: memory is a pointer, the repo is the record.
+      if [ "$tag" = decision ]; then
+        f=$(cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" && for p in docs/PLAN.md *PLAN*.md docs/*PLAN*.md; do [ -f "$p" ] && { echo "$p"; break; }; done)
+        [ -z "$f" ] || echo "Also record it in $f's decision log: the repo is the source of truth."
+      fi ;;
     list)
       [ -f "$d/notes.md" ] && grep -n '^- ' "$d/notes.md" | sed 's/^\([0-9]*\):- /\1  /' || echo "memory: nothing for $key" ;;
     recall)

@@ -4,24 +4,24 @@
 
 The full manual, with every button, rule, setting and command: [docs/MANUAL.md](docs/MANUAL.md).
 
-**Renamed.** lean-project is now lean-gate. The `lean-project` command still works as an alias. Your settings, memory and lessons are copied to the new names at the first session after the update, and the old files are kept.
+**Renamed.** lean-project is now lean-gate. Version 2.0.0 no longer carries the old names: there is no `lean-project` command, and the old settings, memory and lesson files are not copied or read. If you come straight from lean-project, copy them by hand (table in the [manual](docs/MANUAL.md#install-update-and-the-old-names)). The per-project files `.lean-project` and `.lean-project-setup` keep their names.
 
 A Claude Code plugin that makes every session cheaper. Claude re-sends the whole conversation on every turn and loads some files into every session, so tokens go to orientation and old context before any work happens. lean-gate keeps that overhead small, and keeps the work organised while it does.
 
 Contents table below: open only the section you need.
 
 <!-- toc -->
-- 27-69: Features
-- 70-80: Install
-- 81-117: Delegating work
-- 118-130: Use
-- 131-173: Commands
-- 174-177: Minimal install (low context)
-- 178-188: Settings
-- 189-205: What a project gets
-- 206-209: Where your data lives
-- 210-213: Credits
-- 214-216: License
+- 27-70: Features
+- 71-81: Install
+- 82-109: Delegating work
+- 110-122: Use
+- 123-168: Commands
+- 169-172: Minimal install (low context)
+- 173-184: Settings
+- 185-201: What a project gets
+- 202-205: Where your data lives
+- 206-209: Credits
+- 210-212: License
 <!-- /toc -->
 
 ## Features
@@ -46,20 +46,21 @@ Contents table below: open only the section you need.
 **Building**
 
 - **Build mode** works through the plan phase by phase and routes tasks by model and effort: Haiku for bulk reading and fixtures, Sonnet for well-specified code, tests and lint fixes, Opus for review and acceptance, the main session for design. Each task gets a short self-contained brief, the main session verifies every result, and a failing task climbs effort before it climbs models.
-- **A shared board** lets parallel subagents and sessions talk while they work: cards move through todo, doing, blocked and done, and agents post one-line facts their siblings need (a contract, a format, a gotcha). It is one append-only file, so parallel writers never overwrite each other, and the lead reads a compact view instead of waiting on replies. At each phase gate, lasting notes move into the plan and the board is archived.
+- **A shared board** lets parallel subagents and sessions talk while they work: cards move through todo, doing, blocked and done, and agents post one-line facts their siblings need (a contract, a format, a gotcha). It is one append-only file, so parallel writers never overwrite each other, and the lead reads a compact view instead of waiting on replies. Every worktree of a repo shares the main checkout's board. At each phase gate, lasting notes move into the plan and `lean-gate board archive` appends the board to `BOARD-ARCHIVE.md`; `lean-gate board export` prints a card summary for a tracker comment.
 - **Phase gates**: acceptance checks ticked by a fresh reviewer, plus security review, code review and tests before a build is final. Reviews are a release gate; the rule is in `skills/lean-gate/SKILL.md`, and `lean-gate review-scope` lists the code changed since the last tag and says when a full review is due.
 - **A gate on done.** Moving a card to `done` runs `lean-gate check gate`: PHP syntax and, when installed, WordPress coding standards on the card's files. A failure sends the card back to `todo` with the output on the card.
 - **Always on, WordPress aware.** A session-start hook applies the rules to every project. In a WordPress project it points to `skills/lean-gate/WORDPRESS.md`: how to read the docs and check changelogs, best practices for plugins, WooCommerce, Bricks and the block editor, and a security checklist with fixes. `lean-gate audit security` scans the code for the common anti-patterns.
 - **Handoff draft.** `lean-gate handoff` drafts the state file from the branch, the next open tasks and the cards in flight, for review before a reset.
 - **Builder skills on demand.** The 108 Bricks and BricksExtras skills live inside this one skill, in `builder/`. `builder/INDEX.md` routes a task to the one skill it needs, so nothing loads unless a plan step names a Bricks element, template or query. Their generated JSON schema data stays out of the plugin.
 - **Project memory.** `lean-gate memory add "<note>" [--tag decision|state|link|note]` keeps short dated notes per project, `link` ties projects together, and session start prints one line (count, newest note, linked projects). `memory recall` reads the notes and the newest three of each linked project only when you ask; `forget` archives a note, never deletes it. Notes live in `~/.claude/lean-gate/memory/<project>/`.
-- **Control panel and rule gate.** A panel docked beside the chat (`/lean-gate` opens it) shows the model route, delegation counts, context use, state-file age, test result and review status, and enforces rules on tool calls: model and effort on every subagent, no Haiku for coding, free OpenCode models only, review before release, state file and tests before done, no em dashes, the lean-gate skill loaded first, WordPress skills and docs read before WordPress or Bricks code, changelog before a tag, a push after a tag, pull requests only for the repos in `pr_repos`, and no demo files to public repos. Each rule is off, warn or block with one press, and a rule builder adds your own. Model routing sets the model, effort and agents-at-once cap for each kind of work (reading and writing, coding, complex coding, review, planning). Project memory, the shared board, lessons and packs have their own sections, and project memory and lessons can record automatically. Everything is set by buttons and stored in `~/.claude/lean-gate.json`; a project's `.lean-gate.json` can tune rules, routing and limits. Hub guide: [docs/HUB.md](docs/HUB.md); every panel button: [docs/MANUAL.md](docs/MANUAL.md). Version history: [CHANGELOG.md](CHANGELOG.md).
+- **Control panel and rule gate.** A panel docked beside the chat (`/lean-gate` opens it) shows the model route, delegation counts, context use, state-file age, test result and review status, and enforces rules on tool calls: model and effort on every subagent, no Haiku for coding, free OpenCode models only, review before release, state file and tests before done, no em dashes, the lean-gate skill loaded first, WordPress skills and docs read before WordPress or Bricks code, changelog before a tag, a push after a tag, no demo files to public repos, and no keys or tokens in files, commands or commits. Each rule is off, warn or block with one press, and a rule builder adds your own. Model routing sets the model, effort and agents-at-once cap for each kind of work (reading and writing, coding, complex coding, review, planning). Project memory, the shared board, lessons and packs have their own sections, and project memory and lessons can record automatically. Everything is set by buttons and stored in `~/.claude/lean-gate.json`; a project's `.lean-gate.json` can tune rules, routing and limits. Hub guide: [docs/HUB.md](docs/HUB.md); every panel button: [docs/MANUAL.md](docs/MANUAL.md). Version history: [CHANGELOG.md](CHANGELOG.md).
+- **Card trackers.** A tracker in the global config (Planka first) names the folders it covers. There the gate asks for a card started and claimed before edits, commits on a `<person>/<CODE>-<slug>` branch with the card code first in the subject, a sync after pushing mirrored docs, and a card code and `AGENT_NAME` in agent briefs (four warn rules, their own group in the panel), and the panel gets a Tracker section with Start, My cards and To In Review. Tracker config is global only. Details: the manual, "Trackers".
 - **Skills and plugins on demand (packs).** Skill sets used rarely stay off so they cost no tokens at startup: the Bricks skills, the WordPress `wp-*` skills and the ui-ux plugin. They return when a task needs them. `lean-gate pack status` shows which are on; `lean-gate pack on <bricks|wp|ui-ux>` turns one on, and `off` turns it back off. Changes take effect in the next session.
 - **Reverse engineering on demand.** The REA guide lives in `reverse/` and loads only for reverse-engineering tasks. REA's MCP server stays off by default (startup cost) and is switched on per folder.
 
 **Delegation**
 
-- **Send bulk work elsewhere.** Each project chooses where delegated work goes: `none` (everything stays with Claude), `llama` (a local llama.cpp server), `ollama`, `unsloth` (Unsloth Studio), `opencode` (free OpenCode models only), `aider` or `goose` (agent CLIs). Bulk reading, code sweeps, fixtures and lint loops go there. Security, architecture and review stay with Claude.
+- **Send bulk work elsewhere.** Each project chooses where delegated work goes: `none` (everything stays with Claude) or `opencode` (free OpenCode models only). Bulk reading, code sweeps, fixtures and lint loops go there. Security, architecture and review stay with Claude.
 - **Asked on the first sessions only.** A project with no recorded setup or delegation choice gets a one-line reminder in up to three sessions, then it stops. The choice is saved in `.lean-project` at the project root, and the setup in `.lean-project-setup`.
 
 **Session hygiene**
@@ -76,27 +77,25 @@ In Claude Code:
 /plugin install lean-gate@lean-gate
 ```
 
-Requires bash: built in on macOS and Linux, and Git Bash on Windows (which Claude Code uses there). Everything except delegation needs no other dependencies. Delegation needs `curl` and `node` (both in Git Bash on Windows), plus whichever local server or tool you pick: llama.cpp, Ollama, Unsloth Studio, the OpenCode desktop app, aider or goose. Only the one you choose has to be running.
+Requires bash: built in on macOS and Linux, and Git Bash on Windows (which Claude Code uses there). Everything except delegation needs no other dependencies. Delegation needs `node` and the OpenCode desktop app (its CLI runs the brief).
 
 ## Delegating work
 
-1. **Start a local model server (optional).** With llama.cpp, start `llama-server` with the model you want on a port you choose (the author's setup uses 9931 with the Gemma 12B coder GGUF, `yuxinlu1/gemma-4-12B-coder-fable5-composer2.5-v1-GGUF:Q4_K_M`). Check the server's own help for its flags.
-
-2. **Pick the runner for a project.** Answer the question Claude asks at the start of a session, or run it yourself in the project folder:
+1. **Pick the runner for a project.** Answer the question Claude asks at the start of a session, or run it yourself in the project folder:
 
    ```bash
-   lean-gate delegate set runner llama
+   lean-gate delegate set runner opencode
    ```
 
-   For OpenCode instead, use `lean-gate delegate set runner opencode`. Only free models (`opencode/*-free`) are accepted. The default is `opencode/deepseek-v4.1-flash-free`, and you can change it with `lean-gate delegate set opencode_model <model>`.
+   The other choice is `none`, which keeps everything with Claude. Only free OpenCode models (`opencode/*-free`) are accepted. The default is `opencode/deepseek-v4.1-flash-free`, and you can change it with `lean-gate delegate set opencode_model <model>`. `opencode_cli` points at the CLI (default: the newest one in the OpenCode desktop app's folder), and `opencode_auto` set to `1` lets OpenCode act without asking (off by default).
 
-3. **Check the runner:**
+2. **Check the runner:**
 
    ```bash
    lean-gate delegate check
    ```
 
-4. **Run a brief.** Write the task and the material it needs into a file, then send it:
+3. **Run a brief.** Write the task and the material it needs into a file, then send it:
 
    ```bash
    lean-gate delegate run brief.md answer.md
@@ -104,16 +103,9 @@ Requires bash: built in on macOS and Linux, and Git Bash on Windows (which Claud
 
    The answer is written to `answer.md`. Read it and verify it before using it. A brief with no context gets a generic answer, so include the excerpt or file the model should work on.
 
-**If a runner is down, the work falls back on its own.** Before each delegated job, `lean-gate delegate run` tries the chosen runner, then the fallbacks in `fallback` (default `llama opencode`, set with `fallback`). A runner counts as down when its health check fails (llama, Ollama, Unsloth) or its program is missing (OpenCode, aider, goose). If every runner is down, the command exits with status 3 and Claude does the work itself. The session start prints which runner is in use right now.
+**If the runner is down, the work falls back on its own.** Before each delegated job, `lean-gate delegate run` tries the chosen runner, then the `fallback` runner (`opencode` or `none`, default `opencode`). A runner counts as down when its program is missing. If none is up, the command exits with status 3 and Claude does the work itself. The session start prints which runner is in use right now.
 
-Other runners, each set with `lean-gate delegate set`:
-
-- **ollama:** `ollama_url` (default `http://127.0.0.1:11434`) and `ollama_model`, the model tag you pulled.
-- **unsloth:** `unsloth_url` (default `http://127.0.0.1:8888`, the port `unsloth studio -p` uses) and `unsloth_model`. Put the API key in the `UNSLOTH_API_KEY` environment variable, never in `.lean-project`.
-- **aider:** `aider_model`. Needs the `aider` command on the PATH. Aider and goose are agents that can edit files, so use them only where edits are wanted and review `git diff` afterwards.
-- **goose:** needs the `goose` command on the PATH. It runs with `goose run -i <brief>`.
-
-The llama default URL is `http://127.0.0.1:9931`. Change it with `lean-gate delegate set llama_url <url>` if your server runs elsewhere. The model name for llama is set with `llama_model`.
+**Removed in 2.0:** the llama, ollama, unsloth, aider and goose runners and their keys (`llama_url`, `llama_model`, `ollama_url`, `ollama_model`, `unsloth_url`, `unsloth_model`, `aider_model`). A `.lean-project` that still names one prints `lean-gate: runner <name> in .lean-project was removed in 2.0; falling back (runners now: none, opencode)` and falls back.
 
 ## Use
 
@@ -126,7 +118,7 @@ Ask in plain words, or run the skill directly (`/lean-gate:lean-gate`):
 | "Take over this project" / "Give this project a plan" | A plan reconstructed from code, git and docs; questions only about the gaps |
 | "Audit the docs in this project for token use" | Measures, trims and reports before and after |
 | "Build phase 2 from the plan" | Splits the phase into tasks, routes them across models, coordinates them on the board, checks the gate |
-| "Delegate this to the local model" | Writes a brief and runs it through `lean-gate delegate run` on the project's runner |
+| "Delegate this to a free model" | Writes a brief and runs it through `lean-gate delegate run` on the project's runner |
 
 ## Commands
 
@@ -145,6 +137,8 @@ The `lean-gate` command is on Claude's PATH while the plugin is enabled (you can
 | `lean-gate board note <id> <text>` | Post a one-line fact for the other tasks |
 | `lean-gate map predict <file>` | The files that changed with it in the last 10 commits, with their maps |
 | `lean-gate board files <id> <paths>` | Record the files a card changes; the gate checks them when it moves to `done` |
+| `lean-gate board archive [--force]` | Append the board to `BOARD-ARCHIVE.md` beside it and remove `BOARD.md`. Refused while a card is doing or blocked, unless `--force` |
+| `lean-gate board export [ids]` | Markdown summary of the cards (all when no id), for a tracker card comment. Writes nothing |
 | `lean-gate check gate <id> [files]` | Run the gate by hand: `php -l` and WordPress coding standards |
 | `lean-gate audit waste [dir] [--apply]` | Find comment blocks, debug logs and repeated hooks; `--apply` archives comment blocks |
 | `lean-gate frontier [docs/PLAN.md]` | The decisions to ask now, and what waits on them |
@@ -156,10 +150,11 @@ The `lean-gate` command is on Claude's PATH while the plugin is enabled (you can
 | `lean-gate audit security [dir or files...]` | Read-only scan of PHP and JS for WordPress anti-patterns (unescaped output, unprepared SQL, missing nonce or capability checks, dangerous functions). Pass the files `review-scope` lists at release |
 | `lean-gate audit perf [dir or files...]` | Read-only performance and HPOS scan of WordPress and WooCommerce code, from the `wp-woo-performance-audit` skill |
 | `lean-gate review-scope [--full-done]` | The code changed since the last release tag, and whether a full review is due (a new major version, or 5 or more minor releases since the last full one). `--full-done` records one |
+| `lean-gate ignore [dir] [--apply]` | Propose `.ignore` lines so Grep and Glob skip big unregistered folders, `backups/`, `archive/`, `releases/` and `*.zip`, and see a repo that a whitelist `.gitignore` hides. A dry run unless `--apply` |
 | `lean-gate sessions [n] [--here]` | The newest session drafts: date, project, path. `--here` keeps this project's only |
 | `lean-gate handoff [docs/PLAN.md]` | Draft of the state file: branch, next tasks, cards in flight (prints only) |
 | `lean-gate delegate config` | Show the project's delegation choice, or that none is set yet |
-| `lean-gate delegate set <key> <value>` | Save a key in `.lean-project`: `runner` (`none`, `llama`, `ollama`, `unsloth`, `opencode`, `aider`, `goose`), `opencode_auto` (`1` lets OpenCode act without asking; off by default), `fallback`, `llama_url`, `llama_model`, `ollama_url`, `ollama_model`, `unsloth_url`, `unsloth_model`, `aider_model`, `opencode_cli`, `opencode_model` |
+| `lean-gate delegate set <key> <value>` | Save a key in `.lean-project`: `runner` (`none`, `opencode`), `fallback` (`opencode` or `none`), `opencode_cli`, `opencode_model` (a `-free` model) and `opencode_auto` (`1` lets OpenCode act without asking; off by default) |
 | `lean-gate delegate check` | Check whether the chosen runner is up, and which runners would be tried |
 | `lean-gate delegate pick` | Print the runner in use right now (the first one up in the fallback order, or `none`) |
 | `lean-gate delegate run <brief> <output>` | Send a brief to the runner and write the answer to a file |
@@ -169,7 +164,7 @@ The `lean-gate` command is on Claude's PATH while the plugin is enabled (you can
 | `lean-gate pack off <bricks|wp|ui-ux>` | Park a pack, or turn the plugin off. Takes effect in the next session |
 | `lean-gate selftest` | Check the tool on this machine |
 
-Board environment variables: `LEAN_BOARD` is the board file (default `docs/BOARD.md`; agents always pass an absolute path, since a worktree has its own copy of the docs folder) and `LEAN_AS` is the writer's name (default `lead`).
+Board environment variables: `LEAN_BOARD` is the board file (default: `docs/BOARD.md` of the main checkout, so every worktree shares one; outside git, pass an absolute path) and `LEAN_AS` is the writer's name (default `lead`).
 
 ## Minimal install (low context)
 
@@ -196,9 +191,9 @@ The skill and the `lean-gate` command work without any hooks. The hooks are the 
 │   ├── PLAN.md        goal, assumptions A#, decisions D#, sources, phases with gates, risks R#, decision log
 │   ├── HANDOFF.md     state: now, in progress, next
 │   ├── GLOSSARY.md    the project's own terms (once grilling settles one)
-│   ├── BOARD.md       shared board (during a build phase)
+│   ├── BOARD.md       shared board (during a build phase; BOARD-ARCHIVE.md beside it once archived)
 │   └── ARCHIVE.md     replaced text, verbatim (once something is replaced)
-├── .lean-project      delegation choice: runner, llama_url, llama_model, opencode_model
+├── .lean-project      delegation choice: runner, fallback, opencode_model
 └── <code>/
 ```
 
@@ -206,7 +201,7 @@ Projects already under way keep their own names and doc folder. Docs never go in
 
 ## Where your data lives
 
-Lessons go to the plugin's data folder (`~/.claude/plugins/data/lean-gate-*/LESSONS.md`), which survives plugin updates. Lessons never leave your machine. Delegated briefs stay local with the `llama` runner. With `opencode`, the brief goes to the OpenCode service and its free model.
+Lessons go to the plugin's data folder (`~/.claude/plugins/data/lean-gate-*/LESSONS.md`), which survives plugin updates. Lessons never leave your machine. With the `none` runner nothing leaves your machine; with `opencode`, the brief goes to the OpenCode service and its free model.
 
 ## Credits
 

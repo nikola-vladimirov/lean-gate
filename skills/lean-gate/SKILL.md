@@ -7,7 +7,7 @@ description: Run a project with the fewest tokens per session. Plans new project
 
 One goal: the fewest tokens a session spends to get oriented, stay oriented and get the work done, without losing information.
 
-**Always on.** This applies to every project and task. Before any task, choose the model and tool for each part as set out in `ROUTING.md` (mandatory). Starting or adopting a project runs the setup cards in `STARTUP.md` first. WordPress, WooCommerce, Bricks and block-editor work follows `WORDPRESS.md` on every change.
+**Always on.** This applies to every project and task. Before any task, choose the model and tool for each part as set out in `ROUTING.md` (mandatory). Starting or adopting a project runs the setup cards in `STARTUP.md` first. WordPress, WooCommerce, Bricks and block-editor work follows `WORDPRESS.md` on every change. In project folders session start prints this skill under the marker `[lean-gate skill loaded at session start]`: that counts as loaded, so do not load it again.
 
 ## Review scope (release gate; mandatory)
 
@@ -27,6 +27,7 @@ A full review runs on every major release and every 5 to 10 minor ones; `review-
 | Work on a live client website (approvals, drafts, backups, CDN, tokens) | `CLIENT-SITE.md`, then `WORDPRESS.md` for any code change |
 | Write or edit website text (product pages, guides, blog, FAQ) | `SITE-COPY.md` (method), plus the project's voice notes |
 | Any task at all (routing, which model and which tool or plugin) | `ROUTING.md`, before starting |
+| Work in a folder a card tracker covers (session start names the tracker) | Run the tracker's start command first and work from its cards, instead of reading the index and state file: `TOOLS.md`, "Trackers" |
 | Build or review WordPress, WooCommerce, Bricks or block-editor code (plugin, theme, companion script) | `WORDPRESS.md`: how to read the docs, check changelogs, best practices, the security checklist and fixes. Read it before changing that code, every time. |
 | Audit a WordPress or WooCommerce site or codebase for performance, HPOS or layout, onboard an inherited store, or triage a slow store | The `wp-woo-performance-audit` skill (its own public repo, installed in `~/.claude/skills`). Scope: at release, the files `review-scope` lists; the whole folder only for an audit the user asked for. Its scan is `lean-gate audit perf`. |
 | Build or change a Bricks or BricksExtras site, page, template, element, query or condition | `builder/INDEX.md`, then only the one `builder/<skill>/SKILL.md` the task needs |

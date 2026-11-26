@@ -21,14 +21,23 @@ export const RULES = [
   'docs-before-builder',
   'changelog-before-tag',
   'push-after-tag',
-  'one-pr-per-fix',
   'distinctive-session-names',
   'phpcs-before-done',
   'wporg-audit-before-release',
+  'tracker-card-first',
+  'tracker-git-codes',
+  'tracker-sync-after-push',
+  'tracker-brief',
+  'no-secrets-outward',
 ] as const
 export type Rule = (typeof RULES)[number]
-// Old rule ids from before the rename to lean-gate, still read from config files.
-export const RENAMED_RULES: Record<string, Rule> = { 'lean-project-first': 'lean-gate-first' }
+// Config keys that no longer do anything: named at session start and in the panel, never read.
+export const RETIRED_KEYS = ['pr_repos']
+
+// A task tracker the global config names (Planka first): the folders it covers, the commands that start and claim card work,
+// and the patterns the tracker rules check. A pattern left out is '' and its check is skipped.
+export type Tracker = { name: string; paths: string[]; start: string; sync: string; start_match: string; claim_match: string; code: string; branch: string; docs: string; mirrored: string; sync_match: string }
+const TRACKER_RES = ['start_match', 'claim_match', 'code', 'branch', 'docs', 'mirrored', 'sync_match'] as const
 
 // A rule the person builds in the band: which tools it watches ("Edit|Write", "*" = all), a regex over the call's text, a message.
 // The shell helpers lean-gate switches: startup notes, the context nudge, doc and test guard hints, session drafts.
@@ -61,10 +70,12 @@ export type Config = {
   routing: Record<RoutingKey, string>
   // Most agents in one turn started with each section's model:effort (0 = no limit).
   agent_caps: Record<RoutingKey, number>
-  // Most Agent calls in one turn (0 = no limit), a short workflow text shown to Claude each session, and the repo folders that take pull requests only.
+  // Most Agent calls in one turn (0 = no limit) and a short workflow text shown to Claude each session.
   max_agents: number
   workflow: string
-  pr_repos: string[]
+  // Who works the tracker cards ({person} in a tracker's branch pattern) and the trackers; both from the global file only.
+  person: string
+  trackers: Tracker[]
   // When on, the session prompt tells Claude to record project memory notes, or lessons, by itself.
   auto_memory: boolean
   phpcs_standard: string
@@ -105,14 +116,19 @@ export const DEFAULTS: Config = {
     'docs-before-builder': 'warn',
     'changelog-before-tag': 'warn',
     'push-after-tag': 'warn',
-    'one-pr-per-fix': 'warn',
     'distinctive-session-names': 'block',
     'phpcs-before-done': 'warn',
     'wporg-audit-before-release': 'warn',
+    'tracker-card-first': 'warn',
+    'tracker-git-codes': 'warn',
+    'tracker-sync-after-push': 'warn',
+    'tracker-brief': 'warn',
+    'no-secrets-outward': 'block',
   },
   max_agents: 0,
   workflow: '',
-  pr_repos: [],
+  person: '',
+  trackers: [],
   auto_memory: false,
   phpcs_standard: 'WordPress',
   helpers: { startup_notes: true, context_nudge: true, guard_hints: true, session_drafts: true, ponytail: true },
@@ -174,8 +190,26 @@ function customRule(v: unknown): CustomRule | undefined {
   return { id, tool, match, message: typeof message === 'string' ? message.slice(0, 200) : '', level: isLevel(r.level) ? r.level : 'warn' }
 }
 
+// One entry of `trackers`, or undefined when it has no name or paths, or a pattern the gate will not run. {person} and {code} are
+// filled into `branch` first; a branch that needs one that is not set is left out, so its check is skipped.
+function tracker(v: unknown, person: string): Tracker | undefined {
+  const r = obj(v)
+  const text = (k: string) => (typeof r[k] === 'string' ? (r[k] as string).slice(0, 300) : '')
+  const paths = (Array.isArray(r.paths) ? r.paths : []).filter((p): p is string => typeof p === 'string' && p.trim() !== '').map(p => norm(p.trim()).replace(/\/+$/, ''))
+  if (text('name') === '' || paths.length === 0) return undefined
+  const t: Tracker = { name: text('name').slice(0, 60), paths: paths.slice(0, 20), start: text('start'), sync: text('sync'), start_match: '', claim_match: '', code: '', branch: '', docs: '', mirrored: '', sync_match: '' }
+  for (const k of TRACKER_RES) {
+    let s = text(k)
+    if (k === 'branch') s = (s.includes('{person}') && person === '') || (s.includes('{code}') && t.code === '') ? '' : s.replaceAll('{person}', escRe(person)).replaceAll('{code}', `(?:${t.code})`)
+    if (s !== '' && !regexOk(s)) return undefined
+    t[k] = s
+  }
+  return t
+}
+
 export function mergeConfig(...layers: Record<string, unknown>[]): Config {
-  const c: Config = { ...DEFAULTS, helpers: { ...DEFAULTS.helpers }, rules: { ...DEFAULTS.rules }, routing: { ...DEFAULTS.routing }, agent_caps: { ...DEFAULTS.agent_caps }, custom: [], pr_repos: [], reminders: {} }
+  const c: Config = { ...DEFAULTS, helpers: { ...DEFAULTS.helpers }, rules: { ...DEFAULTS.rules }, routing: { ...DEFAULTS.routing }, agent_caps: { ...DEFAULTS.agent_caps }, custom: [], trackers: [], reminders: {} }
+  let trackers: unknown[] = []
   for (const l of layers) {
     if (isLevel(l.mode)) c.mode = l.mode
     if (typeof l.demo_pattern === 'string' && regexOk(l.demo_pattern)) c.demo_pattern = l.demo_pattern
@@ -186,16 +220,11 @@ export function mergeConfig(...layers: Record<string, unknown>[]): Config {
       c.custom = [...c.custom.filter(x => x.id !== cr.id), cr]
       c.rules[cr.id] = cr.level
     }
-    const rules = obj(l.rules)
-    for (const [raw, v] of Object.entries(rules)) {
-      // An old rule id still sets its new one, unless the same layer also names the new id.
-      const k = RENAMED_RULES[raw] ?? raw
-      if (k !== raw && k in rules) continue
-      if (((RULES as readonly string[]).includes(k) || c.custom.some(x => x.id === k)) && isLevel(v)) c.rules[k] = v
-    }
+    for (const [k, v] of Object.entries(obj(l.rules))) if (((RULES as readonly string[]).includes(k) || c.custom.some(x => x.id === k)) && isLevel(v)) c.rules[k] = v
     for (const k of ROUTING_KEYS) {
       const v = obj(l.routing)[k]
-      if (typeof v === 'string') c.routing[k] = v
+      // A model name with an optional effort only: the value is printed into the session prompt, and a repo can ship this file.
+      if (typeof v === 'string' && /^[\w.-]{1,40}(:[\w-]{1,12})?$/.test(v)) c.routing[k] = v
       const cap = obj(l.agent_caps)[k]
       if (typeof cap === 'number' && Number.isInteger(cap) && cap >= 0) c.agent_caps[k] = cap
     }
@@ -208,12 +237,15 @@ export function mergeConfig(...layers: Record<string, unknown>[]): Config {
     if (typeof l.phpcs_standard === 'string' && /^[A-Za-z-]{3,30}$/.test(l.phpcs_standard)) c.phpcs_standard = l.phpcs_standard
     if (typeof l.auto_memory === 'boolean') c.auto_memory = l.auto_memory
     if (typeof l.auto_lessons === 'boolean') c.auto_lessons = l.auto_lessons
-    if (Array.isArray(l.pr_repos)) c.pr_repos = l.pr_repos.filter((n): n is string => typeof n === 'string' && n !== '').slice(0, 40)
     for (const [k, v] of Object.entries(obj(l.reminders))) if (v === 'once' || v === 'every') c.reminders[k] = v
     if (l.scope === 'projects' || l.scope === 'everywhere') c.scope = l.scope
     if (typeof l.quiet === 'boolean') c.quiet = l.quiet
     if (l.panel_start === 'details' || l.panel_start === 'compact' || l.panel_start === 'closed') c.panel_start = l.panel_start
+    if (typeof l.person === 'string' && /^[\w.-]{1,40}$/.test(l.person)) c.person = l.person
+    if (Array.isArray(l.trackers)) trackers = l.trackers
   }
+  // Built after every layer, so {person} is the final one.
+  c.trackers = trackers.slice(0, 20).flatMap(v => tracker(v, c.person) ?? [])
   return c
 }
 
@@ -221,9 +253,28 @@ export function mergeConfig(...layers: Record<string, unknown>[]): Config {
 // gate off, add rules, set the demo pattern or put text into the session prompt: those come from the global file only.
 // Rules it turns down are allowed but never silent: loweredRules names them for the session start and the panel.
 export function projectLayer(l: Record<string, unknown>): Record<string, unknown> {
-  const { mode: _m, workflow: _w, custom_rules: _c, demo_pattern: _d, ...rest } = l
+  const { mode: _m, workflow: _w, custom_rules: _c, demo_pattern: _d, trackers: _t, person: _p, ...rest } = l
   return rest
 }
+
+// Rule ids in a config file that are neither built in nor custom, and retired keys: the gate ignores them, so they are named.
+export function unknownNames(c: Config, ...layers: Record<string, unknown>[]): string[] {
+  const out = new Set<string>()
+  for (const l of layers) {
+    for (const k of Object.keys(obj(l.rules))) if (!(RULES as readonly string[]).includes(k) && !c.custom.some(x => x.id === k)) out.add(k)
+    for (const k of RETIRED_KEYS) if (k in l) out.add(k)
+  }
+  return [...out]
+}
+
+// The tracker whose folders hold `dir`: the path equals one of them or is inside it, compared case-insensitively.
+export function trackerAt(c: Config, dir: string): Tracker | undefined {
+  const d = norm(dir).replace(/\/+$/, '').toLowerCase()
+  return c.trackers.find(t => t.paths.some(p => d === p.toLowerCase() || d.startsWith(`${p.toLowerCase()}/`)))
+}
+
+// A tracker pattern as the rules run it ('' = not set, so the caller skips that check).
+export const trackerRe = (s: string, flags = 'i') => (s === '' ? undefined : new RegExp(s, flags))
 
 // The rules whose level the project file sets below the global one (block to warn, or anything to off).
 export function loweredRules(global: Config, merged: Config): string[] {
@@ -274,8 +325,10 @@ export const hasEmDash = (tool: string, input: Record<string, unknown>) => {
   return (shell !== undefined || tool === 'Edit' || tool === 'Write') && callText(tool, input).includes(String.fromCharCode(0x2014))
 }
 
-// lean-gate-first and wp-skills-for-wp-code: a skill call names the skill in `skill` (lean-project is the old name).
-export const isLeanSkill = (name: string) => /lean-(gate|project)/i.test(name)
+// lean-gate-first and wp-skills-for-wp-code: a skill call names the skill in `skill`. The session-start hook loads the lean-gate
+// skill body itself under LEAN_MARKER, which counts as a load too.
+export const isLeanSkill = (name: string) => /lean-gate/i.test(name)
+export const LEAN_MARKER = '[lean-gate skill loaded at session start]'
 export const isWpSkill = (name: string) => /^wp-|wordpress|woocommerce/i.test(name.split(':').pop() ?? name)
 
 // wp-skills-for-wp-code: a PHP file that is WordPress code, by its path or by what is being written.
@@ -339,6 +392,51 @@ export function agentProblems(input: { model?: unknown; effort?: unknown }, rout
   return out
 }
 
+// tracker-brief: an agent briefed from a tracker folder names its card and AGENT_NAME, and any AGENT_MODEL= or AGENT_EFFORT= in
+// the brief is the model and effort the call really uses.
+export function briefProblems(t: Tracker, input: Record<string, unknown>): string[] {
+  const text = callText('Agent', input)
+  const out: string[] = []
+  if (trackerRe(t.code)?.test(text.slice(0, MATCH_CHARS)) === false) out.push('no card code')
+  if (!/\bAGENT_NAME\b/.test(text)) out.push('no AGENT_NAME')
+  for (const [k, v] of [['MODEL', input.model], ['EFFORT', input.effort]] as const) {
+    for (const m of text.matchAll(new RegExp(`\\bAGENT_${k}=([\\w.:-]+)`, 'g'))) {
+      if (typeof v !== 'string' || (m[1] ?? '').toLowerCase() !== v.toLowerCase()) out.push(`AGENT_${k}=${m[1]} but the call uses ${typeof v === 'string' ? v : 'none'}`)
+    }
+  }
+  return out
+}
+
+// no-secrets-outward: key-shaped strings, each with a name the message can use instead of the secret itself.
+// A hardcoded value counts only when it mixes lower case, upper case and digits (an option name or nonce action does not), and a
+// PEM header only with key data after it (code that builds a PEM does not).
+const anyCase = (s: string) => s.replace(/[a-z]/g, c => `[${c}${c.toUpperCase()}]`)
+const SECRETS: [string, RegExp][] = [
+  ['a Stripe live key', /\b(sk|rk)_live_[A-Za-z0-9]{16,}/g],
+  ['a webhook secret', /whsec_[A-Za-z0-9]{16,}/g],
+  ['a private key', /-----BEGIN [A-Z ]{0,20}PRIVATE KEY-----\s*[A-Za-z0-9+/]{40}/g],
+  ['a GitHub token', /gh[pousr]_[A-Za-z0-9]{30,}/g],
+  ['a GitHub token', /github_pat_[A-Za-z0-9_]{30,}/g],
+  ['an AWS key', /AKIA[0-9A-Z]{16}/g],
+  ['a Slack token', /xox[baprs]-[A-Za-z0-9-]{10,}/g],
+  ['an Anthropic key', /sk-ant-[A-Za-z0-9_-]{20,}/g],
+  ['a GitLab token', /glpat-[A-Za-z0-9_-]{20,}/g],
+  ['a hardcoded secret', new RegExp(`${anyCase('(api[_-]?key|secret|token|password)')}\\s*[:=]\\s*["'](?=[^"']*[a-z])(?=[^"']*[A-Z])(?=[^"']*\\d)[A-Za-z0-9_-]{20,}["']`, 'g')],
+]
+const PLACEHOLDER = /example|xxxx|dummy|fake|0000/i
+// The name of the first real key-shaped string in the text, never the string: a placeholder (EXAMPLE, xxxx, dummy, ...) passes.
+export function secretKind(text: string): string | undefined {
+  for (const [kind, re] of SECRETS) for (const m of text.matchAll(re)) if (!PLACEHOLDER.test(m[0])) return kind
+  return undefined
+}
+
+// The text a call sends out: a shell command, or the new text of an Edit, Write or MultiEdit.
+export function outwardText(tool: string, input: Record<string, unknown>): string | undefined {
+  const s = (v: unknown) => (typeof v === 'string' ? v : '')
+  if (tool === 'MultiEdit') return (Array.isArray(input.edits) ? input.edits : []).map(e => s(obj(e).new_string)).join('\n')
+  return shellCommand(tool, input) ?? (tool === 'Edit' ? s(input.new_string) : tool === 'Write' ? s(input.content) : undefined)
+}
+
 // ---- Command parsing: segments of tokens, with quoted text and heredoc bodies kept out of the way.
 
 export type Tok = { v: string; q: boolean }
@@ -366,13 +464,27 @@ export function segments(cmd: string): Tok[][] {
     let cur = ''
     let has = false
     let quoted = false
+    // Where the word's quoted text starts and ends, so a brace outside it is known to be unquoted.
+    let qStart = Infinity
+    let qEnd = 0
     let heredoc: string | undefined
     const last = () => out[out.length - 1] as Tok[]
     const word = () => {
-      if (has) last().push({ v: cur, q: quoted })
+      if (has) {
+        // Unquoted braces that do not pair up inside the word ({git, v1}, a bare { or }: a bash group or a PowerShell script
+        // block) end the segment as ; does. ${VAR}, @{u} and find's {} pair up and stay.
+        const lead = cur.includes('}') ? 0 : Math.min(/^\{*/.exec(cur)?.[0].length ?? 0, qStart)
+        const trail = cur.includes('{') ? 0 : Math.min(/\}*$/.exec(cur)?.[0].length ?? 0, cur.length - qEnd)
+        const v = cur.slice(lead, cur.length - trail)
+        if (lead > 0 && last().length > 0) out.push([])
+        if (v !== '' || (lead === 0 && trail === 0)) last().push({ v, q: quoted })
+        if (trail > 0 && last().length > 0) out.push([])
+      }
       cur = ''
       has = false
       quoted = false
+      qStart = Infinity
+      qEnd = 0
     }
     const cut = () => {
       word()
@@ -396,10 +508,13 @@ export function segments(cmd: string): Tok[][] {
       if (c === "'") {
         const j = cmd.indexOf("'", i + 1)
         const end = j < 0 ? cmd.length : j
+        qStart = Math.min(qStart, cur.length)
         cur += cmd.slice(i + 1, end)
+        qEnd = cur.length
         has = quoted = true
         i = end + 1
       } else if (c === '"') {
+        qStart = Math.min(qStart, cur.length)
         i++
         while (i < cmd.length && cmd[i] !== '"') {
           if (cmd[i] === '$' && cmd[i + 1] === '(') {
@@ -413,6 +528,7 @@ export function segments(cmd: string): Tok[][] {
             i++
           }
         }
+        qEnd = cur.length
         has = quoted = true
         i++
       } else if (c === '$' && next === '(') {
@@ -471,14 +587,16 @@ const baseName = (w: string) => (norm(w).split('/').pop() ?? w).toLowerCase()
 export const progName = (w: string) => baseName(w).replace(/\.(exe|cmd|bat|phar|js|mjs|cjs)$/, '')
 const ENV_ASSIGN = /^[A-Za-z_]\w*=/
 const WRAPPERS = new Set(['env', 'npx', 'bunx', 'time', 'nohup', 'command', 'exec', 'sudo'])
+// Keywords that open a segment but run nothing themselves: `if x; then git tag v1; fi`, `! git push`.
+const KEYWORDS = new Set(['if', 'then', 'elif', 'else', 'do', 'while', 'until', '!'])
 
-// The command a segment really runs: env-var prefixes and wrappers (env, timeout N, npx, ...) stripped.
+// The command a segment really runs: keywords, env-var prefixes and wrappers (env, timeout N, npx, ...) stripped.
 export function exe(seg: Tok[]): Tok[] {
   const t = seg.slice()
   for (;;) {
     const w = t[0]?.v
     if (w === undefined) return t
-    if (ENV_ASSIGN.test(w)) t.shift()
+    if (ENV_ASSIGN.test(w) || (KEYWORDS.has(w.toLowerCase()) && t[0]?.q === false)) t.shift()
     else if (WRAPPERS.has(progName(w))) {
       t.shift()
       while (t[0] !== undefined && (t[0].v.startsWith('-') || ENV_ASSIGN.test(t[0].v))) t.shift()
@@ -540,12 +658,19 @@ export function opencodeProblem(command: string): string | undefined {
 
 export const SHA = /^[0-9a-f]{7,64}$/
 
-// A path as the next command sees it: backslashes to slashes, ~ to home, Git Bash /e/x to E:/x, relative joined to dir.
+// A path as the next command sees it: backslashes to slashes, ~ to home, Git Bash /e/x to E:/x, relative joined to dir, . and .. resolved.
 export function resolveDir(dir: string, p: string, home = ''): string {
   let q = norm(p)
   if (home !== '' && (q === '~' || q.startsWith('~/'))) q = norm(home).replace(/\/+$/, '') + q.slice(1)
   q = q.replace(/^\/([a-zA-Z])(?=\/|$)/, (_m, d: string) => `${d.toUpperCase()}:`)
-  return /^([a-zA-Z]:)?\//.test(q) || /^[a-zA-Z]:$/.test(q) ? q : `${norm(dir).replace(/\/+$/, '')}/${q}`
+  const abs = /^([a-zA-Z]:)?\//.test(q) || /^[a-zA-Z]:$/.test(q) ? q : `${norm(dir).replace(/\/+$/, '')}/${q}`
+  const parts: string[] = []
+  for (const s of abs.split('/')) {
+    if (s === '..') {
+      if (parts.length > 1) parts.pop()
+    } else if (s !== '.' && (s !== '' || parts.length <= 1)) parts.push(s)
+  }
+  return parts.join('/') || '/'
 }
 
 const TAG_READONLY = /^(-l|--list|-d|--delete|-v|--verify|--contains|--no-contains|--merged|--no-merged|--points-at|-n\d*)$/
@@ -556,8 +681,10 @@ const PUSH_VALUE = /^(-o|--push-option|--repo|--receive-pack|--exec)$/
 const TAGLIKE = /refs\/tags\/|\$|^tag$/
 const VERSIONLIKE = /^\+?v?\d+(\.\d+)*([-+.][\w.]+)?(:.*)?$/
 export type Release = { dir: string; what: string; check?: string }
+export type GitCall = { dir: string; sub: string; rest: string[] }
 
-function gitRelease(a: Tok[], dir: string, home: string): Release | undefined {
+// A git segment's subcommand and the arguments after it, in the folder -C points it at.
+function gitSub(a: Tok[], dir: string, home: string): GitCall {
   let d = dir
   let i = 0
   for (; i < a.length; i++) {
@@ -566,8 +693,10 @@ function gitRelease(a: Tok[], dir: string, home: string): Release | undefined {
     else if (v === '-c' || v === '--git-dir' || v === '--work-tree' || v === '--namespace') i++
     else if (!v.startsWith('-')) break
   }
-  const sub = a[i]?.v
-  const rest = a.slice(i + 1).map(t => t.v)
+  return { dir: d, sub: a[i]?.v ?? '', rest: a.slice(i + 1).map(t => t.v) }
+}
+
+function gitRelease({ dir: d, sub, rest }: GitCall): Release | undefined {
   if (sub === 'tag') {
     let name: string | undefined
     for (let k = 0; k < rest.length; k++) {
@@ -599,21 +728,35 @@ function gitRelease(a: Tok[], dir: string, home: string): Release | undefined {
 // The first release action in the command and the directory it runs in, or undefined.
 export const releaseAction = (command: string, cwd: string, home = ''): Release | undefined => releaseActions(command, cwd, home)[0]
 
-// Every release action in the command, in order (a tag and its push can share one command).
-// shortcut: cd, pushd and -C are followed inside one command only; a cd made by an earlier Bash call is not visible, so the
+// The commands that change folder: bash, cmd and PowerShell names (progName is lower case). -Path and -LiteralPath are skipped as flags.
+const CD = new Set(['cd', 'pushd', 'chdir', 'set-location', 'sl', 'push-location'])
+
+// Each segment's program and arguments with the folder it runs in.
+// shortcut: cd, pushd, Set-Location and -C are followed inside one command only; a cd made by an earlier Bash call is not visible, so the
 // session cwd is used (upgrade if the engine exposes the Bash tool's working directory).
-export function releaseActions(command: string, cwd: string, home = ''): Release[] {
-  const found: Release[] = []
+function walk(command: string, cwd: string, home: string): { n: string; a: Tok[]; dir: string }[] {
+  const out: { n: string; a: Tok[]; dir: string }[] = []
   let dir = norm(cwd)
   for (const seg of allSegments(command)) {
     const t = exe(seg)
     const n = progName(t[0]?.v ?? '')
     const a = t.slice(1)
-    if (n === 'cd' || n === 'pushd') {
-      const p = a.find(x => !x.v.startsWith('-'))
-      if (p !== undefined) dir = resolveDir(dir, p.v, home)
-    } else if (n === 'git') {
-      const r = gitRelease(a, dir, home)
+    const p = CD.has(n) ? a.find(x => !x.v.startsWith('-')) : undefined
+    if (p !== undefined) dir = resolveDir(dir, p.v, home)
+    else out.push({ n, a, dir })
+  }
+  return out
+}
+
+// Every git call in the command with the folder it runs in (the tracker rules find their repo this way).
+export const gitCalls = (command: string, cwd: string, home = ''): GitCall[] => walk(command, cwd, home).flatMap(s => (s.n === 'git' ? [gitSub(s.a, s.dir, home)] : []))
+
+// Every release action in the command, in order (a tag and its push can share one command).
+export function releaseActions(command: string, cwd: string, home = ''): Release[] {
+  const found: Release[] = []
+  for (const { n, a, dir } of walk(command, cwd, home)) {
+    if (n === 'git') {
+      const r = gitRelease(gitSub(a, dir, home))
       if (r) found.push(r)
     } else if (n === 'gh') {
       const pos: string[] = []
@@ -632,6 +775,60 @@ export function releaseActions(command: string, cwd: string, home = ''): Release
   }
   return found
 }
+
+// Long options of git commit whose value is the next argument when no = joins it.
+const COMMIT_VALUE = /^--(author|date|template|cleanup|trailer|fixup|squash|pathspec-from-file)$/
+
+// tracker-git-codes: a `git commit`'s subject line (undefined with -F, -C or no -m, '' when the shell builds it), -a, and the
+// pathspecs it names (the commit then takes only those paths).
+// A PowerShell here-string (@'...'@) keeps its @ marks in the token; a $(cat <<EOF ...) message reads as '' here, so the
+// caller takes its first line from the command text (heredocSubject).
+export function commitArgs(rest: string[]): { subject?: string; all: boolean; paths: string[] } {
+  let msg: string | undefined
+  let file = false
+  let all = false
+  const paths: string[] = []
+  for (let k = 0; k < rest.length; k++) {
+    const x = rest[k] ?? ''
+    if (x === '--') {
+      paths.push(...rest.slice(k + 1))
+      break
+    }
+    if (x === '--all') all = true
+    else if (/^--(file|reuse-message|reedit-message)(=|$)/.test(x)) {
+      file = true
+      if (!x.includes('=')) k++
+    } else if (x === '--message') {
+      // The value is taken even when an earlier -m set the subject, so it is never read as a pathspec.
+      const v = rest[++k] ?? ''
+      msg ??= v
+    } else if (x.startsWith('--message=')) msg ??= x.slice(10)
+    else if (COMMIT_VALUE.test(x)) k++
+    else if (/^-[a-zA-Z]/.test(x)) {
+      // Bundled short flags: -am "msg", -mMSG. A flag that takes a value ends the bundle, and takes the next argument when it is last.
+      for (let i = 1; i < x.length; i++) {
+        const ch = x[i] ?? ''
+        if (ch === 'a') all = true
+        else if (ch === 'F' || ch === 'C' || ch === 'c') file = true
+        else if (ch === 'm') {
+          const v = i + 1 < x.length ? x.slice(i + 1) : (rest[++k] ?? '')
+          msg ??= v
+        }
+        if ('FCct'.includes(ch) && i + 1 === x.length) k++
+        if ('mFCctuS'.includes(ch)) break
+      }
+    } else if (!x.startsWith('-')) paths.push(x)
+  }
+  return { subject: file || msg === undefined ? undefined : (msg.replace(/^@\s*/, '').trim().split('\n')[0] ?? ''), all, paths }
+}
+
+// The branch a `git checkout -b <name>` or `git switch -c <name>` creates and moves to.
+export function newBranch({ sub, rest }: GitCall): string | undefined {
+  const k = rest.findIndex(v => (sub === 'checkout' && /^-[bB]$/.test(v)) || (sub === 'switch' && /^(-[cC]|--create|--force-create)$/.test(v)))
+  return k < 0 ? undefined : rest[k + 1]
+}
+// shortcut: the first heredoc in the command; one written before the commit's own (cat > f <<EOF) is read instead, upgrade if that bites.
+export const heredocSubject = (command: string) => /<<-?\s*['"]?\w+['"]?[^\n]*\n([^\n]*)/.exec(command)?.[1]?.trim() ?? ''
 
 export async function sha1Hex(text: string): Promise<string> {
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-1', new TextEncoder().encode(text)))
@@ -664,7 +861,7 @@ export function isPhpcsCommand(command: string): boolean {
     const n = progName(t[0]?.v ?? '')
     const a = t.slice(1).map(x => x.v)
     if (n === 'phpcs' || n === 'phpcbf') return true
-    if (n === 'lean-gate' || n === 'lean-project') return a[0] === 'phpcs'
+    if (n === 'lean-gate') return a[0] === 'phpcs'
     if (n === 'composer') return a[0] === 'run' && /^(lint|phpcs|cs)/.test(a[1] ?? '') || a[0] === 'lint' || a[0] === 'phpcs'
     return INTERPRETERS.has(n) && a.some(x => /(^|\/)phpc(s|bf)(\.phar)?$/.test(x))
   })
@@ -675,7 +872,7 @@ export function isWporgAuditCommand(command: string): boolean {
   return allSegments(command).some(seg => {
     let a = exe(seg).map(x => x.v)
     if (INTERPRETERS.has(progName(a[0] ?? ''))) a = a.slice(1).filter(x => !x.startsWith('-'))
-    return ['lean-gate', 'lean-project'].includes(progName(a[0] ?? '')) && a[1] === 'audit' && a[2] === 'wporg'
+    return progName(a[0] ?? '') === 'lean-gate' && a[1] === 'audit' && a[2] === 'wporg'
   })
 }
 

@@ -1,5 +1,43 @@
 # Changelog
 
+## 2.0.0 (2026-11-26)
+
+A generic card tracker module (Planka first, for the Nashenski hub), a secrets rule, a shared board, and the removal of everything 1.x kept only for the rename and for runners nobody uses. Breaking, so a new major version.
+
+Breaking (removed):
+- Rule `one-pr-per-fix`, config key `pr_repos` and panel button `set-pr` (with its Explain line). `tracker-git-codes` replaces them. `pr_repos` in a file is named as a retired key.
+- The rename leftovers: the `lean-project` command (`bin/lean-project`), reading `lean-project.json` and `.lean-project.json`, the copy of old files at the first session (`gate_migrate` in `scripts/gate-on.sh`) and the `lean-project-*` data-folder fallback. The old rule id `lean-project-first` sets nothing and is named as unknown; the old skill name `lean-project` no longer counts as a load. `lean-gate stats` still counts old `lean-project-first` log rows as `lean-gate-first`. The files `.lean-project` (delegation choice) and `.lean-project-setup` keep their names.
+- `lean-gate@lean-gate-local` in `lean-gate vendor retire`.
+- The delegate runners llama, ollama, unsloth, aider and goose, with `llama_url`, `llama_model`, `ollama_url`, `ollama_model`, `unsloth_url`, `unsloth_model` and `aider_model`. The runners are now `none` and `opencode`; the default `fallback` is `opencode`. A `.lean-project` that names a removed runner says so on stderr and falls back.
+
+Added:
+- Trackers. New global-only config keys `person` and `trackers` (up to 20, each with `name`, `paths`, `start`, `sync` and the patterns `start_match`, `claim_match`, `code`, `branch`, `docs`, `mirrored`, `sync_match`); a project's `.lean-gate.json` drops both, because a tracker's text reaches the session prompt. Four rules, all warn, under their own panel group Tracker rules: `tracker-card-first` (start and claim a card before editing outside the docs), `tracker-git-codes` (commits on a `<person>/<CODE>-<slug>` branch with the card code first in the subject; docs-only commits pass), `tracker-sync-after-push` (end of turn: sync after pushing mirrored docs) and `tracker-brief` (an Agent call from a tracker folder names a card code and `AGENT_NAME`, and `AGENT_MODEL` and `AGENT_EFFORT` match the call).
+- Panel section Tracker, shown only in a tracker folder: the start age this session, the card codes seen, and the buttons `tr-start`, `tr-cards` and `tr-review`. In a tracker folder session start tells Claude to run the tracker's start instead of reading the index and state file.
+- Rule `no-secrets-outward` (block, group Every session): no key-shaped string (Stripe, webhook, private key, GitHub, AWS, Slack, Anthropic, GitLab, hardcoded secret) in Edit, Write or MultiEdit text, in any shell command, or in the lines a `git commit` stages. Placeholders pass; the message names the kind, never the secret.
+- `lean-gate ignore [dir] [--apply]`: proposes `.ignore` lines so Grep and Glob skip big unregistered folders, `backups/`, `archive/`, `releases/` and `*.zip`, and put back a repo of its own that a whitelist `.gitignore` hides.
+- `lean-gate board archive [--force]` (appends the board to `BOARD-ARCHIVE.md` and removes it; refused while a card is doing or blocked), `lean-gate board export [ids]` (markdown for a tracker card comment; writes nothing), and an archive hint in the board view when every card is done or the file passes 60 lines.
+- `review-scope` prints `Cards in this release:` with the card codes that start commit subjects since the last tag. `memory add --tag decision` reminds you to record the decision in the repo's PLAN file too.
+- Unknown or retired config names (a rule id that is not built in or custom, and `pr_repos`) are toasted at session start and shown in the Settings section.
+
+Changed:
+- The board is the main checkout's `docs/BOARD.md` (found through `git rev-parse --git-common-dir`), so every worktree shares one board; `LEAN_BOARD` still overrides it. This applies to `board`, `check gate` and `handoff`.
+- Session start loads the lean-gate skill itself in project folders (marker `[lean-gate skill loaded at session start]`, not on resume), and `lean-gate-first` counts that marker.
+- Session start deletes `guard-docs-*`, `guard-test-*` and `nudge-*` marks older than 7 days and moves session drafts older than 30 days to `sessions/archive/`. Its always-on line says to run the start command first in a tracker folder.
+- `distinctive-session-names`: a card code after the date (`09:30 26-11-2026 EN8 Fibank`) is fine.
+- `delegate` messages: no choice yet asks for `none` or `opencode`; `check` names the fallback order when a runner is not available.
+- `isPhpcsCommand` and `audit wporg` detection no longer accept the removed `lean-project` program name.
+
+Fixed:
+- Grep and Glob could not see the Nashenski product repos: the hub's whitelist `.gitignore` hid them from ripgrep. `lean-gate ignore` writes `!/<Name>/` lines that put each repo back (and keeps the 250k-file third-party folder out).
+- The skill-first interruption, the most frequent one in the rule log, is gone in project folders: session start loads the skill, so `lean-gate-first` finds it before the first edit.
+- From the full release review (two Opus reviewers, 20 findings, all fixed with a failing-first test):
+  - Git commands inside `{ }`, `then`, `do` or `else` (`npm test; if ($?) { git tag v2.0.0; git push origin v2.0.0 }` in PowerShell, `x && { git tag v1; }` in bash) were invisible to every git rule, `release-needs-review` included.
+  - A `routing` value in a repo's `.lean-gate.json` could put any text into the session prompt; values are now a model and an optional effort only.
+  - `cd ..` paths and PowerShell `Set-Location`, `sl`, `Push-Location` and `chdir` now resolve to the real repo.
+  - Every git call the gate makes uses `core.quotepath=off`, and every diff `--no-ext-diff --no-color`, so a diff tool or colour setting cannot hide changes.
+  - `cost` and `gain` count the session-start hook without the skill block it now loads, and no longer read the caller's stdin.
+  - Draft archiving moves only dated session drafts and never overwrites one; `board archive` cannot lose a line appended while it runs; `ignore` works without rg and with `'` or `[` in folder names.
+
 ## 1.1.1 (2026-11-16)
 
 - End-of-turn rules (`state-file-fresh`, `tests-before-done`, `phpcs-before-done`, `push-after-tag`) now reach Claude: they run after the turn and cannot stop a tool, so before only the person saw a toast. The miss is saved and the new `pending-note.sh` hook hands it to Claude with the next prompt, once. At block, the note says to fix it before reporting the work done; the panel row explains this.

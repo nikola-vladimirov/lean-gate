@@ -48,7 +48,7 @@ If the folder is not a repository, offer `git init` with a `.gitignore` for the 
 
 ## 4b. Delegation choice
 
-Ask once with AskUserQuestion, with the default first: none (do all work here), llama (the local llama.cpp server, for example yuxinlu1 gemma-4-12B-coder Q4_K_M), or opencode (free OpenCode models, default `opencode/deepseek-v4.1-flash-free`). Save it with `lean-gate delegate set runner <value>`, then `lean-gate delegate check`. The same question is asked on a project's first session, and for adopted projects in step 1 of "Adopting a project". Never pick a paid model for opencode.
+Ask once with AskUserQuestion, with the default first: none (do all work here) or opencode (free OpenCode models, default `opencode/deepseek-v4.1-flash-free`; the llama, ollama, unsloth, aider and goose runners were removed in 2.0). Save it with `lean-gate delegate set runner <value>`, then `lean-gate delegate check`. The same question is asked on a project's first session, and for adopted projects in step 1 of "Adopting a project". Never pick a paid model for opencode.
 
 ## 5. Finish
 

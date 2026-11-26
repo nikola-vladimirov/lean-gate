@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-# lean-project is the old name of lean-gate: old memory notes, docs and vendored skills still call it.
-exec bash "$(dirname "$0")/lean-gate" "$@"

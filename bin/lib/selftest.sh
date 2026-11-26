@@ -1,7 +1,7 @@
 # Selftest for bin/lean-gate. Sourced by it, not run directly.
 
 cmd_selftest() {
-  local tmp f fail=0 nest
+  local tmp f fail=0
   tmp=$(mktemp -d) || die "selftest: no temp dir"
   # Expanded now: $tmp is local and gone when a die mid-test reaches the EXIT trap
   trap "rm -rf '$tmp'" EXIT
@@ -69,6 +69,9 @@ cmd_selftest() {
   [ "$(cmd_memory projects | grep -c 'gamma')" = 1 ] && [ -z "$(cmd_memory projects | grep -v '^[0-9]*  ')" ] || { echo "FAIL memory projects output after forgetting the last note"; fail=1; }
   (cmd_memory link nosuchproject --project gamma) > /dev/null 2>&1 && { echo "FAIL memory linked a project that does not exist"; fail=1; }
   [ ! -d "$tmp/mem/nosuchproject" ] || { echo "FAIL memory link created a folder"; fail=1; }
+  # memory: a decision in a repo with a PLAN file also points at that file's decision log (found from a subfolder too)
+  mp="$tmp/mp"; mkdir -p "$mp/docs" "$mp/sub"; (cd "$mp" && git init -q); : > "$mp/docs/PLAN.md"
+  (cd "$mp/sub" && cmd_memory add "use sqlite" --tag decision --project alpha) | grep -qx "Also record it in docs/PLAN.md's decision log: the repo is the source of truth." || { echo "FAIL memory decision did not point at the plan"; fail=1; }
   unset LEAN_MEMORY
   # frontier: open decisions whose prerequisites are settled come first; the others wait
   printf '%s\n' '## 3. Decisions' '' '| # | Decision | Default | Status |' '|---|---|---|---|' \
@@ -113,6 +116,29 @@ cmd_selftest() {
   [ "$(grep -c '| move | T8 | doing$' "$bd")" = 2 ] || { echo "FAIL board dropped a repeated move"; fail=1; }
   LEAN_BOARD="$bd" board_append note T8 "dates are ISO"; LEAN_BOARD="$bd" board_append note T8 "dates"
   grep -q '| note | T8 | dates$' "$bd" || { echo "FAIL board dropped a shorter note"; fail=1; }
+  # board: with no LEAN_BOARD a worktree writes the main checkout's board, so every worktree shares one
+  bw="$tmp/bw"; mkdir -p "$bw"
+  (cd "$bw" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m a && git worktree add --detach "$tmp/bw-wt" > /dev/null 2>&1)
+  (unset LEAN_BOARD; cd "$tmp/bw-wt" && cmd_board add W1 "shared card" > /dev/null)
+  grep -q 'W1 | shared card' "$bw/docs/BOARD.md" 2>/dev/null && [ ! -e "$tmp/bw-wt/docs/BOARD.md" ] || { echo "FAIL board in a worktree did not use the main checkout's board"; fail=1; }
+  # board archive: refused while a card is doing; --force appends the board verbatim under a dated heading and removes it
+  ba="$tmp/ba/BOARD.md"; LEAN_BOARD="$ba" cmd_board add A1 first > /dev/null; LEAN_BOARD="$ba" cmd_board move A1 doing > /dev/null
+  (LEAN_BOARD="$ba" cmd_board archive) > /dev/null 2>&1 && { echo "FAIL board archive ran with a card doing"; fail=1; }
+  cp "$ba" "$tmp/ba/copy"; (LEAN_BOARD="$ba" cmd_board archive --force) > /dev/null 2>&1
+  [ ! -e "$ba" ] && grep -q '^## Archived [0-9-]* [0-9:]*$' "$tmp/ba/BOARD-ARCHIVE.md" 2>/dev/null \
+    && tail -n "$(( $(wc -l < "$tmp/ba/copy") ))" "$tmp/ba/BOARD-ARCHIVE.md" | cmp -s - "$tmp/ba/copy" || { echo "FAIL board archive --force"; fail=1; }
+  # board archive: a line another agent appends while the board is copied (simulated in cat) starts the next board
+  bl="$tmp/bl/BOARD.md"; LEAN_BOARD="$bl" cmd_board add L1 first > /dev/null
+  (cat() { command cat "$@"; echo '- late line' >> "$bl"; }; LEAN_BOARD="$bl" cmd_board archive) > /dev/null 2>&1
+  grep -qx -- '- late line' "$bl" 2>/dev/null && ! ls "$tmp/bl" | grep -q '\.arch\.' || { echo "FAIL board archive lost a line appended meanwhile"; fail=1; }
+  # board: the view hints at archiving once every card is done; export prints a markdown summary and writes nothing
+  bh="$tmp/bh.md"; LEAN_BOARD="$bh" cmd_board add H1 "Hint card" > /dev/null; LEAN_BOARD="$bh" cmd_board note H1 "a note" > /dev/null
+  LEAN_BOARD="$bh" cmd_board | grep -q '^Archive hint' && { echo "FAIL board archive hint with a card open"; fail=1; }
+  LEAN_GATE_SKIP=1 LEAN_BOARD="$bh" cmd_board move H1 done > /dev/null
+  LEAN_BOARD="$bh" cmd_board | grep -q '^Archive hint: every card is done' || { echo "FAIL board archive hint"; fail=1; }
+  cp "$bh" "$tmp/bh.copy"; bx=$(LEAN_BOARD="$bh" cmd_board export H1 2>&1)
+  [ "$bx" = "$(printf -- '- **H1** Hint card: done (lead)\n  - lead: a note')" ] && cmp -s "$bh" "$tmp/bh.copy" || { echo "FAIL board export was: $bx"; fail=1; }
+  (LEAN_BOARD="$bh" cmd_board export NOPE) > /dev/null 2>&1 && { echo "FAIL board export took an unknown card"; fail=1; }
   # review scope: a repo with one tag and one new file lists that file; a full review is due with no record
   rs="$tmp/rs"; mkdir -p "$rs"; self="$(cd "$(dirname "$0")" && pwd)/lean-gate"
   (cd "$rs" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base && git tag v1.0.0 && echo x > new.php)
@@ -132,6 +158,9 @@ cmd_selftest() {
     && CLAUDE_PLUGIN_DATA="$tmp/rbd" bash "$self" review-scope --full-done > /dev/null \
     && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m c && git tag v1.0.0)
   (cd "$rb" && CLAUDE_PLUGIN_DATA="$tmp/rbd" bash "$self" review-scope) | grep -q 'Full review due: no: 1 release' || { echo "FAIL review-scope sorted a beta after its release"; fail=1; }
+  # review scope: card codes that start a commit subject since the tag, once each, by prefix then number
+  (cd "$rb" && for m in 'EN10 later' 'EN8 Fibank' 'CM2: x' 'EN8 again' 'fix EN9 inside' 'EN11x glued' 'ABCDE1 long'; do git -c user.email=t@t -c user.name=t commit -q --allow-empty -m "$m"; done)
+  (cd "$rb" && CLAUDE_PLUGIN_DATA="$tmp/rbd" bash "$self" review-scope) | grep -qx 'Cards in this release: CM2 EN8 EN10' || { echo "FAIL review-scope cards line"; fail=1; }
   # sessions: --here lists only this project's drafts, and the list says where each one is
   ss="$tmp/ss"; mkdir -p "$ss/alpha" "$ss/data/sessions"
   printf 'Project: alpha\n' > "$ss/data/sessions/2026-11-01-aaaa.md"
@@ -152,9 +181,61 @@ cmd_selftest() {
   # setup nag: printed in three sessions per project, then stops
   sn="$tmp/nag"; mkdir -p "$sn/proj/docs"
   for i in 1 2 3 4; do
-    n=$(cd "$sn/proj" && CLAUDE_PLUGIN_DATA="$sn/data" CLAUDE_PLUGIN_ROOT="$(dirname "$self")/.." bash "$(dirname "$self")/../scripts/session-start.sh" | grep -c 'setup not recorded')
+    n=$(cd "$sn/proj" && CLAUDE_PLUGIN_DATA="$sn/data" CLAUDE_PLUGIN_ROOT="$(dirname "$self")/.." bash "$(dirname "$self")/../scripts/session-start.sh" </dev/null | grep -c 'setup not recorded')
     [ "$n" = $([ "$i" -le 3 ] && echo 1 || echo 0) ] || { echo "FAIL setup nag run $i printed $n"; fail=1; }
   done
+  # session start: the lean-gate skill body (no frontmatter) under its marker in a project folder only, the whole output under
+  # the hooks' 10000-character cap; markers older than 7 days are pruned and drafts older than 30 days move to sessions/archive/
+  ssd="$tmp/ssd"; mkdir -p "$ssd/proj" "$ssd/plain" "$ssd/data/sessions/archive"; : > "$ssd/proj/CLAUDE.md"
+  # an aged note that is not a dated draft stays; an aged draft never replaces an archived one of the same name
+  echo kept > "$ssd/data/sessions/archive/2020-01-02-dup.md"; echo new > "$ssd/data/sessions/2020-01-02-dup.md"
+  touch -t 202001010000 "$ssd/data/nudge-old" "$ssd/data/setup-nag-old" "$ssd/data/sessions/2020-01-01-old.md" \
+    "$ssd/data/sessions/2020-01-02-dup.md" "$ssd/data/sessions/Sessions index.md"; : > "$ssd/data/nudge-new"
+  sst() { (cd "$ssd/$1" && printf '{"source":"%s"}' "${2:-startup}" | HOME="$ssd" CLAUDE_CONFIG_DIR="$ssd/cfg" CLAUDE_PLUGIN_DATA="$ssd/data" CLAUDE_PLUGIN_ROOT="$(dirname "$self")/.." bash "$(dirname "$self")/../scripts/session-start.sh"); }
+  so=$(sst proj)
+  printf '%s\n' "$so" | grep -qx '\[lean-gate skill loaded at session start\]' && printf '%s\n' "$so" | grep -q '^# lean-gate' \
+    && ! printf '%s\n' "$so" | grep -q '^name: lean-gate' && [ "${#so}" -lt 10000 ] || { echo "FAIL session start skill injection (${#so} characters)"; fail=1; }
+  sst plain | grep -q 'skill loaded' && { echo "FAIL session start loaded the skill outside a project"; fail=1; }
+  sst proj resume | grep -q 'skill loaded' && { echo "FAIL session start loaded the skill again on resume"; fail=1; }
+  [ ! -e "$ssd/data/nudge-old" ] && [ -e "$ssd/data/nudge-new" ] && [ -e "$ssd/data/setup-nag-old" ] && [ -f "$ssd/data/sessions/archive/2020-01-01-old.md" ] || { echo "FAIL session start housekeeping"; fail=1; }
+  [ -f "$ssd/data/sessions/Sessions index.md" ] && [ "$(cat "$ssd/data/sessions/archive/2020-01-02-dup.md")" = kept ] || { echo "FAIL session start archived a note that is not a draft, or overwrote an archived draft"; fail=1; }
+  # session start in the fullest folder (WordPress, WooCommerce, the setup line, a delegation line, a draft, a memory note) stays under the cap too
+  mkdir -p "$ssd/wp/docs"; : > "$ssd/wp/CLAUDE.md"; printf 'runner=opencode\n' > "$ssd/wp/.lean-project"
+  printf '%s\n' '<?php' '/* Plugin Name: X' ' * WC requires at least: 9.0 (WooCommerce) */' > "$ssd/wp/x.php"
+  printf 'Project: wp\n' > "$ssd/data/sessions/2026-11-20-wpdraft.md"
+  (cd "$ssd/wp" && HOME="$ssd" bash "$self" memory add "a note" > /dev/null)
+  so=$(sst wp)
+  [ "$(printf '%s\n' "$so" | grep -c '^WordPress project detected\|^WooCommerce code detected\|^lean-gate setup not recorded\|^lean-gate: delegated work\|^lean-gate: this project.s newest session draft\|^lean-gate: memory wp:\|^\[lean-gate skill loaded')" = 7 ] \
+    && [ "${#so}" -lt 10000 ] || { echo "FAIL session start in a WordPress project (${#so} characters)"; fail=1; }
+  # cost and gain: the skill block is reported apart from the hook text (never "over budget"), and the hook leaves stdin alone
+  co=$(cd "$ssd/proj" && printf 'keep\n' | { HOME="$ssd" CLAUDE_CONFIG_DIR="$ssd/cfg" bash "$self" cost . 2>&1; read -r x; echo "stdin: $x"; })
+  echo "$co" | grep -q 'plus the lean-gate skill block' && ! echo "$co" | grep -q 'over budget\|HOOK: about 0 ' && echo "$co" | grep -qx 'stdin: keep' || { echo "FAIL cost counted the skill block as hook text, or ate stdin"; fail=1; }
+  # ignore: an unregistered folder over 5000 files is listed with the fixed lines, a folder holding a registered project
+  # (path in another case) is not, a dry run writes nothing, and --apply appends only missing lines after a final newline
+  ig="$tmp/ig"; mkdir -p "$ig/w/big" "$ig/w/small" "$ig/cfg"; : > "$ig/w/small/a"; printf '*.zip' > "$ig/w/.ignore"
+  awk -v d="$ig/w/big" 'BEGIN { for (i = 1; i <= 5001; i++) { f = d "/f" i; printf "" > f; close(f) } }'
+  out=$(CLAUDE_CONFIG_DIR="$ig/cfg" cmd_ignore "$ig/w")
+  echo "$out" | grep -qx '  /big/' && echo "$out" | grep -qx '  releases/' && ! echo "$out" | grep -q 'small\|zip' && [ "$(cat "$ig/w/.ignore")" = '*.zip' ] || { echo "FAIL ignore dry run was: $out"; fail=1; }
+  printf '[{"name":"sub","path":"%s/big/sub"}]\n' "$(printf '%s' "$ig/w" | tr 'a-z' 'A-Z')" > "$ig/cfg/lean-projects.json"
+  CLAUDE_CONFIG_DIR="$ig/cfg" cmd_ignore "$ig/w" | grep -q '/big/' && { echo "FAIL ignore listed a folder holding a registered project"; fail=1; }
+  rm "$ig/cfg/lean-projects.json"; for _ in 1 2; do CLAUDE_CONFIG_DIR="$ig/cfg" cmd_ignore "$ig/w" --apply > /dev/null; done
+  [ "$(tr -d '\r' < "$ig/w/.ignore" | tr '\n' ' ')" = '*.zip /big/ backups/ archive/ releases/ ' ] || { echo "FAIL ignore --apply wrote: $(cat "$ig/w/.ignore")"; fail=1; }
+  # ignore: a whitelist hub repo hiding a child repo gets it back (!/repo/); a worktree child (.git file) and a plain folder do not
+  hb="$tmp/hb"; mkdir -p "$hb/repo" "$hb/wt" "$hb/plain" "$ig/cfg"; git -C "$hb" init -q; git -C "$hb/repo" init -q; : > "$hb/wt/.git"
+  printf '/*\n!/.gitignore\n' > "$hb/.gitignore"; out=$(CLAUDE_CONFIG_DIR="$ig/cfg" cmd_ignore "$hb")
+  echo "$out" | grep -qx '  !/repo/' && ! echo "$out" | grep -q '!/wt/\|!/plain/' || { echo "FAIL ignore hidden repo was: $out"; fail=1; }
+  # ignore: names Git Bash does not convert for native programs ([ or ') still reach rg and git; norg hides rg (the find fallback)
+  mkdir -p "$hb/Nick's repo"; (cd "$hb/Nick's repo" && git init -q); out=$(CLAUDE_CONFIG_DIR="$ig/cfg" cmd_ignore "$hb")
+  echo "$out" | grep -qxF "  !/Nick's repo/" || { echo "FAIL ignore missed a hidden repo named Nick's repo: $out"; fail=1; }
+  norg() { ( command() { [ "${2:-}" = rg ] && return 1; builtin command "$@"; }; "$@" ); }
+  mv "$ig/w/big" "$ig/w/Old [2024]"
+  for r in "" norg; do
+    out=$(CLAUDE_CONFIG_DIR="$ig/cfg" $r cmd_ignore "$ig/w")
+    echo "$out" | grep -qxF '  /Old \[2024\]/' || { echo "FAIL ignore ${r:-rg} missed a folder named Old [2024]: $out"; fail=1; }
+  done
+  # ignore: the find fallback skips .git, node_modules and vendor, as rg does
+  mkdir -p "$ig/w/kid"; mv "$ig/w/Old [2024]" "$ig/w/kid/node_modules"
+  CLAUDE_CONFIG_DIR="$ig/cfg" norg cmd_ignore "$ig/w" | grep -q '/kid/' && { echo "FAIL ignore fallback counted node_modules"; fail=1; }
   # on-demand packs: skills move out and back, and the plugin switch flips, all inside the given folders
   pk="$tmp/pk"; mkdir -p "$pk/skills/wp-a" "$pk/skills/bricks-x" "$pk/skills/bricksextras-y" "$pk/skills/other"
   echo '{"enabledPlugins":{"ui-ux-pro-max@ui-ux-pro-max-skill":true}}' > "$pk/settings.json"
@@ -179,11 +260,12 @@ cmd_selftest() {
   printf '%s' "$out" | grep -q 'additionalContext":"lean-gate, last turn: state-file-fresh: \\"x\\""' || { echo "FAIL pending note was: $out"; fail=1; }
   [ -e "$pn/lean-gate/pending/s1.txt" ] && { echo "FAIL pending note was not removed"; fail=1; }
   [ -z "$(echo '{"session_id":"s1"}' | CLAUDE_CONFIG_DIR="$pn" bash "$(dirname "$0")/../scripts/pending-note.sh")" ] || { echo "FAIL pending note repeated"; fail=1; }
-  # delegation: the chain puts the chosen runner first and never repeats one; an unknown runner or a missing model fails
-  dl="$tmp/dl"; mkdir -p "$dl"; printf 'runner=llama\nfallback=opencode,llama\n' > "$dl/.lean-project"
-  chain=$(cd "$dl" && delegate_chain)
-  [ "$chain" = " llama opencode" ] || [ "$chain" = "llama opencode" ] || { echo "FAIL delegation chain was: $chain"; fail=1; }
-  (cd "$dl" && run_on aider "$dl/brief" "$dl/out" 2>/dev/null) && { echo "FAIL aider ran without a model"; fail=1; }
+  # delegation: a runner removed in 2.0 is named once and skipped, so the chain falls back to opencode; it cannot be set again
+  dl="$tmp/dl"; mkdir -p "$dl"; printf 'runner=llama\nfallback=llama,opencode\n' > "$dl/.lean-project"
+  chain=$(cd "$dl" && delegate_chain 2> "$dl/err")
+  [ "$chain" = opencode ] || { echo "FAIL delegation chain was: $chain"; fail=1; }
+  [ "$(grep -c 'runner llama .*removed in 2.0' "$dl/err")" = 1 ] || { echo "FAIL removed runner not named once: $(cat "$dl/err")"; fail=1; }
+  (cd "$dl" && cmd_delegate set runner llama) > /dev/null 2>&1 && { echo "FAIL delegate set took a removed runner"; fail=1; }
   (cd "$dl" && run_on nosuchrunner "$dl/brief" "$dl/out" 2>/dev/null) && { echo "FAIL unknown runner reported success"; fail=1; }
   # opencode runs with --auto only when opencode_auto=1
   grep -q 'opencode_auto' "$(dirname "$0")/lib/delegate.sh" || { echo "FAIL opencode_auto key missing"; fail=1; }
@@ -288,46 +370,15 @@ cmd_selftest() {
   else echo "note: zip is not installed; the audit wporg zip checks were skipped"; fi
   echo "$wa" | grep -q 'woocommerce-helper.php:19: G8' && { echo "FAIL audit wporg flagged a font CDN"; fail=1; }
   # gain: each run adds one line to gain.tsv and the second run shows a change figure
-  gd="$tmp/gain"; mkdir -p "$gd/proj"
-  (cd "$gd/proj" && CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain > /dev/null)
-  (cd "$gd/proj" && CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain > /dev/null)
+  gd="$tmp/gain"; mkdir -p "$gd/proj"; : > "$gd/proj/CLAUDE.md"
+  (cd "$gd/proj" && HOME="$gd" CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain > /dev/null)
+  (cd "$gd/proj" && HOME="$gd" CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain > /dev/null)
   [ "$(( $(wc -l < "$gd/data/gain.tsv") ))" = 2 ] || { echo "FAIL gain did not log two runs"; fail=1; }
-  (cd "$gd/proj" && CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain) | tail -n 1 | grep -q '	+0$' || { echo "FAIL gain change figure"; fail=1; }
+  go=$(cd "$gd/proj" && HOME="$gd" CLAUDE_PLUGIN_DATA="$gd/data" bash "$self" gain)
+  printf '%s\n' "$go" | tail -n 1 | grep -q '	+0$' || { echo "FAIL gain change figure"; fail=1; }
+  # gain: the hook column leaves out the skill block, which gets its own line
+  printf '%s\n' "$go" | grep -q 'leaves out the lean-gate skill block' && [ "$(cut -f4 "$gd/data/gain.tsv" | sort -n | tail -n 1)" -le 400 ] && [ "$(cut -f4 "$gd/data/gain.tsv" | sort -n | head -n 1)" -gt 0 ] || { echo "FAIL gain counted the skill block in the hook column"; fail=1; }
   unset LEAN_BOARD
-  # rename: the old lean-project settings, memory and lessons are copied once, never over a newer file, and the old ones stay
-  mg="$tmp/mg"; mkdir -p "$mg/.claude/lean-project/memory/p" "$mg/.claude/plugins/data/lean-project-inline" "$mg/.claude/plugins/data/lean-project-lean-project/sessions"
-  echo '{"mode":"warn"}' > "$mg/.claude/lean-project.json"; echo note > "$mg/.claude/lean-project/memory/p/notes.md"
-  echo stray > "$mg/.claude/plugins/data/lean-project-inline/LESSONS.md"; echo main > "$mg/.claude/plugins/data/lean-project-lean-project/LESSONS.md"
-  touch "$mg/.claude/plugins/data/lean-project-lean-project/sessions/s.md"; echo 3 > "$mg/.claude/plugins/data/lean-project-lean-project/setup-nag-42"
-  migrate() { (HOME="$mg" CLAUDE_PLUGIN_DATA="$1" . "$(dirname "$LIB")/../scripts/gate-on.sh"); }
-  migrate "$mg/.claude/plugins/data/lean-gate-lean-gate"
-  [ "$(cat "$mg/.claude/lean-gate.json" 2>/dev/null)" = '{"mode":"warn"}' ] || { echo "FAIL migrate global config"; fail=1; }
-  [ -f "$mg/.claude/lean-gate/memory/p/notes.md" ] && [ -f "$mg/.claude/lean-project/memory/p/notes.md" ] || { echo "FAIL migrate memory"; fail=1; }
-  [ "$(cat "$mg/.claude/plugins/data/lean-gate-lean-gate/LESSONS.md" 2>/dev/null)" = main ] || { echo "FAIL migrate lessons from the installed plugin's folder"; fail=1; }
-  [ -f "$mg/.claude/plugins/data/lean-gate-lean-gate/sessions/s.md" ] || { echo "FAIL migrate session drafts"; fail=1; }
-  [ "$(cat "$mg/.claude/plugins/data/lean-gate-lean-gate/setup-nag-42" 2>/dev/null)" = 3 ] || { echo "FAIL migrate setup nag counts"; fail=1; }
-  echo '{"mode":"block"}' > "$mg/.claude/lean-gate.json"; echo newer > "$mg/.claude/plugins/data/lean-gate-lean-gate/LESSONS.md"
-  migrate "$mg/.claude/plugins/data/lean-gate-lean-gate"; migrate "$tmp/elsewhere"
-  [ "$(cat "$mg/.claude/lean-gate.json")" = '{"mode":"block"}' ] && [ "$(cat "$mg/.claude/plugins/data/lean-gate-lean-gate/LESSONS.md")" = newer ] || { echo "FAIL migrate overwrote a newer file"; fail=1; }
-  [ ! -e "$tmp/elsewhere" ] || { echo "FAIL migrate wrote into a folder that is not the plugin's"; fail=1; }
-  [ "$(cd "$mg" && gate_project_file "$mg")" = "$mg/.lean-gate.json" ] || { echo "FAIL project file default"; fail=1; }
-  echo '{}' > "$mg/.lean-project.json"; [ "$(gate_project_file "$mg")" = "$mg/.lean-project.json" ] || { echo "FAIL old project file fallback"; fail=1; }
-  # hooks start together: four migrations at once copy each folder once, never nested, and leave no lock
-  rm -rf "$mg/.claude/lean-gate" "$mg/.claude/lean-gate.json" "$mg/.claude/plugins/data/lean-gate-lean-gate"
-  for _ in 1 2 3 4; do migrate "$mg/.claude/plugins/data/lean-gate-lean-gate" & done; wait
-  nest=$(find "$mg/.claude/lean-gate/memory" "$mg/.claude/plugins/data/lean-gate-lean-gate/sessions" -mindepth 1 \( -name memory -o -name sessions -o -name ".memory.*" -o -name ".sessions.*" \) 2>/dev/null)
-  [ -z "$nest" ] || { echo "FAIL migrate nested a folder when run at once: $nest"; ls -la "$mg/.claude" "$mg/.claude/lean-gate" "$mg/.claude/lean-gate/memory" 2>&1 | head -30; fail=1; }
-  [ ! -e "$mg/.claude/.lean-gate-migrating" ] || { echo "FAIL migrate left its lock"; fail=1; }
-  # a lock held by another hook makes this run skip; the next run after it is gone copies
-  rm -rf "$mg/.claude/lean-gate"; mkdir "$mg/.claude/.lean-gate-migrating"; migrate "$mg/.claude/plugins/data/lean-gate-lean-gate"
-  [ ! -e "$mg/.claude/lean-gate/memory" ] || { echo "FAIL migrate ran while locked"; fail=1; }
-  rmdir "$mg/.claude/.lean-gate-migrating"; migrate "$mg/.claude/plugins/data/lean-gate-lean-gate"
-  [ -f "$mg/.claude/lean-gate/memory/p/notes.md" ] || { echo "FAIL migrate after the lock"; fail=1; }
-  # an old folder with no LESSONS.md is copied once: .migrated, not LESSONS.md, marks it done
-  m2="$tmp/m2"; nd="$m2/.claude/plugins/data/lean-gate-lean-gate"; mkdir -p "$m2/.claude/plugins/data/lean-project-lean-project/sessions"
-  touch "$m2/.claude/plugins/data/lean-project-lean-project/sessions/s.md"
-  for _ in 1 2; do (HOME="$m2" CLAUDE_PLUGIN_DATA="$nd" . "$(dirname "$LIB")/../scripts/gate-on.sh"); rm -rf "$nd/sessions"; done
-  [ -f "$nd/.migrated" ] && [ ! -e "$nd/sessions" ] || { echo "FAIL migrate copied again with no LESSONS.md"; fail=1; }
   # phpcs: a global Composer install is found when PATH has no phpcs
   pc="$tmp/pc"; mkdir -p "$pc/AppData/Roaming/Composer/vendor/bin"; printf '#!/bin/sh\n' > "$pc/AppData/Roaming/Composer/vendor/bin/phpcs"; chmod +x "$pc/AppData/Roaming/Composer/vendor/bin/phpcs"
   [ "$(HOME="$pc"; COMPOSER_HOME=""; PATH="/usr/bin:/bin"; phpcs_path; command -v phpcs)" = "$pc/AppData/Roaming/Composer/vendor/bin/phpcs" ] || { echo "FAIL phpcs global Composer lookup"; fail=1; }

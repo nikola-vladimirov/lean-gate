@@ -8,7 +8,8 @@ Contents: [What is in it](#what-is-in-it) · [Install and migrate](#install-and-
 
 | Module | What it does | Where it lives | Control |
 | --- | --- | --- | --- |
-| Gate | Rules that warn or block (models, agents, releases, em dashes, session names, PHPCS), the master mode, routing and agent caps | `hooks/` | Panel: Rules, Model routing, Workflow and limits |
+| Gate | Rules that warn or block (models, agents, releases, em dashes, secrets, session names, PHPCS), the master mode, routing and agent caps | `hooks/` | Panel: Rules, Model routing, Workflow and limits |
+| Tracker | Card rules for folders a tracker covers (card started and claimed before edits, card branches and codes in commits, a sync after pushing mirrored docs, card briefs for agents) and the Tracker panel section. Planka first; config is global only | `hooks/`, `trackers` and `person` in `~/.claude/lean-gate.json` | Panel: Tracker, Rules (Tracker rules) |
 | Guides | Token-lean sessions: docs, state files, file maps, memory, board, lessons, review gate, packs | `skills/lean-gate`, `bin/` | Panel: Memory, Board, Lessons, Review, Packs |
 | Project | Registry, detection, start, adopt, walk test | `~/.claude/lean-projects.json`, `STRUCTURE.md` | Panel: Project |
 | ICM | The folder-as-architecture method and its link, index and graph checks (vendored `RinDig/icm-architect`, MIT) | `vendor/icm` | `lean-gate icm`, the `icm-architect` skill |
@@ -21,7 +22,7 @@ The panel reference, with every button explained, is [MANUAL.md](MANUAL.md). The
 ## Install and migrate
 
 1. Install or update the plugin: `claude plugin update lean-gate`, then restart.
-2. The hub carries its own ponytail and performance audit. If the standalone plugins are still enabled, the hub stays quiet about them so nothing loads twice. Press **Switch off standalone plugins** in the Ponytail section (or run `lean-gate vendor retire`) once, then restart. It also switches off the old `lean-gate-local` plugin.
+2. The hub carries its own ponytail and performance audit. If the standalone plugins are still enabled, the hub stays quiet about them so nothing loads twice. Press **Switch off standalone plugins** in the Ponytail section (or run `lean-gate vendor retire`) once, then restart.
 3. Open the panel (`/lean-gate`, or the **Open** button above the prompt). Set **mode** in the top row to `block` for enforcement, or leave it on `warn` to try it first (warn caps every rule to a warning).
 4. In your workspace folder, press **Register folders here** in the Project section. Every child folder with `.git`, `AGENTS.md`, `CLAUDE.md`, `composer.json` or `package.json` is registered (archives, backups and `*-reference` folders are skipped).
 
@@ -43,6 +44,7 @@ Everything is a button; nothing needs a text editor. A press writes `~/.claude/l
 | Switch a helper script off | Built-in helpers |
 | Bring a parked skill set back | Packs |
 | Register, start or adopt a project, run the walk test | Project |
+| Start a card session, list my cards, move the card to In Review (in a tracker folder) | Tracker |
 
 ## Starting and adopting a project
 
